@@ -27,10 +27,28 @@ class ResumeAnonymizer:
         """
         self.min_score_threshold = min_score_threshold
 
-        # 1. Configure the NLP engine explicitly with spaCy
         nlp_config = {
             "nlp_engine_name": "spacy",
-            "models": [{"lang_code": "en", "model_name": spacy_model}],
+            "models": [
+                {
+                    "lang_code": "en",
+                    "model_name": spacy_model,
+                    "ner_model_configuration": {
+                        "labels_to_ignore": [
+                            "CARDINAL",
+                            "MONEY",
+                            "PERCENT",
+                            "PRODUCT",
+                            "QUANTITY",
+                            "ORDINAL",
+                            "TIME",
+                            "LAW",
+                            "LANGUAGE",
+                            "EVENT",
+                        ]
+                    },
+                }
+            ],
         }
         provider = NlpEngineProvider(nlp_configuration=nlp_config)
         nlp_engine = provider.create_engine()

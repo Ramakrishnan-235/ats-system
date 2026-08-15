@@ -41,9 +41,13 @@ class OllamaCandidateExtractor:
         """
         system_instruction = (
             "You are an expert ATS parsing system. Extract all candidate information "
-            "strictly adhering to the requested JSON schema. Calculate total continuous "
-            "years of experience accurately, categorize skills into the standard taxonomy, "
-            "and identify any employment gaps exceeding 3 months."
+            "strictly adhering to the requested JSON schema.\n"
+            "Field Guidelines:\n"
+            "- 'timeline': Object with 'total_continuous_years' (float) and 'positions' (list of roles with company_name, job_title, start_date, end_date, primary_technologies, etc.).\n"
+            "- 'skills': Object with 'core_languages', 'frameworks_and_tools', 'databases_and_infrastructure', and 'detailed_skills'.\n"
+            "- 'education': List of entries with 'institution', 'degree', 'field_of_study', and 'graduation_year'.\n"
+            "- 'certifications': List of entries with 'name', 'issuing_organization', and 'issue_date'.\n"
+            "- 'notable_projects': List of entries with 'project_name', 'description', and 'technologies_used'."
         )
 
         prompt = f"""
