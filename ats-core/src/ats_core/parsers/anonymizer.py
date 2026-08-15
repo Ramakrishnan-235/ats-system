@@ -3,7 +3,7 @@ from typing import List, Optional
 from presidio_analyzer import AnalyzerEngine, RecognizerResult
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
-from presidio_anonymizer.entities import OperatorConfig, AnonymizerResponse
+from presidio_anonymizer.entities import OperatorConfig, EngineResult
 
 logger = logging.getLogger("ats.parsers.anonymizer")
 
@@ -92,7 +92,7 @@ class ResumeAnonymizer:
             return text
 
         # Step 2: Redact and replace
-        anonymized_response: AnonymizerResponse = self.anonymizer.anonymize(
+        anonymized_response: EngineResult = self.anonymizer.anonymize(
             text=text,
             analyzer_results=analyzer_results,
             operators=self.operators,
