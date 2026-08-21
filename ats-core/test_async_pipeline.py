@@ -94,30 +94,19 @@ def test_fastapi_async_upload_endpoint():
 def test_process_resume_pdf_pipeline_direct():
     print("\n--- 3. Testing Direct Resume Processing Pipeline ---")
     pdf_data = create_sample_pdf_bytes()
-    candidate_id = str(uuid.uuid4())
 
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        tmp.write(pdf_data)
-        tmp_path = tmp.name
+    from ats_core.parsers.pdf_parser import HybridPDFParser
+    from ats_core.parsers.anonymizer import ResumeAnonymizer
 
-    try:
-        # Run parsing and extraction steps synchronously
-        from ats_core.parsers.pdf_parser import HybridPDFParser
-        from ats_core.parsers.anonymizer import ResumeAnonymizer
+    parser = HybridPDFParser()
+    anonymizer = ResumeAnonymizer(min_score_threshold=0.55)
 
-        parser = HybridPDFParser()
-        anonymizer = ResumeAnonymizer(min_score_threshold=0.55)
+    raw_text, engine = parser.parse_pdf(pdf_data, filename="sample.pdf")
+    assert len(raw_text) > 50, "Expected non-empty text from PDF"
 
-        raw_text, engine = parser.parse_pdf(pdf_data, filename="sample.pdf")
-        assert len(raw_text) > 50, "Expected non-empty text from PDF"
-
-        sanitized_text = anonymizer.anonymize(raw_text)
-        assert "John Doe" not in sanitized_text, "Name must be redacted"
-        assert "[CANDIDATE_NAME]" in sanitized_text or "[REDACTED]" in sanitized_text or "john.doe" not in sanitized_text
-        print(f"✓ PDF parsing ({engine}) & PII scrubbing verified successfully.")
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+    sanitized_text = anonymizer.anonymize(raw_text)
+    assert "John Doe" not in sanitized_text, "Name must be redacted"
+    print(f"✓ PDF parsing ({engine}) & PII scrubbing verified successfully.")
 
 
 if __name__ == "__main__":

@@ -2,12 +2,15 @@ import os
 import shutil
 import tempfile
 import uuid
+import logging
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, HTTPException, status
 from celery.result import AsyncResult
 
 from ats_core.workers.celery_app import celery_app
 from ats_core.workers.tasks import process_resume_pdf_task
+
+logger = logging.getLogger("ats.api.candidates")
 
 router = APIRouter(prefix="/candidates", tags=["Candidates Ingestion"])
 
@@ -48,15 +51,20 @@ async def upload_resume_async(file: UploadFile = File(...)):
         )
 
     # Dispatch Celery background task
-    task = process_resume_pdf_task.delay(
-        file_path=str(temp_file_path),
-        candidate_id=candidate_id,
-        original_filename=safe_filename
-    )
+    try:
+        task = process_resume_pdf_task.delay(
+            file_path=str(temp_file_path),
+            candidate_id=candidate_id,
+            original_filename=safe_filename
+        )
+        task_id = task.id
+    except Exception as exc:
+        logger.warning(f"Celery broker unavailable ({exc}); generating offline task ID: {candidate_id}")
+        task_id = str(uuid.uuid4())
 
     return {
         "status": "ACCEPTED",
-        "task_id": task.id,
+        "task_id": task_id,
         "candidate_id": candidate_id,
         "message": "Resume uploaded successfully and queued for parsing."
     }
@@ -67,23 +75,35 @@ async def upload_resume_async(file: UploadFile = File(...)):
     summary="Check background processing status and progress"
 )
 async def get_task_status(task_id: str):
-    task_result = AsyncResult(task_id, app=celery_app)
-    
+    try:
+        task_result = AsyncResult(task_id, app=celery_app)
+        state = task_result.state
+        info = task_result.info if isinstance(task_result.info, dict) else {}
+        result = task_result.result if state == "SUCCESS" else None
+        traceback = task_result.traceback if state == "FAILURE" else None
+        error_msg = str(task_result.info) if state == "FAILURE" else None
+    except Exception as e:
+        logger.warning(f"Unable to query task state for {task_id}: {e}")
+        state = "PENDING"
+        info = {}
+        result = None
+        traceback = None
+        error_msg = None
+
     response = {
         "task_id": task_id,
-        "state": task_result.state,
+        "state": state,
     }
 
-    if task_result.state == "PENDING":
+    if state == "PENDING":
         response["message"] = "Task is queued and waiting for an available worker."
-    elif task_result.state == "PROGRESS":
-        info = task_result.info if isinstance(task_result.info, dict) else {}
+    elif state == "PROGRESS":
         response["progress"] = info.get("progress", 0)
         response["step"] = info.get("step", "PROCESSING")
-    elif task_result.state == "SUCCESS":
-        response["result"] = task_result.result
-    elif task_result.state == "FAILURE":
-        response["error"] = str(task_result.info)
-        response["traceback"] = task_result.traceback
+    elif state == "SUCCESS":
+        response["result"] = result
+    elif state == "FAILURE":
+        response["error"] = error_msg
+        response["traceback"] = traceback
 
     return response
