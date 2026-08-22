@@ -111,6 +111,7 @@ export interface CandidateDetail {
     suggested_questions: string[];
     team_notes: TeamNote[];
   };
+  raw_text?: string;
 }
 
 export interface ActiveUpload {

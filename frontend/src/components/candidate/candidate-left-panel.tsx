@@ -19,13 +19,25 @@ export function CandidateLeftPanel({ candidate }: CandidateLeftPanelProps) {
     <div className="space-y-6">
       {/* Top Profile Card */}
       <div className="bg-white rounded-2xl border border-zinc-200/80 p-6 shadow-xs flex flex-col items-center text-center">
-        {/* Large Avatar */}
+        {/* Large Avatar or Initials Badge */}
         <div className="relative mb-4">
-          <img
-            src={candidate.avatar}
-            alt={candidate.name}
-            className="w-28 h-28 rounded-full object-cover border-4 border-white shadow-md"
-          />
+          {candidate.avatar && candidate.avatar.startsWith("http") ? (
+            <img
+              src={candidate.avatar}
+              alt={candidate.name}
+              className="w-28 h-28 rounded-full object-cover border-4 border-white shadow-md"
+            />
+          ) : (
+            <div className="w-28 h-28 rounded-full bg-gradient-to-br from-zinc-800 to-zinc-950 text-white flex items-center justify-center font-bold text-2xl border-4 border-white shadow-md tracking-wider">
+              {candidate.avatar ||
+                candidate.name
+                  .split(" ")
+                  .map((p) => p[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase()}
+            </div>
+          )}
         </div>
 
         {/* Name & Headline */}

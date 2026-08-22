@@ -10,10 +10,32 @@ interface ResumeTabProps {
   candidate: CandidateDetail;
 }
 
+function escapeRegExp(str: string) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function safeRedact(text: string, target?: string, replacement?: string) {
+  if (!text || !target || target.trim().length < 2 || !replacement) return text;
+  try {
+    return text.replace(new RegExp(escapeRegExp(target.trim()), "gi"), replacement);
+  } catch {
+    return text;
+  }
+}
+
 export function ResumeTab({ candidate }: ResumeTabProps) {
   const [redactPII, setRedactPII] = useState(true);
 
-  const rawResume = `================================================================================
+  let rawResume = candidate.raw_text || "";
+  if (rawResume) {
+    if (redactPII) {
+      rawResume = safeRedact(rawResume, candidate.name, "[REDACTED_NAME]");
+      rawResume = safeRedact(rawResume, candidate.email, "[REDACTED_EMAIL]");
+      rawResume = safeRedact(rawResume, candidate.phone, "[REDACTED_PHONE]");
+      rawResume = safeRedact(rawResume, candidate.location, "[REDACTED_LOCATION]");
+    }
+  } else {
+    rawResume = `================================================================================
 CANDIDATE CURRICULUM VITAE
 ================================================================================
 Name: ${redactPII ? "[REDACTED_NAME]" : candidate.name}
@@ -21,30 +43,23 @@ Email: ${redactPII ? "[REDACTED_EMAIL@DOMAIN.COM]" : candidate.email}
 Phone: ${redactPII ? "[REDACTED_PHONE_NUMBER]" : candidate.phone}
 Location: ${redactPII ? "[REDACTED_LOCATION]" : candidate.location}
 
-OBJECTIVE
+OBJECTIVE / HEADLINE
 --------------------------------------------------------------------------------
-Experienced Staff / Senior Backend Engineer specializing in high-throughput
-distributed systems, API latency optimization, and microservice architecture.
+${candidate.target_headline || "Senior Software Engineer"}
 
 PROFESSIONAL EXPERIENCE
 --------------------------------------------------------------------------------
-Stripe — Staff Backend Engineer (2021 — Present)
-• Led migration of monolith to FastAPI microservices, reducing p99 latency by 40%.
-• Implemented robust idempotency keys for distributed payments processing across multi-region PostgreSQL clusters.
-• Mentored 3 junior and mid-level software engineers.
-
-Uber — Senior Software Engineer (2018 — 2021)
-• Architected real-time driver telemetry stream processor handling 250k events/sec using Kafka and Go.
-• Optimized spatial query indexing on PostgreSQL with PostGIS, decreasing geospatial lookup latency by 65%.
+${candidate.experience?.map((e) => `${e.company} — ${e.role} (${e.period})\n• ${e.description}`).join("\n\n") || "Experience details extracted from uploaded resume."}
 
 EDUCATION
 --------------------------------------------------------------------------------
-Stanford University — M.S. Computer Science (Distributed Systems)
+${candidate.highest_education || "Degree in Computer Science"}
 
 CORE SKILLS
 --------------------------------------------------------------------------------
-Python, FastAPI, Kubernetes, PostgreSQL, AWS, Go, Docker, Redis, Kafka, Distributed Systems.
+${candidate.core_skills?.join(", ") || "Technical competencies and tools."}
 ================================================================================`;
+  }
 
   return (
     <div className="bg-white rounded-2xl border border-zinc-200/80 p-6 shadow-xs space-y-5">

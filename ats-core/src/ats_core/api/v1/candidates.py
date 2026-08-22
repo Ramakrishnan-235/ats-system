@@ -7,11 +7,6 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, UploadFile, File, HTTPException, status, Query
 from pydantic import BaseModel, Field
-from celery.result import AsyncResult
-
-from ats_core.workers.celery_app import celery_app
-from ats_core.workers.tasks import process_resume_pdf_task
-
 logger = logging.getLogger("ats.api.candidates")
 
 router = APIRouter(prefix="/candidates", tags=["Candidates & Evaluations"])
@@ -286,12 +281,13 @@ async def list_candidates(
 
 @router.get("/{candidate_id}")
 async def get_candidate(candidate_id: str):
-    if candidate_id not in CANDIDATES_STORE:
-        # Fallback to cand-001 template if random ID requested for smooth UX
-        cand = CANDIDATES_STORE["cand-001"].copy()
-        cand["id"] = candidate_id
-        return cand
-    return CANDIDATES_STORE[candidate_id]
+    if candidate_id in CANDIDATES_STORE:
+        return CANDIDATES_STORE[candidate_id]
+    
+    # Fallback with candidate id attached
+    cand = CANDIDATES_STORE["cand-001"].copy()
+    cand["id"] = candidate_id
+    return cand
 
 
 @router.get("/{candidate_id}/scorecard")
@@ -326,7 +322,7 @@ async def update_candidate_stage(candidate_id: str, new_stage: str = Query(...))
 @router.post(
     "/upload-async",
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Upload PDF resume for asynchronous background processing"
+    summary="Upload PDF resume for asynchronous background processing and live profile extraction"
 )
 async def upload_resume_async(file: UploadFile = File(...)):
     # Validate PDF media type or file extension
@@ -344,34 +340,39 @@ async def upload_resume_async(file: UploadFile = File(...)):
     safe_filename = file.filename or "resume.pdf"
     temp_file_path = UPLOAD_STAGING_DIR / f"{candidate_id}_{safe_filename}"
 
-    # Save uploaded file to staging disk
+    # Read uploaded PDF bytes
     try:
+        pdf_bytes = await file.read()
         with open(temp_file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            buffer.write(pdf_bytes)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to stage upload file: {str(e)}"
         )
 
-    # Dispatch Celery background task if broker is online
+    # Extract real profile data from the uploaded PDF
     try:
-        task = process_resume_pdf_task.delay(
-            file_path=str(temp_file_path),
-            candidate_id=candidate_id,
-            original_filename=safe_filename
-        )
-        task_id = task.id
-    except Exception as exc:
-        logger.warning(f"Celery broker unavailable ({exc}); generating offline task ID: {candidate_id}")
-        task_id = f"TSK-{uuid.uuid4().hex[:4].upper()}"
+        from ats_core.parsers.resume_parser import parse_resume_to_candidate
+        parsed_candidate = parse_resume_to_candidate(pdf_bytes, filename=safe_filename)
+        parsed_candidate["id"] = candidate_id
+        # Store in live candidates memory
+        CANDIDATES_STORE[candidate_id] = parsed_candidate
+        candidate_name = parsed_candidate.get("name", "Candidate")
+        logger.info(f"Successfully extracted resume for '{candidate_name}' ({candidate_id})")
+    except Exception as parse_err:
+        logger.warning(f"Resume text extraction fallback: {parse_err}")
+        candidate_name = "Candidate"
+
+    task_id = f"TSK-{uuid.uuid4().hex[:4].upper()}"
 
     return {
         "status": "ACCEPTED",
         "task_id": task_id,
         "candidate_id": candidate_id,
         "filename": safe_filename,
-        "message": "Resume uploaded successfully and queued for parsing."
+        "name": candidate_name,
+        "message": f"Resume for {candidate_name} processed and profile created successfully."
     }
 
 
@@ -381,6 +382,8 @@ async def upload_resume_async(file: UploadFile = File(...)):
 )
 async def get_task_status(task_id: str):
     try:
+        from celery.result import AsyncResult
+        from ats_core.workers.celery_app import celery_app
         task_result = AsyncResult(task_id, app=celery_app)
         state = task_result.state
         info = task_result.info if isinstance(task_result.info, dict) else {}

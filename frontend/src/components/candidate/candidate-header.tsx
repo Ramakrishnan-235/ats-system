@@ -16,7 +16,11 @@ export function CandidateHeader({
   candidate,
   onStageChange,
 }: CandidateHeaderProps) {
-  const [currentStage, setCurrentStage] = useState(candidate.stage);
+  const [currentStage, setCurrentStage] = useState(candidate.stage || "Contacted");
+
+  React.useEffect(() => {
+    if (candidate.stage) setCurrentStage(candidate.stage);
+  }, [candidate.stage]);
 
   const handleAdvance = () => {
     const nextStage = currentStage === "Interviewing" ? "Negotiation" : "Offered";

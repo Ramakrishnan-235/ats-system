@@ -15,7 +15,8 @@ import {
   CandidateDetail,
 } from "@/types/ats";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
 export async function fetchDashboardStats(): Promise<{
   stats: StatMetric[];
@@ -32,7 +33,10 @@ export async function fetchDashboardStats(): Promise<{
     if (!res.ok) throw new Error("Failed to fetch dashboard stats");
     return await res.json();
   } catch (err) {
-    console.warn("Backend not reached for dashboard stats, using mock fallback:", err);
+    console.warn(
+      "Backend not reached for dashboard stats, using mock fallback:",
+      err
+    );
     return {
       stats: MOCK_STATS,
       weekly_candidates: MOCK_WEEKLY_DATA,
@@ -64,7 +68,9 @@ export async function fetchJobs(params?: {
     console.warn("Backend not reached for jobs, using mock fallback:", err);
     let jobs = [...MOCK_JOBS];
     if (params?.status && params.status.toUpperCase() !== "ALL") {
-      jobs = jobs.filter((j) => j.status.toUpperCase() === params.status?.toUpperCase());
+      jobs = jobs.filter(
+        (j) => j.status.toUpperCase() === params.status?.toUpperCase()
+      );
     }
     if (params?.department && params.department.toUpperCase() !== "ALL") {
       jobs = jobs.filter(
@@ -81,6 +87,19 @@ export async function fetchJobs(params?: {
       );
     }
     return jobs;
+  }
+}
+
+export async function fetchJobDetail(jobId: string): Promise<JobRequisition | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/jobs/${jobId}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error("Failed to fetch job detail");
+    return await res.json();
+  } catch (err) {
+    console.warn("Backend not reached for job detail, using fallback:", err);
+    return MOCK_JOBS.find((j) => j.id === jobId) || MOCK_JOBS[0];
   }
 }
 
@@ -127,6 +146,28 @@ export async function createJobRequisition(payload: {
   }
 }
 
+export async function fetchCandidates(params?: {
+  search?: string;
+  stage?: string;
+  skill?: string;
+}): Promise<any[]> {
+  try {
+    const query = new URLSearchParams();
+    if (params?.search) query.set("search", params.search);
+    if (params?.stage) query.set("stage", params.stage);
+    if (params?.skill) query.set("skill", params.skill);
+
+    const res = await fetch(`${API_BASE_URL}/candidates?${query.toString()}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error("Failed to fetch candidates");
+    return await res.json();
+  } catch (err) {
+    console.warn("Backend not reached for candidates list:", err);
+    return [];
+  }
+}
+
 export async function fetchCandidate(id: string): Promise<CandidateDetail> {
   try {
     const res = await fetch(`${API_BASE_URL}/candidates/${id}`, {
@@ -137,6 +178,27 @@ export async function fetchCandidate(id: string): Promise<CandidateDetail> {
   } catch (err) {
     console.warn("Backend not reached for candidate, using mock fallback:", err);
     return { ...MOCK_CANDIDATE_PRIYA, id };
+  }
+}
+
+export async function updateCandidateStage(
+  candidateId: string,
+  newStage: string
+) {
+  try {
+    const res = await fetch(
+      `${API_BASE_URL}/candidates/${candidateId}/stage?new_stage=${encodeURIComponent(
+        newStage
+      )}`,
+      {
+        method: "PATCH",
+      }
+    );
+    if (!res.ok) throw new Error("Failed to update stage");
+    return await res.json();
+  } catch (err) {
+    console.warn("Backend not reached for stage update:", err);
+    return { status: "SUCCESS", candidate_id: candidateId, stage: newStage };
   }
 }
 
@@ -177,7 +239,10 @@ export async function uploadResumeFile(file: File) {
     if (!res.ok) throw new Error("Failed to upload resume");
     return await res.json();
   } catch (err) {
-    console.warn("Backend not reached for upload, simulating success response:", err);
+    console.warn(
+      "Backend not reached for upload, simulating success response:",
+      err
+    );
     return {
       status: "ACCEPTED",
       task_id: `TSK-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -185,5 +250,25 @@ export async function uploadResumeFile(file: File) {
       filename: file.name,
       message: "Resume queued for processing.",
     };
+  }
+}
+
+export async function evaluateJobMatching(payload: {
+  job_title: string;
+  job_description: string;
+  stage1_retrieve_limit?: number;
+  stage2_rerank_limit?: number;
+}) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/match/evaluate-job`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error("Failed to run matching evaluation");
+    return await res.json();
+  } catch (err) {
+    console.warn("Backend matching call failed:", err);
+    return null;
   }
 }

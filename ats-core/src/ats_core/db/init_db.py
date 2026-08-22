@@ -11,7 +11,7 @@ logger = logging.getLogger("ats.db.provision")
 # PostgreSQL async connection URL
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://ats_user:ats_password@localhost:5432/ats_db"
+    "postgresql+asyncpg://ats_user:ats_password@localhost:5433/ats_db"
 )
 
 async def provision_database():

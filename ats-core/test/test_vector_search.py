@@ -14,7 +14,7 @@ from ats_core.db.init_db import provision_database
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://ats_user:ats_password@localhost:5432/ats_db"
+    "postgresql+asyncpg://ats_user:ats_password@localhost:5433/ats_db"
 )
 
 

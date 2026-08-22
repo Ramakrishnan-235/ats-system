@@ -22,7 +22,7 @@ logger = logging.getLogger("ats.workers.tasks")
 # Synchronous DB engine for Celery worker processes
 SYNC_DATABASE_URL = os.getenv(
     "SYNC_DATABASE_URL", 
-    "postgresql://ats_user:ats_password@localhost:5432/ats_db"
+    "postgresql://ats_user:ats_password@localhost:5433/ats_db"
 )
 engine = create_engine(SYNC_DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

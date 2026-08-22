@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { fetchCandidates } from "@/lib/api";
 
 interface TalentCandidate {
   id: string;
@@ -109,6 +110,7 @@ const TALENT_POOL: TalentCandidate[] = [
 ];
 
 export default function CandidatesPage() {
+  const [candidatesList, setCandidatesList] = useState<TalentCandidate[]>(TALENT_POOL);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState<"Hybrid" | "Semantic" | "Keyword">("Hybrid");
   const [selectedSkills, setSelectedSkills] = useState<string[]>(["Python", "Kubernetes"]);
@@ -116,6 +118,34 @@ export default function CandidatesPage() {
   const [selectedStatus, setSelectedStatus] = useState<string[]>(["Active"]);
   const [sortBy, setSortBy] = useState("Relevance");
   const [addedJobs, setAddedJobs] = useState<Record<string, string>>({});
+
+  React.useEffect(() => {
+    async function loadLiveCandidates() {
+      try {
+        const liveData = await fetchCandidates();
+        if (liveData && liveData.length > 0) {
+          const liveMapped: TalentCandidate[] = liveData.map((d: any) => ({
+            id: d.id,
+            name: d.name,
+            role: d.target_headline || d.role || "Software Engineer",
+            location: d.location || "Remote",
+            matchScore: d.scorecard?.overall_match_score || 92,
+            skills: d.core_skills || ["Python", "FastAPI"],
+            avatar: d.avatar || d.name.slice(0, 2).toUpperCase(),
+            experienceYears: Math.round(d.years_of_experience || 4),
+            status: "Active",
+          }));
+          // Combine unique candidates by id
+          const existingIds = new Set(liveMapped.map((c) => c.id));
+          const rest = TALENT_POOL.filter((c) => !existingIds.has(c.id));
+          setCandidatesList([...liveMapped, ...rest]);
+        }
+      } catch (err) {
+        console.warn("Could not load live candidates:", err);
+      }
+    }
+    loadLiveCandidates();
+  }, []);
 
   const toggleSkill = (skill: string) => {
     setSelectedSkills((prev) =>
@@ -136,7 +166,7 @@ export default function CandidatesPage() {
     setSearchQuery("");
   };
 
-  const filteredCandidates = TALENT_POOL.filter((c) => {
+  const filteredCandidates = candidatesList.filter((c) => {
     const matchesSearch =
       !searchQuery ||
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -382,7 +412,7 @@ export default function CandidatesPage() {
                       {/* Top: Avatar, Name, Location, Match % */}
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3">
-                          {cand.avatar.startsWith("http") ? (
+                          {cand.avatar && cand.avatar.startsWith("http") ? (
                             <img
                               src={cand.avatar}
                               alt={cand.name}
@@ -390,7 +420,7 @@ export default function CandidatesPage() {
                             />
                           ) : (
                             <div className="w-12 h-12 rounded-full bg-[#eae7df] text-zinc-900 font-bold text-sm flex items-center justify-center shrink-0">
-                              {cand.avatar}
+                              {cand.avatar || cand.name.slice(0, 2).toUpperCase()}
                             </div>
                           )}
                           <div>
