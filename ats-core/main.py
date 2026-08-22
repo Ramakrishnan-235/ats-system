@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from ats_core.api.v1.candidates import router as candidates_router
 from ats_core.api.v1.match import router as match_router
+from ats_core.api.v1.jobs import router as jobs_router
+from ats_core.api.v1.dashboard import router as dashboard_router
 
 app = FastAPI(
     title="AI-Powered ATS Core Engine",
@@ -19,6 +21,8 @@ app.add_middleware(
 )
 
 # Mount API Routers
+app.include_router(dashboard_router, prefix="/api/v1")
+app.include_router(jobs_router, prefix="/api/v1")
 app.include_router(candidates_router, prefix="/api/v1")
 app.include_router(match_router, prefix="/api/v1")
 
