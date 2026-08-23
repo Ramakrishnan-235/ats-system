@@ -47,39 +47,21 @@ class BaseTaskWithRetry(Task):
     retry_jitter = True            # Adds random jitter: delay * random(0.5, 1.5)
 
 
-@celery_app.task(
-    bind=True,
-    base=BaseTaskWithRetry,
-    name="ats.tasks.process_resume"
-)
-def process_resume_task(
-    self,
-    file_path: str,
-    candidate_id: str,
-    original_filename: str = "resume.pdf"
-) -> Dict[str, Any]:
-    return process_resume_pdf_task(self, file_path, candidate_id, original_filename)
-
-
-@celery_app.task(
-    bind=True,
-    base=BaseTaskWithRetry,
-    name="ats.tasks.process_resume_pdf"
-)
-def process_resume_pdf_task(
-    self,
+def _execute_resume_processing(
+    task_instance: Task,
     file_path: str,
     candidate_id: str,
     original_filename: str = "resume.pdf"
 ) -> Dict[str, Any]:
     """
-    Asynchronously parses a PDF, Word DOCX, or Image (OCR) resume, masks PII,
-    extracts structured profile, and updates PostgreSQL and vector embeddings.
+    Core resume processing pipeline:
+    Parses PDF, Word DOCX, or Image (OCR), masks PII, extracts structured profile,
+    and updates PostgreSQL and vector embeddings.
     """
-    logger.info(f"[{self.request.id}] Starting multi-format resume processing for candidate {candidate_id} ({original_filename})")
+    logger.info(f"[{task_instance.request.id}] Starting multi-format resume processing for candidate {candidate_id} ({original_filename})")
     
     # Step 1: Read File Buffer
-    self.update_state(state="PROGRESS", meta={"step": "READING_FILE", "progress": 10})
+    task_instance.update_state(state="PROGRESS", meta={"step": "READING_FILE", "progress": 10})
     file_p = Path(file_path)
     if not file_p.exists():
         raise FileNotFoundError(f"Staged resume file not found at: {file_path}")
@@ -95,26 +77,27 @@ def process_resume_pdf_task(
             else "PARSING_WORD_DOCX" if doc_format == "docx"
             else "PARSING_PDF_LAYOUT"
         )
-        self.update_state(state="PROGRESS", meta={"step": parsing_step_name, "progress": 30, "format": doc_format})
+        task_instance.update_state(state="PROGRESS", meta={"step": parsing_step_name, "progress": 30, "format": doc_format})
         extracted_text, engine_used, detected_format = document_parser.parse(file_bytes, filename=original_filename)
 
         # Step 3: Microsoft Presidio PII Masking
-        self.update_state(state="PROGRESS", meta={"step": "SCRUBBING_PII", "progress": 50, "engine": engine_used})
+        task_instance.update_state(state="PROGRESS", meta={"step": "SCRUBBING_PII", "progress": 50, "engine": engine_used})
         sanitized_text = anonymizer.anonymize(extracted_text)
 
         # Step 4: Ollama Local LLM Structured Extraction
-        self.update_state(state="PROGRESS", meta={"step": "LLM_EXTRACTION", "progress": 70})
+        task_instance.update_state(state="PROGRESS", meta={"step": "LLM_EXTRACTION", "progress": 70})
         profile = extractor.extract_profile(sanitized_text)
 
         # Step 5: Save Profile & Vector to PostgreSQL
-        self.update_state(state="PROGRESS", meta={"step": "DATABASE_PERSISTENCE", "progress": 90})
+        task_instance.update_state(state="PROGRESS", meta={"step": "DATABASE_PERSISTENCE", "progress": 90})
         
         # Embedding summary text
         embedding_summary = f"{profile.target_role_or_headline}. {profile.executive_summary}"
         vector = vector_store.generate_embedding(embedding_summary)
 
-        try:
-            with SessionLocal() as session:
+        # Transactional DB persistence with strict error propagation (no silent data loss)
+        with SessionLocal() as session:
+            try:
                 cand_uuid = uuid.UUID(candidate_id) if candidate_id else uuid.uuid4()
                 # Upsert Candidate Record
                 candidate_record = session.query(Candidate).filter(Candidate.id == cand_uuid).first()
@@ -135,17 +118,19 @@ def process_resume_pdf_task(
                 candidate_record.embedding = vector
                 
                 session.commit()
-        except Exception as db_err:
-            logger.warning(f"Database update skipped or failed in worker: {db_err}")
+            except Exception as db_err:
+                session.rollback()
+                logger.error(f"Database update failed in worker for candidate {candidate_id}: {db_err}")
+                raise RuntimeError(f"Database persistence failed: {db_err}") from db_err
 
-        # Cleanup staged temporary upload file
+        # Cleanup staged temporary upload file ONLY on successful DB commit
         if file_p.exists():
             try:
                 os.remove(file_p)
-            except OSError:
-                pass
+            except OSError as cleanup_err:
+                logger.warning(f"Failed to remove temp file {file_p}: {cleanup_err}")
 
-        logger.info(f"[{self.request.id}] Successfully processed candidate {candidate_id}")
+        logger.info(f"[{task_instance.request.id}] Successfully processed candidate {candidate_id}")
         return {
             "status": "COMPLETED",
             "candidate_id": candidate_id,
@@ -156,12 +141,42 @@ def process_resume_pdf_task(
         }
 
     except SoftTimeLimitExceeded:
-        logger.error(f"Task {self.request.id} timed out during execution.")
+        logger.error(f"Task {task_instance.request.id} timed out during execution.")
         raise
     except Exception as exc:
+        retries_count = getattr(task_instance.request, "retries", 0)
+        max_retries = getattr(task_instance, "max_retries", 5)
         logger.warning(
             f"Error processing candidate {candidate_id}: {exc}. "
-            f"Retrying (Attempt {self.request.retries + 1}/{self.max_retries})..."
+            f"Retrying (Attempt {retries_count + 1}/{max_retries})..."
         )
         # Celery autoretry_for catches this and executes backoff delay
         raise exc
+
+
+@celery_app.task(
+    bind=True,
+    base=BaseTaskWithRetry,
+    name="ats.tasks.process_resume"
+)
+def process_resume_task(
+    self,
+    file_path: str,
+    candidate_id: str,
+    original_filename: str = "resume.pdf"
+) -> Dict[str, Any]:
+    return _execute_resume_processing(self, file_path, candidate_id, original_filename)
+
+
+@celery_app.task(
+    bind=True,
+    base=BaseTaskWithRetry,
+    name="ats.tasks.process_resume_pdf"
+)
+def process_resume_pdf_task(
+    self,
+    file_path: str,
+    candidate_id: str,
+    original_filename: str = "resume.pdf"
+) -> Dict[str, Any]:
+    return _execute_resume_processing(self, file_path, candidate_id, original_filename)

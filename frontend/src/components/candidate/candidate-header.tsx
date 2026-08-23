@@ -39,14 +39,19 @@ export function CandidateHeader({
       <div>
         <div className="flex items-center gap-2 text-xs font-medium text-zinc-500 mb-2">
           <Link
-            href="/jobs"
+            href={candidate.applied_for_job_id ? `/jobs/${candidate.applied_for_job_id}` : "/jobs"}
             className="flex items-center gap-1 hover:text-zinc-900 transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Jobs</span>
           </Link>
           <span>›</span>
-          <span className="text-zinc-700">{candidate.applied_for_job}</span>
+          <Link
+            href={candidate.applied_for_job_id ? `/jobs/${candidate.applied_for_job_id}` : "/jobs"}
+            className="text-zinc-700 hover:text-zinc-950 font-semibold truncate max-w-sm"
+          >
+            {candidate.applied_for_job}
+          </Link>
         </div>
 
         <div className="flex items-center gap-3">

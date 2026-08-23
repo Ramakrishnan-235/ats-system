@@ -101,7 +101,7 @@ export function JobCard({ job }: JobCardProps) {
           {/* Candidate Avatars */}
           <div className="flex items-center gap-2 shrink-0">
             <div className="flex -space-x-2 overflow-hidden">
-              {job.avatars.slice(0, 3).map((avatarUrl, i) => (
+              {(job.avatars || []).slice(0, 3).map((avatarUrl, i) => (
                 <img
                   key={i}
                   className="inline-block h-7 w-7 rounded-full ring-2 ring-white object-cover"
@@ -109,27 +109,27 @@ export function JobCard({ job }: JobCardProps) {
                   alt="Candidate"
                 />
               ))}
-              {job.candidates_count > 3 && (
+              {(job.candidates_count || 0) > 3 && (
                 <div className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-100 ring-2 ring-white text-[10px] font-bold text-zinc-600">
-                  +{job.candidates_count - 3}
+                  +{(job.candidates_count || 0) - 3}
                 </div>
               )}
             </div>
             <span className="text-xs font-semibold text-zinc-700 hidden sm:inline">
-              {job.candidates_count}
+              {job.candidates_count || 0}
             </span>
           </div>
 
           {/* Match Metric */}
           <div className="text-right min-w-[110px]">
-            {isOpen && job.top_match.score > 0 ? (
+            {isOpen && job.top_match && job.top_match.score > 0 ? (
               <div className="flex flex-col items-end">
                 <div className="flex items-center gap-1 text-xs font-bold text-zinc-950">
                   <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>{job.top_match.label}</span>
+                  <span>{job.top_match.label || "Top Match"}</span>
                 </div>
                 <span className="text-[11px] text-zinc-400 font-medium">
-                  {job.top_match.last_run}
+                  {job.top_match.last_run || "Active"}
                 </span>
               </div>
             ) : (
@@ -167,10 +167,10 @@ export function JobCard({ job }: JobCardProps) {
       {/* Description Snippet & Required Skills Row */}
       <div className="pt-2 border-t border-zinc-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
         <p className="text-zinc-600 line-clamp-1 flex-1 font-normal">
-          {job.job_description}
+          {job.job_description || "No description provided."}
         </p>
         <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-          {job.required_skills.slice(0, 4).map((skill) => (
+          {(job.required_skills || []).slice(0, 4).map((skill) => (
             <span
               key={skill}
               className="px-2 py-0.5 rounded-md bg-zinc-100/80 text-zinc-700 text-[10px] font-medium"
@@ -178,9 +178,9 @@ export function JobCard({ job }: JobCardProps) {
               {skill}
             </span>
           ))}
-          {job.required_skills.length > 4 && (
+          {(job.required_skills || []).length > 4 && (
             <span className="text-[10px] font-semibold text-zinc-400">
-              +{job.required_skills.length - 4} more
+              +{(job.required_skills || []).length - 4} more
             </span>
           )}
         </div>

@@ -7,10 +7,16 @@ import fitz  # PyMuPDF
 
 logger = logging.getLogger("ats.parsers.ocr")
 
+# Protect server against image decompression bombs (max 10 megapixels)
+Image.MAX_IMAGE_PIXELS = 10_000_000
+MAX_IMAGE_DIMENSION = 4096
+
+
 class ImageOCRResumeParser:
     """
     Extracts structured resume text from images (PNG, JPG, JPEG, WEBP, TIFF, BMP)
     using multi-stage Pillow image preprocessing and high-accuracy OCR extraction.
+    Protected against image decompression bombs and memory exhaustion attacks.
     """
 
     def preprocess_image(self, image_bytes: bytes) -> Image.Image:
@@ -22,21 +28,31 @@ class ImageOCRResumeParser:
         """
         try:
             img = Image.open(io.BytesIO(image_bytes))
+            # Verify decompression bomb bounds
+            if img.width > MAX_IMAGE_DIMENSION or img.height > MAX_IMAGE_DIMENSION:
+                raise ValueError(f"Image dimensions {img.width}x{img.height} exceed safe limit of {MAX_IMAGE_DIMENSION}px")
+            if (img.width * img.height) > Image.MAX_IMAGE_PIXELS:
+                raise ValueError(f"Image pixel area exceeds safety threshold of {Image.MAX_IMAGE_PIXELS} pixels")
+
             # Auto-orient if image has EXIF metadata
             img = ImageOps.exif_transpose(img)
+        except Image.DecompressionBombError as dbe:
+            logger.error(f"Image decompression bomb rejected: {dbe}")
+            raise ValueError(f"Image rejected: potential decompression bomb detected ({dbe})") from dbe
         except Exception as e:
             logger.error(f"Failed to decode image bytes: {e}")
-            raise ValueError(f"Invalid image file: {e}")
+            raise ValueError(f"Invalid or unsafe image file: {e}")
 
         # Ensure image is in RGB or Grayscale mode
         if img.mode not in ("RGB", "L"):
             img = img.convert("RGB")
 
-        # Upscale if low resolution (under 1600px width)
-        if img.width < 1600:
-            scale_factor = 1600.0 / float(img.width)
-            new_size = (1600, int(img.height * scale_factor))
-            img = img.resize(new_size, Image.Resampling.BICUBIC)
+        # Upscale if low resolution (under 1600px width), with safety bounds
+        if img.width < 1600 and img.width > 0:
+            scale_factor = min(1600.0 / float(img.width), 3.0)
+            new_width = min(int(img.width * scale_factor), 2400)
+            new_height = min(int(img.height * scale_factor), 3200)
+            img = img.resize((new_width, new_height), Image.Resampling.BICUBIC)
 
         # Convert to Grayscale & Enhance Contrast
         gray = img.convert("L")
@@ -108,28 +124,14 @@ class ImageOCRResumeParser:
             except Exception as pyt_err:
                 logger.warning(f"pytesseract fallback failed: {pyt_err}")
 
-        # Final cleanup & normalization
+        # Final cleanup & normalization (no fake candidates injected)
         clean_text = self._clean_ocr_text(extracted_text, filename)
         return clean_text, engine_used
 
     def _clean_ocr_text(self, raw_text: str, filename: str) -> str:
-        """Cleans and standardizes raw OCR output."""
-        if not raw_text.strip():
-            # Generate structured placeholder extraction when OCR engine binary is not configured
-            base_name = filename.rsplit(".", 1)[0].replace("-", " ").replace("_", " ")
-            return (
-                f"# {base_name.title()}\n\n"
-                f"**Role**: Senior Software Engineer\n"
-                f"**Email**: {base_name.lower().replace(' ', '')}@example.com\n"
-                f"**Phone**: (555) 234-5678\n"
-                f"**Location**: San Francisco, CA\n\n"
-                f"## Core Technical Skills\n"
-                f"Python, FastAPI, Kubernetes, PostgreSQL, AWS, Docker, Microservices, Git\n\n"
-                f"## Experience\n"
-                f"**Senior Systems Developer** — Cloud Platform Services (2021 — Present)\n"
-                f"• Engineered scalable backend services and microservices handling 20k+ daily transactions.\n"
-                f"• Optimized SQL queries and database indexes reducing p99 latency by 35%.\n"
-            )
+        """Cleans and standardizes raw OCR output without fabricating candidate data."""
+        if not raw_text or not raw_text.strip():
+            return ""
 
         # Normalize multiple line breaks and strip weird OCR artifacts
         lines = [re.sub(r"\s+", " ", l).strip() for l in raw_text.split("\n")]

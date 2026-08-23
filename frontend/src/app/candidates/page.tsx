@@ -21,7 +21,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { fetchCandidates } from "@/lib/api";
+import { fetchCandidates, fetchJobs, addJobCandidate } from "@/lib/api";
+import { JobRequisition } from "@/types/ats";
+import { MOCK_JOBS } from "@/lib/mock-data";
 
 interface TalentCandidate {
   id: string;
@@ -111,6 +113,7 @@ const TALENT_POOL: TalentCandidate[] = [
 
 export default function CandidatesPage() {
   const [candidatesList, setCandidatesList] = useState<TalentCandidate[]>(TALENT_POOL);
+  const [availableJobs, setAvailableJobs] = useState<JobRequisition[]>(MOCK_JOBS.slice(0, 15));
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState<"Hybrid" | "Semantic" | "Keyword">("Hybrid");
   const [selectedSkills, setSelectedSkills] = useState<string[]>(["Python", "Kubernetes"]);
@@ -120,18 +123,26 @@ export default function CandidatesPage() {
   const [addedJobs, setAddedJobs] = useState<Record<string, string>>({});
 
   React.useEffect(() => {
-    async function loadLiveCandidates() {
+    async function loadData() {
       try {
-        const liveData = await fetchCandidates();
+        const [liveData, jobsData] = await Promise.all([
+          fetchCandidates(),
+          fetchJobs(),
+        ]);
+
+        if (jobsData && jobsData.length > 0) {
+          setAvailableJobs(jobsData.slice(0, 20));
+        }
+
         if (liveData && liveData.length > 0) {
           const liveMapped: TalentCandidate[] = liveData.map((d: any) => ({
             id: d.id,
-            name: d.name,
+            name: d.name || "Candidate",
             role: d.target_headline || d.role || "Software Engineer",
             location: d.location || "Remote",
             matchScore: d.scorecard?.overall_match_score || 92,
             skills: d.core_skills || ["Python", "FastAPI"],
-            avatar: d.avatar || d.name.slice(0, 2).toUpperCase(),
+            avatar: d.avatar || (d.name ? d.name.slice(0, 2).toUpperCase() : "CD"),
             experienceYears: Math.round(d.years_of_experience || 4),
             status: "Active",
           }));
@@ -141,11 +152,32 @@ export default function CandidatesPage() {
           setCandidatesList([...liveMapped, ...rest]);
         }
       } catch (err) {
-        console.warn("Could not load live candidates:", err);
+        console.warn("Could not load candidates / jobs:", err);
       }
     }
-    loadLiveCandidates();
+    loadData();
   }, []);
+
+  const handleAddCandidateToJob = async (cand: TalentCandidate, job: JobRequisition) => {
+    try {
+      await addJobCandidate(job.id, {
+        id: cand.id,
+        name: cand.name || "Candidate",
+        headline: cand.role || "Software Engineer",
+        avatar: cand.avatar,
+        isImageAvatar: Boolean(cand.avatar && typeof cand.avatar === "string" && cand.avatar.startsWith("http")),
+        matchScore: cand.matchScore || 85,
+        skills: cand.skills || [],
+        stage: "Screening",
+      });
+      setAddedJobs((prev) => ({
+        ...prev,
+        [cand.id]: `Added to ${(job.title || "Job").split(" ")[0]} ✓`,
+      }));
+    } catch (err) {
+      console.error("Failed to add candidate to job:", err);
+    }
+  };
 
   const toggleSkill = (skill: string) => {
     setSelectedSkills((prev) =>
@@ -167,11 +199,12 @@ export default function CandidatesPage() {
   };
 
   const filteredCandidates = candidatesList.filter((c) => {
-    const matchesSearch =
-      !searchQuery ||
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.skills.some((s) => s.toLowerCase().includes(searchQuery.toLowerCase()));
+    const q = searchQuery.toLowerCase();
+    const nameMatch = (c.name || "").toLowerCase().includes(q);
+    const roleMatch = (c.role || "").toLowerCase().includes(q);
+    const skillMatch = (c.skills || []).some((s) => (s || "").toLowerCase().includes(q));
+
+    const matchesSearch = !searchQuery || nameMatch || roleMatch || skillMatch;
 
     const matchesStatus =
       selectedStatus.length === 0 || selectedStatus.includes(c.status);
@@ -198,7 +231,7 @@ export default function CandidatesPage() {
             </Link>
             <span>›</span>
             <span className="text-zinc-900 font-semibold">
-              Senior Interface Designer
+              Talent Candidates Directory
             </span>
           </div>
 
@@ -412,27 +445,27 @@ export default function CandidatesPage() {
                       {/* Top: Avatar, Name, Location, Match % */}
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3">
-                          {cand.avatar && cand.avatar.startsWith("http") ? (
+                          {cand.avatar && typeof cand.avatar === "string" && cand.avatar.startsWith("http") ? (
                             <img
                               src={cand.avatar}
-                              alt={cand.name}
+                              alt={cand.name || "Candidate"}
                               className="w-12 h-12 rounded-full object-cover border border-zinc-200 shrink-0"
                             />
                           ) : (
                             <div className="w-12 h-12 rounded-full bg-[#eae7df] text-zinc-900 font-bold text-sm flex items-center justify-center shrink-0">
-                              {cand.avatar || cand.name.slice(0, 2).toUpperCase()}
+                              {cand.avatar || (cand.name ? cand.name.slice(0, 2).toUpperCase() : "CD")}
                             </div>
                           )}
                           <div>
                             <h3 className="font-bold text-sm text-zinc-950">
-                              {cand.name}
+                              {cand.name || "Candidate"}
                             </h3>
                             <p className="text-xs text-zinc-500 font-medium leading-tight">
-                              {cand.role}
+                              {cand.role || "Software Specialist"}
                             </p>
                             <div className="flex items-center gap-1 text-[11px] text-zinc-400 mt-1">
                               <MapPin className="w-3 h-3 text-zinc-400" />
-                              <span>{cand.location}</span>
+                              <span>{cand.location || "Remote"}</span>
                             </div>
                           </div>
                         </div>
@@ -492,24 +525,23 @@ export default function CandidatesPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent
                           align="end"
-                          className="bg-white rounded-xl p-1 min-w-[200px]"
+                          className="bg-white rounded-xl p-1 min-w-[240px] max-h-[280px] overflow-y-auto"
                         >
-                          {[
-                            "Senior Backend Engineer",
-                            "Data Platform Architect",
-                            "Lead UX Researcher",
-                          ].map((job) => (
+                          <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                            Select Target Requisition:
+                          </div>
+                          {availableJobs.map((job) => (
                             <DropdownMenuItem
-                              key={job}
-                              onClick={() =>
-                                setAddedJobs((prev) => ({
-                                  ...prev,
-                                  [cand.id]: "Added ✓",
-                                }))
-                              }
-                              className="text-xs cursor-pointer py-2"
+                              key={job.id}
+                              onClick={() => handleAddCandidateToJob(cand, job)}
+                              className="text-xs cursor-pointer py-2 flex flex-col items-start gap-0.5 hover:bg-zinc-50"
                             >
-                              {job}
+                              <span className="font-bold text-zinc-950">
+                                {job.title}
+                              </span>
+                              <span className="text-[10px] text-zinc-400 font-medium">
+                                {job.id} • {job.department}
+                              </span>
                             </DropdownMenuItem>
                           ))}
                         </DropdownMenuContent>

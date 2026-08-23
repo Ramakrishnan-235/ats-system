@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from ats_core.parsers.unified_parser import UnifiedDocumentParser
 
@@ -28,6 +29,64 @@ def extract_text_from_document(file_bytes: bytes, filename: str = "resume.pdf") 
     """Extracts clean formatted text from PDF, Word DOCX, or Image OCR."""
     return _unified_parser.parse(file_bytes, filename=filename)
 
+def extract_candidate_name(lines: List[str], filename: str = "", email: str = "") -> str:
+    """
+    Intelligently extracts and validates a candidate's real personal name.
+    Filters out locations, phone numbers, contact headers, URLs, and section titles.
+    """
+    DISQUALIFY_PATTERNS = [
+        r"\d{3,}",                               # Numbers/phone digits
+        r"[@|•\*\~\/\\_]",                        # Email or contact separators
+        r"\b(?:phone|tel|mobile|cell|email|mail|linkedin|github|portfolio|website|http|www)\b",
+        r"\b(?:resume|curriculum|vitae|profile|summary|experience|education|skills|projects|objective|contact)\b",
+        r"\b(?:india|usa|united states|uk|united kingdom|canada|germany|france|australia|singapore)\b",
+        r"\b(?:tamil nadu|karnataka|maharashtra|kerala|telangana|delhi|california|texas|new york|washington|florida)\b",
+        r"\b(?:cuddalore|chennai|bangalore|bengaluru|hyderabad|mumbai|pune|delhi|san francisco|austin|seattle|london)\b",
+        r"\b(?:street|road|st\.|ave|avenue|nagar|colony|district|dist|pin|zip|postal|address)\b",
+        r"\b(?:engineer|developer|architect|designer|manager|lead|scientist|analyst|specialist|consultant)\b",
+    ]
+
+    for line in lines[:8]:
+        clean_line = re.sub(r"^[#\*\_\•\-\s]+", "", line).strip()
+        clean_line = re.sub(r"[#\*\_\•\-\s]+$", "", clean_line).strip()
+        
+        if not clean_line or len(clean_line) < 3 or len(clean_line) > 40:
+            continue
+        
+        if any(re.search(pat, clean_line, re.IGNORECASE) for pat in DISQUALIFY_PATTERNS):
+            continue
+
+        words = clean_line.split()
+        if 1 <= len(words) <= 4:
+            is_valid_name = all(
+                re.match(r"^[A-Za-z][A-Za-z\.\'\-]*$", w) for w in words
+            )
+            if is_valid_name:
+                if clean_line.isupper() or clean_line.islower():
+                    return " ".join([w.capitalize() if len(w) > 1 else w.upper() for w in words])
+                return clean_line
+
+    if filename:
+        clean_fname = Path(filename).stem
+        clean_fname = re.sub(r"(?i)[-_]?(?:resume|cv|profile|updated|final|latest|20\d{2}|v\d+)[-_]?", " ", clean_fname)
+        clean_fname = re.sub(r"[-_]+", " ", clean_fname).strip()
+        noise_words = {
+            "resume", "cv", "pdf", "docx", "doc", "ml", "ai", "swe", "frontend", "backend",
+            "fullstack", "dev", "engineer", "developer", "architect", "lead", "senior", "staff", "intern"
+        }
+        fname_words = [w for w in clean_fname.split() if w.lower() not in noise_words]
+        if 1 <= len(fname_words) <= 4 and all(re.match(r"^[A-Za-z]+$", w) for w in fname_words):
+            return " ".join([w.capitalize() if len(w) > 1 else w.upper() for w in fname_words])
+
+    if email and "@" in email:
+        email_user = email.split("@")[0]
+        email_user = re.sub(r"\d+", "", email_user)
+        parts = [p.capitalize() if len(p) > 1 else p.upper() for p in re.split(r"[\._\-]", email_user) if len(p) > 0 and len(p) < 20]
+        if 1 <= len(parts) <= 3:
+            return " ".join(parts)
+
+    return "Candidate"
+
 def parse_resume_to_candidate(
     file_bytes: bytes,
     filename: str = "resume.pdf",
@@ -40,50 +99,45 @@ def parse_resume_to_candidate(
     raw_text, engine_used, doc_format = extract_text_from_document(file_bytes, filename=filename)
     lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
 
-    # 1. Name extraction
-    # The name is almost always the first prominent non-empty line
-    name = "Candidate"
+    # 1. Email extraction first so it can inform name extraction
+    email_match = re.search(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", raw_text)
+    email_str = email_match.group(0) if email_match else ""
+
+    # 2. Name extraction
+    name = extract_candidate_name(lines, filename=filename, email=email_str)
+
     target_headline = target_job.get("title", "Software Engineer") if target_job else "Software Engineer"
-    
     if lines:
-        first_line = re.sub(r"^[#\*\_\•\-\s]+", "", lines[0]).strip()
-        # If first line looks like a name (not an email or phone or url)
-        if len(first_line) < 50 and not re.search(r"(@|http|www|phone|resume|curriculum)", first_line, re.I):
-            name = first_line
-        elif len(lines) > 1 and len(lines[1]) < 50:
-            name = re.sub(r"^[#\*\_\•\-\s]+", "", lines[1]).strip()
-        
-        # Second or third line often contains the title / headline
-        for l in lines[1:5]:
+        for l in lines[:6]:
             clean_l = re.sub(r"^[#\*\_\•\-\s]+", "", l).strip()
             if any(role in clean_l.lower() for role in ["engineer", "developer", "architect", "designer", "manager", "lead", "scientist", "analyst", "consultant", "intern"]):
-                if len(clean_l) < 80 and not "@" in clean_l:
+                if len(clean_l) < 80 and not "@" in clean_l and not re.search(r"\d{4}", clean_l):
                     target_headline = clean_l
                     break
 
-    # 2. Email extraction
-    email_match = re.search(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", raw_text)
-    email = email_match.group(0) if email_match else "contact@candidate.io"
+    # 3. Finalize Email
+    email = email_str if email_str else f"{re.sub(r'[^a-zA-Z0-9]', '', name).lower()}@candidate.io"
 
-    # 3. Phone extraction
-    phone_match = re.search(r"(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}", raw_text)
-    phone = phone_match.group(0) if phone_match else "(555) 019-2834"
+    # 4. Phone extraction
+    phone_match = re.search(r"\+91[-\s]?\d{10}|\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\+\d{1,3}[-.\s]?\d{4,12}", raw_text)
+    phone = phone_match.group(0).strip() if phone_match else "(555) 019-2834"
 
-    # 4. LinkedIn extraction
+    # 5. LinkedIn extraction
     linkedin_match = re.search(r"(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/([a-zA-Z0-9_-]+)", raw_text, re.I)
-    linkedin = f"linkedin.com/in/{linkedin_match.group(1)}" if linkedin_match else f"linkedin.com/in/{name.lower().replace(' ', '')}"
+    linkedin = f"linkedin.com/in/{linkedin_match.group(1)}" if linkedin_match else f"linkedin.com/in/{re.sub(r'[^a-zA-Z0-9]', '', name).lower()}"
 
-    # 5. Location extraction
-    location = "San Francisco, CA"
+    # 6. Location extraction
+    location = "San Francisco, CA / Remote"
     location_patterns = [
-        r"([A-Z][a-zA-Z\s]+,\s*[A-Z]{2}(?:\s+\d{5})?)", # e.g. Austin, TX or New York, NY
-        r"([A-Z][a-zA-Z\s]+,\s*(?:USA|United States|UK|United Kingdom|India|Canada|Germany|Remote))",
+        r"([A-Za-z\s]+,\s*(?:Tamil Nadu|Karnataka|Maharashtra|Kerala|Telangana|Andhra Pradesh|Delhi|Gujarat|Punjab|West Bengal|Uttar Pradesh|Rajasthan|Haryana|Bihar|Odisha|Assam|Goa)(?:,\s*India)?)",
+        r"([A-Za-z\s]+,\s*[A-Z]{2}(?:\s+\d{5})?)", # e.g. Austin, TX or New York, NY
+        r"([A-Za-z\s]+,\s*(?:India|USA|United States|UK|United Kingdom|Canada|Germany|France|Singapore|Australia|UAE|Remote))",
     ]
     for pattern in location_patterns:
-        loc_m = re.search(pattern, raw_text)
+        loc_m = re.search(pattern, raw_text, re.I)
         if loc_m:
             loc_candidate = loc_m.group(1).strip()
-            if len(loc_candidate) < 40 and not any(kw in loc_candidate.lower() for kw in ["university", "college", "company", "inc", "llc"]):
+            if len(loc_candidate) < 50 and not any(kw in loc_candidate.lower() for kw in ["university", "college", "company", "inc", "llc", "phone", "email", "curriculum"]):
                 location = loc_candidate
                 break
 

@@ -80,23 +80,23 @@ export function PipelineKanban({ pipeline, onAddCandidate }: PipelineKanbanProps
                         {/* Top Row: Avatar + Name + Score Badge */}
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-3">
-                            {candidate.avatar.startsWith("http") ? (
+                            {candidate.avatar && typeof candidate.avatar === "string" && candidate.avatar.startsWith("http") ? (
                               <img
                                 src={candidate.avatar}
-                                alt={candidate.name}
+                                alt={candidate.name || "Candidate"}
                                 className="w-10 h-10 rounded-full object-cover border border-zinc-200/80 shrink-0"
                               />
                             ) : (
                               <div className="w-10 h-10 rounded-full bg-[#eae7df] text-zinc-800 font-bold text-xs flex items-center justify-center shrink-0">
-                                {candidate.avatar}
+                                {candidate.avatar || (candidate.name ? candidate.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() : "CD")}
                               </div>
                             )}
                             <div className="flex flex-col">
                               <span className="font-bold text-xs text-zinc-950 group-hover:text-black">
-                                {candidate.name}
+                                {candidate.name || "Candidate"}
                               </span>
                               <span className="text-[11px] text-zinc-500 font-medium leading-tight">
-                                {candidate.role}
+                                {candidate.role || "Software Specialist"}
                               </span>
                             </div>
                           </div>

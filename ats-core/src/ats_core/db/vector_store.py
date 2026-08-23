@@ -96,20 +96,30 @@ class VectorStore:
         if params.max_years_experience is not None:
             conditions.append(Candidate.years_of_experience <= params.max_years_experience)
 
+        def _escape_like_pattern(term: str) -> str:
+            # Escape literal %, _ and \ characters for SQL LIKE
+            escaped = term.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            return f"%{escaped}%"
+
         if params.location:
             # Match exact or case-insensitive partial / 'Remote'
-            loc_pattern = f"%{params.location.strip()}%"
+            loc_pattern = _escape_like_pattern(params.location)
             conditions.append(
                 or_(
-                    Candidate.location.ilike(loc_pattern),
+                    Candidate.location.ilike(loc_pattern, escape="\\"),
                     Candidate.location.ilike("%Remote%"),
                 )
             )
 
         if params.highest_education:
             # Match any education in the allowed list (case-insensitive)
-            edu_conditions = [Candidate.highest_education.ilike(f"%{edu.strip()}%") for edu in params.highest_education]
-            conditions.append(or_(*edu_conditions))
+            edu_conditions = [
+                Candidate.highest_education.ilike(_escape_like_pattern(edu), escape="\\")
+                for edu in params.highest_education
+                if edu and edu.strip()
+            ]
+            if edu_conditions:
+                conditions.append(or_(*edu_conditions))
 
         if params.required_skills:
             # GIN array contains filter

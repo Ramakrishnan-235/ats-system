@@ -20,26 +20,35 @@ class HybridCandidateRetriever:
         self.rrf_constant = rrf_constant
         self.candidate_metadata: Dict[str, Dict[str, Any]] = {}
         self.dense_embeddings: Dict[str, List[float]] = {}
+        self.candidate_corpus: Dict[str, str] = {}
 
     def index_candidates(self, candidate_records: List[Dict[str, Any]]):
         """
         Indexes candidate batch across both dense and sparse representations.
+        Preserves previously indexed candidates without wiping vector memory.
         Expected record format: {"id": str, "text": str, "metadata": dict}
         """
+        if not candidate_records:
+            return
+
         ids = [rec["id"] for rec in candidate_records]
         texts = [rec["text"] for rec in candidate_records]
         
         for rec in candidate_records:
-            self.candidate_metadata[rec["id"]] = rec.get("metadata", {})
+            cid = rec["id"]
+            self.candidate_metadata[cid] = rec.get("metadata", {})
+            self.candidate_corpus[cid] = rec.get("text", "")
 
-        # 1. Build Sparse Index
-        self.bm25.build_index(candidate_ids=ids, documents=texts)
+        # 1. Build / Update Sparse Index with all accumulated candidates
+        all_ids = list(self.candidate_corpus.keys())
+        all_texts = list(self.candidate_corpus.values())
+        self.bm25.build_index(candidate_ids=all_ids, documents=all_texts)
 
-        # 2. Dense embeddings can be indexed into pgvector or cached in-memory
-        logger.info(f"Generating dense embeddings for {len(texts)} documents...")
-        self.dense_embeddings = {
-            cid: vec for cid, vec in zip(ids, self.dense.embed_documents(texts))
-        }
+        # 2. Update Dense Embeddings without overwriting existing candidate vectors
+        logger.info(f"Generating dense embeddings for {len(texts)} new documents (total corpus: {len(all_ids)})...")
+        new_embeddings = self.dense.embed_documents(texts)
+        for cid, vec in zip(ids, new_embeddings):
+            self.dense_embeddings[cid] = vec
 
     def _cosine_similarity(self, a: List[float], b: List[float]) -> float:
         dot = sum(x * y for x, y in zip(a, b))

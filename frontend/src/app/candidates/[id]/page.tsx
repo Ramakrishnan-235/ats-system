@@ -11,7 +11,7 @@ import { ResumeTab } from "@/components/candidate/resume-tab";
 import { TimelineTab } from "@/components/candidate/timeline-tab";
 import { AuditTrailTab } from "@/components/candidate/audit-trail-tab";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { fetchCandidate } from "@/lib/api";
+import { fetchCandidate, updateCandidateStage } from "@/lib/api";
 import { CandidateDetail } from "@/types/ats";
 import { MOCK_CANDIDATE_PRIYA } from "@/lib/mock-data";
 
@@ -30,6 +30,11 @@ export default function CandidateDetailPage() {
     load();
   }, [candidateId]);
 
+  const handleStageChange = async (newStage: string) => {
+    setCandidate((prev) => ({ ...prev, stage: newStage, status: newStage }));
+    await updateCandidateStage(candidateId, newStage);
+  };
+
   return (
     <div className="min-h-screen flex bg-[#faf9f6]">
       <Sidebar />
@@ -39,7 +44,7 @@ export default function CandidateDetailPage() {
 
         <main className="flex-1 p-8 max-w-6xl w-full mx-auto space-y-6">
           {/* Header Bar with Status & Stage Advancement */}
-          <CandidateHeader candidate={candidate} />
+          <CandidateHeader candidate={candidate} onStageChange={handleStageChange} />
 
           {/* Main 2-Column Content Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">

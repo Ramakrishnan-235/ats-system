@@ -107,6 +107,7 @@ export interface CandidateDetail {
   stage: string;
   applied_date: string;
   applied_for_job: string;
+  applied_for_job_id?: string;
   years_of_experience: number;
   highest_education: string;
   core_skills: string[];
@@ -122,6 +123,27 @@ export interface CandidateDetail {
     team_notes: TeamNote[];
   };
   raw_text?: string;
+}
+
+export interface RankedCandidate {
+  id: string;
+  rank: number;
+  name: string;
+  headline: string;
+  avatar: string;
+  isImageAvatar: boolean;
+  matchScore: number;
+  matchLabel?: string;
+  skills: string[];
+  stage: string;
+  stageBadgeStyle?: string;
+  technicalDepthScore?: number;
+  systemDesignScore?: number;
+  quote?: string;
+  sourceResumeLink?: string;
+  potentialGap?: string;
+  suggestedQuestions?: string[];
+  jobId?: string;
 }
 
 export interface ActiveUpload {

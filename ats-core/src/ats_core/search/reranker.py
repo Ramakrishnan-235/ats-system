@@ -43,8 +43,17 @@ class CandidateReranker:
 
     @staticmethod
     def _sigmoid(logit: float) -> float:
-        """Transforms unbounded raw logits into a normalized [0.0, 1.0] probability score."""
-        return 1.0 / (1.0 + math.exp(-logit))
+        """
+        Transforms unbounded raw logits into a normalized [0.0, 1.0] probability score.
+        Uses numerically stable computation with clamping to prevent OverflowError on extreme values.
+        """
+        # Clamp logit to safe numerical range [-50.0, 50.0]
+        clamped = max(-50.0, min(50.0, float(logit)))
+        if clamped >= 0:
+            return 1.0 / (1.0 + math.exp(-clamped))
+        else:
+            z = math.exp(clamped)
+            return z / (1.0 + z)
 
     def _format_candidate_text(self, candidate: Dict[str, Any]) -> str:
         """

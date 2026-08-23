@@ -30,7 +30,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { uploadResumeFile } from "@/lib/api";
+import { uploadResumeFile, fetchCandidate } from "@/lib/api";
 
 export interface NewCandidatePayload {
   name: string;
@@ -54,6 +54,7 @@ interface AddCandidateJobModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   jobTitle: string;
+  jobId?: string;
   requiredSkills: string[];
   existingCandidateIds?: string[];
   onAddCandidate: (candidate: NewCandidatePayload) => void;
@@ -151,6 +152,7 @@ export function AddCandidateJobModal({
   open,
   onOpenChange,
   jobTitle,
+  jobId,
   requiredSkills,
   existingCandidateIds = [],
   onAddCandidate,
@@ -232,6 +234,8 @@ export function AddCandidateJobModal({
         ? `No explicit mention of [${missingSkills.slice(0, 2).join(", ")}] in primary achievements. Recommended to probe during technical interview.`
         : undefined;
 
+    const candidateId = candidate.id.startsWith("cand-") ? candidate.id : `cand-${candidate.id}`;
+
     const payload: NewCandidatePayload = {
       name: candidate.name,
       headline: candidate.headline,
@@ -250,7 +254,7 @@ export function AddCandidateJobModal({
       technicalDepthScore: techDepth,
       systemDesignScore: sysDesign,
       quote: candidate.quote,
-      sourceResumeLink: `/candidates/cand-${candidate.id}`,
+      sourceResumeLink: `/candidates/${candidateId}`,
       potentialGap,
       suggestedQuestions: [
         `Can you describe a specific time you architected systems using ${candidate.skills[0] || "distributed microservices"} under heavy load?`,
@@ -279,71 +283,115 @@ export function AddCandidateJobModal({
 
     setUploadStep(initialStep);
 
-    uploadResumeFile(file).then((res) => {
-      // Simulate pipeline steps
+    uploadResumeFile(file, jobId).then((res) => {
+      // Step 1: PII Redaction
       setTimeout(() => {
         setUploadProgress(45);
         setUploadStep("De-identifying PII (names, phone, email) via Presidio...");
-      }, 1000);
+      }, 900);
 
-      setTimeout(() => {
+      // Step 2: LLM Evaluation
+      setTimeout(async () => {
         setUploadProgress(75);
         setUploadStep("Evaluating candidate against job criteria via Ollama LLM...");
-      }, 2200);
 
-      setTimeout(() => {
-        setUploadProgress(100);
-        setUploadStep("Complete! Generating match score and ranking position...");
+        try {
+          // Fetch the real parsed candidate profile from the backend
+          const parsedCandidate = await fetchCandidate(res.candidate_id);
 
-        setTimeout(() => {
+          setTimeout(() => {
+            setUploadProgress(100);
+            setUploadStep("Complete! Generating match score and ranking position...");
+
+            setTimeout(() => {
+              setIsUploading(false);
+
+              // Use the actual candidate name parsed from resume content
+              const candidateName =
+                parsedCandidate && parsedCandidate.name && parsedCandidate.name !== "Candidate Profile" && parsedCandidate.name !== "Candidate"
+                  ? parsedCandidate.name
+                  : file.name
+                      .replace(/\.[^/.]+$/, "")
+                      .replace(/[-_]/g, " ")
+                      .replace(/\b\w/g, (l) => l.toUpperCase());
+
+              // Use the actual skills parsed by the backend resume parser
+              const extractedSkills =
+                parsedCandidate && parsedCandidate.core_skills && parsedCandidate.core_skills.length > 0
+                  ? parsedCandidate.core_skills
+                  : Array.from(new Set([...requiredSkills.slice(0, 3), "Python", "Microservices", "Docker"]));
+
+              const finalScore = calculateCandidateScore(extractedSkills);
+              const initials =
+                candidateName
+                  .split(" ")
+                  .map((n: string) => n[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase() || "CV";
+
+              const candidateHeadline =
+                parsedCandidate?.target_headline ||
+                parsedCandidate?.role ||
+                "Software Engineer";
+
+              const techDepth =
+                parsedCandidate?.scorecard?.categories?.find((c: any) => c.name.toLowerCase().includes("tech"))?.score ??
+                parseFloat((finalScore / 10.2).toFixed(1));
+
+              const sysDesign =
+                parsedCandidate?.scorecard?.categories?.find((c: any) => c.name.toLowerCase().includes("design") || c.name.toLowerCase().includes("arch"))?.score ??
+                parseFloat(((finalScore - 3.8) / 10.1).toFixed(1));
+
+              const quoteText =
+                parsedCandidate?.scorecard?.categories?.[0]?.quote ||
+                `Extracted from uploaded resume [${file.name}]: Demonstrated expertise in ${extractedSkills.slice(0, 4).join(", ")}.`;
+
+              const potentialGap =
+                parsedCandidate?.scorecard?.risk_flags?.[0] ||
+                (requiredSkills.filter(req => !extractedSkills.some((s: string) => s.toLowerCase().includes(req.toLowerCase()) || req.toLowerCase().includes(s.toLowerCase()))).length > 0
+                  ? `Recommended to probe experience in [${requiredSkills.filter(req => !extractedSkills.some((s: string) => s.toLowerCase().includes(req.toLowerCase()) || req.toLowerCase().includes(s.toLowerCase()))).slice(0, 2).join(", ")}] during technical interview.`
+                  : undefined);
+
+              const payload: NewCandidatePayload = {
+                name: candidateName,
+                headline: candidateHeadline,
+                avatar: parsedCandidate?.avatar || initials,
+                isImageAvatar: !!parsedCandidate?.avatar?.startsWith("http"),
+                matchScore: finalScore,
+                matchLabel: finalScore >= 93 ? "Top Match" : finalScore >= 87 ? "Strong Match" : finalScore >= 80 ? "Match" : "Potential Match",
+                skills: extractedSkills,
+                stage: "Screening",
+                stageBadgeStyle: "bg-zinc-100 text-zinc-700",
+                technicalDepthScore: techDepth,
+                systemDesignScore: sysDesign,
+                quote: quoteText,
+                sourceResumeLink: `/candidates/${res.candidate_id}`,
+                potentialGap,
+                suggestedQuestions:
+                  parsedCandidate?.scorecard?.suggested_questions && parsedCandidate.scorecard.suggested_questions.length > 0
+                    ? parsedCandidate.scorecard.suggested_questions
+                    : [
+                        `Walk through the technical architecture described in your recent project on ${extractedSkills[0] || "distributed systems"}.`,
+                        `How do you handle zero-downtime database migrations in live microservices?`,
+                      ],
+              };
+
+              onAddCandidate(payload);
+              onOpenChange(false);
+              setUploadedFile(null);
+              setUploadProgress(0);
+              setUploadStep(null);
+            }, 600);
+          }, 1000);
+        } catch (err) {
+          console.error("Error retrieving parsed candidate:", err);
           setIsUploading(false);
-
-          // Generate extracted candidate profile
-          const parsedName = file.name
-            .replace(/\.[^/.]+$/, "")
-            .replace(/[-_]/g, " ")
-            .replace(/\b\w/g, (l) => l.toUpperCase());
-
-          const extractedSkills = Array.from(
-            new Set([...requiredSkills.slice(0, 3), "Python", "Microservices", "Docker"])
-          );
-
-          const finalScore = calculateCandidateScore(extractedSkills);
-          const initials = parsedName
-            .split(" ")
-            .map((n) => n[0])
-            .join("")
-            .slice(0, 2)
-            .toUpperCase() || "CV";
-
-          const payload: NewCandidatePayload = {
-            name: parsedName || "Ingested Candidate",
-            headline: "Senior Software Engineer (Parsed from Resume)",
-            avatar: initials,
-            isImageAvatar: false,
-            matchScore: finalScore,
-            matchLabel: finalScore >= 90 ? "Top Match" : "Strong Match",
-            skills: extractedSkills,
-            stage: "Screening",
-            stageBadgeStyle: "bg-zinc-100 text-zinc-700",
-            technicalDepthScore: parseFloat((finalScore / 10.2).toFixed(1)),
-            systemDesignScore: parseFloat(((finalScore - 3.8) / 10.1).toFixed(1)),
-            quote: `Extracted from uploaded resume [${file.name}]: Extensive hands-on experience designing cloud services and backend systems.`,
-            sourceResumeLink: `/candidates/${res.candidate_id || "cand-uploaded"}`,
-            potentialGap: "Automated extraction completed. Verification recommended during initial screening call.",
-            suggestedQuestions: [
-              `Walk through the technical architecture described in your recent project on ${extractedSkills[0] || "distributed systems"}.`,
-              `How do you handle zero-downtime database migrations in live microservices?`,
-            ],
-          };
-
-          onAddCandidate(payload);
-          onOpenChange(false);
-          setUploadedFile(null);
-          setUploadProgress(0);
-          setUploadStep(null);
-        }, 800);
-      }, 3400);
+        }
+      }, 1800);
+    }).catch((err) => {
+      console.error("Upload failed:", err);
+      setIsUploading(false);
     });
   };
 
@@ -375,6 +423,8 @@ export function AddCandidateJobModal({
       .toUpperCase()
       .slice(0, 2) || "CD";
 
+    const manualId = `cand-man-${Date.now().toString().slice(-6)}`;
+
     const payload: NewCandidatePayload = {
       name: name.trim(),
       headline: headline.trim(),
@@ -395,7 +445,7 @@ export function AddCandidateJobModal({
       quote:
         quote.trim() ||
         `Demonstrated depth in ${skills.slice(0, 3).join(", ") || "engineering best practices"}.`,
-      sourceResumeLink: `/candidates/cand-${Date.now().toString().slice(-4)}`,
+      sourceResumeLink: `/candidates/${manualId}`,
       suggestedQuestions: [
         `Can you describe how you architected systems using ${skills[0] || "your core stack"} to handle high traffic?`,
         `How do you monitor and debug unexpected latency spikes in distributed microservices?`,
@@ -669,6 +719,7 @@ export function AddCandidateJobModal({
                     badge: "PDF",
                     badgeClass: "bg-red-50 text-red-700 border-red-200/60",
                     type: "application/pdf",
+                    content: `Alex Rivera\nStaff Backend Engineer\nalex.rivera@example.com | (555) 349-2180 | Austin, TX\n\nEXPERIENCE\nStaff Backend Engineer — Stripe (2021 - Present)\n- Engineered distributed microservices in Go and Python processing 200k RPS with sub-millisecond p99 latency.\n- Managed AWS, Kubernetes, Terraform, Docker, PostgreSQL, Redis, Kafka.\n\nSKILLS\nPython, Go, Kubernetes, AWS, Terraform, Docker, PostgreSQL, Redis, Kafka, Microservices, System Design, REST APIs, CI/CD`,
                   },
                   {
                     name: "David_Chen_Platform_Dev.docx",
@@ -676,6 +727,7 @@ export function AddCandidateJobModal({
                     badge: "DOCX",
                     badgeClass: "bg-blue-50 text-blue-700 border-blue-200/60",
                     type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    content: `David Chen\nSenior Platform Architect\ndavid.chen@example.com | (555) 782-9012 | Seattle, WA\n\nEXPERIENCE\nLead Platform Engineer — Cloudflare (2020 - Present)\n- Designed multi-region cloud architecture across AWS, Azure, GCP with Terraform infrastructure as code.\n- Implemented gRPC, Cassandra, Redis caching, and zero-downtime database migrations.\n\nSKILLS\nAWS, Azure, GCP, Cloud Architecture, Terraform, Kubernetes, Docker, Go, Python, Microservices, System Design, gRPC, Redis`,
                   },
                   {
                     name: "Sarah_Jenkins_Frontend.png",
@@ -683,6 +735,7 @@ export function AddCandidateJobModal({
                     badge: "OCR PNG",
                     badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200/60",
                     type: "image/png",
+                    content: `Sarah Jenkins\nStaff UI/UX Systems Developer\nsarah.j@example.com | (555) 890-1234 | San Francisco, CA\n\nEXPERIENCE\nStaff Frontend Engineer — Airbnb (2019 - Present)\n- Built design system components using React, TypeScript, Next.js, and Tailwind CSS.\n- Led user research and Figma prototyping.\n\nSKILLS\nReact, TypeScript, Next.js, Tailwind CSS, JavaScript, HTML, CSS, Figma, UI/UX, User Research, GraphQL, Git`,
                   },
                 ].map((sample) => (
                   <button
@@ -690,7 +743,7 @@ export function AddCandidateJobModal({
                     type="button"
                     onClick={() => {
                       const file = new File(
-                        ["Sample ATS resume content with skills and experience"],
+                        [sample.content],
                         sample.name,
                         { type: sample.type }
                       );

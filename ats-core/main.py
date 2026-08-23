@@ -2,8 +2,9 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from ats_core.api.auth import verify_api_key
 from ats_core.api.v1.candidates import router as candidates_router
 from ats_core.api.v1.match import router as match_router
 from ats_core.api.v1.jobs import router as jobs_router
@@ -24,11 +25,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount API Routers
-app.include_router(dashboard_router, prefix="/api/v1")
-app.include_router(jobs_router, prefix="/api/v1")
-app.include_router(candidates_router, prefix="/api/v1")
-app.include_router(match_router, prefix="/api/v1")
+# Mount API Routers with Security Authentication Dependency
+app.include_router(dashboard_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(jobs_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(candidates_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(match_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 
 
 @app.get("/health", tags=["System"])

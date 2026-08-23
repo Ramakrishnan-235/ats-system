@@ -52,29 +52,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { fetchJobDetail, evaluateJobMatching } from "@/lib/api";
-import { JobRequisition } from "@/types/ats";
+import {
+  fetchJobDetail,
+  evaluateJobMatching,
+  fetchJobCandidates,
+  addJobCandidate,
+  removeJobCandidate,
+  updateJobCandidateStage,
+} from "@/lib/api";
+import { JobRequisition, RankedCandidate } from "@/types/ats";
 import { MOCK_JOBS } from "@/lib/mock-data";
-
-interface RankedCandidate {
-  id: string;
-  rank: number;
-  name: string;
-  headline: string;
-  avatar: string;
-  isImageAvatar: boolean;
-  matchScore: number;
-  matchLabel?: string;
-  skills: string[];
-  stage: string;
-  stageBadgeStyle?: string;
-  technicalDepthScore?: number;
-  systemDesignScore?: number;
-  quote?: string;
-  sourceResumeLink?: string;
-  potentialGap?: string;
-  suggestedQuestions?: string[];
-}
 
 const INITIAL_RANKED_CANDIDATES: RankedCandidate[] = [
   {
@@ -273,20 +260,28 @@ export default function JobPipelineDetailPage() {
   const [newSkillText, setNewSkillText] = useState("");
 
   useEffect(() => {
-    async function loadJob() {
+    async function loadJobAndCandidates() {
       if (rawId) {
-        const data = await fetchJobDetail(rawId);
-        if (data) {
-          setJob(data);
-          setEditTitle(data.title);
-          setEditDepartment(data.department);
-          setEditLocation(data.location);
-          setEditDescription(data.job_description);
-          setEditSkills(data.required_skills);
+        const jobData = await fetchJobDetail(rawId);
+        if (jobData) {
+          setJob(jobData);
+          setEditTitle(jobData.title);
+          setEditDepartment(jobData.department);
+          setEditLocation(jobData.location);
+          setEditDescription(jobData.job_description);
+          setEditSkills(jobData.required_skills);
+        }
+
+        const candidateData = await fetchJobCandidates(rawId, jobData || undefined);
+        if (candidateData && candidateData.length > 0) {
+          setCandidates(candidateData);
+          if (candidateData[0]) {
+            setExpandedCand(candidateData[0].id);
+          }
         }
       }
     }
-    loadJob();
+    loadJobAndCandidates();
   }, [rawId]);
 
   const handleReRunMatch = async () => {
@@ -297,6 +292,10 @@ export default function JobPipelineDetailPage() {
         job_title: job.title,
         job_description: job.job_description,
       });
+      const refreshed = await fetchJobCandidates(rawId, job);
+      if (refreshed && refreshed.length > 0) {
+        setCandidates(refreshed);
+      }
       setTimeout(() => {
         setIsReRunning(false);
         setReRunMessage("✓ Match scores re-evaluated with Stage 3 LLM!");
@@ -311,86 +310,78 @@ export default function JobPipelineDetailPage() {
     }
   };
 
-  const handleAddCandidate = (payload: NewCandidatePayload) => {
-    const newId = `cand-${Date.now()}`;
-    const newCand: RankedCandidate = {
-      ...payload,
-      id: newId,
-      rank: 0,
-    };
+  const handleAddCandidate = async (payload: NewCandidatePayload) => {
+    try {
+      const updatedList = await addJobCandidate(rawId, payload);
+      setCandidates(updatedList);
 
-    // Combine and perform dynamic re-ranking by matchScore descending (with tech depth as tiebreaker)
-    const combined = [...candidates, newCand];
-    combined.sort((a, b) => {
-      if (b.matchScore !== a.matchScore) {
-        return b.matchScore - a.matchScore;
+      const targetId = payload.sourceResumeLink?.replace("/candidates/", "") || updatedList[0]?.id;
+      const matched = updatedList.find((c) => c.name === payload.name) || updatedList[0];
+
+      if (matched) {
+        setExpandedCand(matched.id);
       }
-      return (b.technicalDepthScore || 0) - (a.technicalDepthScore || 0);
-    });
 
-    // Recompute 1-indexed ranks
-    const reranked = combined.map((c, idx) => ({
-      ...c,
-      rank: idx + 1,
-    }));
+      setJob((prev) => ({
+        ...prev,
+        candidates_count: updatedList.length,
+      }));
 
-    const myRank = reranked.findIndex((c) => c.id === newId) + 1;
-
-    setCandidates(reranked);
-    setExpandedCand(newId);
-    setJob((prev) => ({
-      ...prev,
-      candidates_count: prev.candidates_count + 1,
-    }));
-
-    setReRunMessage(
-      `✓ Candidate "${payload.name}" added! Pipeline dynamically re-ranked — Ranked #${myRank} of ${reranked.length} candidates.`
-    );
-    setTimeout(() => setReRunMessage(null), 6000);
+      const myRank = matched ? matched.rank : 1;
+      setReRunMessage(
+        `✓ Candidate "${payload.name}" added! Pipeline dynamically re-ranked — Ranked #${myRank} of ${updatedList.length} candidates.`
+      );
+      setTimeout(() => setReRunMessage(null), 6000);
+    } catch (err) {
+      console.error("Failed to add candidate:", err);
+    }
   };
 
-  const handleRemoveCandidate = (candId: string) => {
+  const handleRemoveCandidate = async (candId: string) => {
     const candToRemove = candidates.find((c) => c.id === candId);
     const name = candToRemove ? candToRemove.name : "Candidate";
 
-    const remaining = candidates.filter((c) => c.id !== candId);
-    // Dynamically re-rank remaining candidates 1..N
-    const reranked = remaining.map((c, idx) => ({
-      ...c,
-      rank: idx + 1,
-    }));
+    try {
+      const updatedList = await removeJobCandidate(rawId, candId);
+      setCandidates(updatedList);
+      if (expandedCand === candId) {
+        setExpandedCand(updatedList[0]?.id || null);
+      }
+      setJob((prev) => ({
+        ...prev,
+        candidates_count: updatedList.length,
+      }));
 
-    setCandidates(reranked);
-    if (expandedCand === candId) {
-      setExpandedCand(null);
+      setReRunMessage(
+        `✓ Candidate "${name}" removed from this job. Remaining ${updatedList.length} candidates dynamically re-ranked.`
+      );
+      setTimeout(() => setReRunMessage(null), 5000);
+    } catch (err) {
+      console.error("Failed to remove candidate:", err);
     }
-    setJob((prev) => ({
-      ...prev,
-      candidates_count: Math.max(0, prev.candidates_count - 1),
-    }));
-
-    setReRunMessage(
-      `✓ Candidate "${name}" removed from this job. Remaining ${reranked.length} candidates dynamically re-ranked.`
-    );
-    setTimeout(() => setReRunMessage(null), 5000);
   };
 
-  const handleAdvanceCandidate = (candId: string) => {
+  const handleAdvanceCandidate = async (candId: string) => {
     setAdvancingCandId(candId);
-    setTimeout(() => {
+    const currentCand = candidates.find((c) => c.id === candId);
+    if (!currentCand) return;
+
+    const nextStage =
+      currentCand.stage === "Applied"
+        ? "Screening"
+        : currentCand.stage === "Screening"
+        ? "Interview"
+        : currentCand.stage === "Interview"
+        ? "Qualified"
+        : "Offer";
+
+    try {
+      await updateJobCandidateStage(rawId, candId, nextStage);
       setAdvancingCandId(null);
       setAdvancedCandidates((prev) => ({ ...prev, [candId]: true }));
       setCandidates((prev) =>
         prev.map((c) => {
           if (c.id !== candId) return c;
-          const nextStage =
-            c.stage === "Applied"
-              ? "Screening"
-              : c.stage === "Screening"
-              ? "Interview"
-              : c.stage === "Interview"
-              ? "Qualified"
-              : "Offer";
           return {
             ...c,
             stage: nextStage,
@@ -401,7 +392,10 @@ export default function JobPipelineDetailPage() {
           };
         })
       );
-    }, 500);
+    } catch (err) {
+      setAdvancingCandId(null);
+      console.error("Failed to advance candidate stage:", err);
+    }
   };
 
   const handleSaveJobEdit = (e: React.FormEvent) => {
@@ -1286,6 +1280,7 @@ export default function JobPipelineDetailPage() {
         open={isAddCandidateOpen}
         onOpenChange={setIsAddCandidateOpen}
         jobTitle={job.title}
+        jobId={rawId}
         requiredSkills={job.required_skills}
         existingCandidateIds={candidates.map((c) => c.id)}
         onAddCandidate={handleAddCandidate}
