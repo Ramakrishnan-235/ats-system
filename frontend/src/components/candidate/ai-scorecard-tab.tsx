@@ -176,20 +176,31 @@ export function AIScorecardTab({ candidate }: AIScorecardTabProps) {
           </div>
         </div>
 
-        {/* Suggested Questions */}
+        {/* Suggested Improvements / Areas for Improvement */}
         <div className="bg-white rounded-2xl border border-zinc-200/80 p-5 shadow-xs space-y-3">
-          <div className="flex items-center gap-2 text-[11px] font-bold tracking-wider text-zinc-700 uppercase">
-            <MessageSquareCode className="w-4 h-4 text-zinc-500" />
-            <span>SUGGESTED QUESTIONS</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-[11px] font-bold tracking-wider text-zinc-800 uppercase">
+              <Sparkles className="w-4 h-4 text-amber-600" />
+              <span>AREAS FOR IMPROVEMENT</span>
+            </div>
+            <span className="text-[10px] text-zinc-500 font-medium bg-zinc-100 px-2 py-0.5 rounded-full border border-zinc-200/60">
+              Role & Resume Gap
+            </span>
           </div>
           <div className="space-y-2.5">
-            {scorecard.suggested_questions.map((q, i) => (
-              <p
+            {((scorecard.suggested_improvements && scorecard.suggested_improvements.length > 0)
+              ? scorecard.suggested_improvements
+              : scorecard.suggested_questions
+            ).map((item, i) => (
+              <div
                 key={i}
-                className="text-xs text-zinc-700 leading-relaxed font-medium"
+                className="text-xs text-zinc-700 leading-relaxed font-normal flex items-start gap-2 p-2 bg-zinc-50/60 rounded-lg border border-zinc-100"
               >
-                {q.startsWith("1.") || q.startsWith("2.") ? q : `${i + 1}. ${q}`}
-              </p>
+                <span className="font-semibold text-zinc-900 shrink-0 select-none">
+                  {item.match(/^\d+\./) ? "" : `${i + 1}.`}
+                </span>
+                <span className="flex-1">{item}</span>
+              </div>
             ))}
           </div>
         </div>

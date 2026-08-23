@@ -119,6 +119,7 @@ export interface CandidateDetail {
     evaluated_at: string;
     categories: ScorecardCategory[];
     risk_flags: string[];
+    suggested_improvements?: string[];
     suggested_questions: string[];
     team_notes: TeamNote[];
   };
@@ -142,6 +143,7 @@ export interface RankedCandidate {
   quote?: string;
   sourceResumeLink?: string;
   potentialGap?: string;
+  suggestedImprovements?: string[];
   suggestedQuestions?: string[];
   jobId?: string;
 }

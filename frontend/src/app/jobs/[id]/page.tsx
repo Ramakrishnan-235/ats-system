@@ -84,6 +84,10 @@ const INITIAL_RANKED_CANDIDATES: RankedCandidate[] = [
     sourceResumeLink: "/candidates/cand-001",
     potentialGap:
       "No explicit evidence of managing Kubernetes clusters at enterprise scale. Heavy reliance on managed PaaS historically.",
+    suggestedImprovements: [
+      "1. Upskill in Enterprise Kubernetes: Obtain CKA or document multi-cluster orchestration, Helm deployments, and ingress controller tuning for high-traffic environments.",
+      "2. Highlight Cloud Infra Automation: Detail Terraform/IaC modules and AWS VPC peering architectures directly within recent work experience.",
+    ],
     suggestedQuestions: [
       "Can you describe the specific microservices architecture used in the FastAPI migration?",
       "How did you handle the migration cutover with zero downtime?",
@@ -108,6 +112,10 @@ const INITIAL_RANKED_CANDIDATES: RankedCandidate[] = [
     sourceResumeLink: "/candidates/cand-002",
     potentialGap:
       "Limited direct experience with event-driven streaming frameworks like Apache Kafka.",
+    suggestedImprovements: [
+      "1. Gain Hands-on Streaming & Kafka Experience: The role requires distributed event queues; add projects showing Kafka consumer group management and schema evolution.",
+      "2. Expand on Database Sharding: Clarify PostgreSQL partitioning and read-replica failover strategies on resume to match senior requirements.",
+    ],
     suggestedQuestions: [
       "How did you ensure transactional consistency across your distributed payment microservices?",
       "What database partitioning strategies did you employ for scaling SQL databases?",
@@ -132,6 +140,10 @@ const INITIAL_RANKED_CANDIDATES: RankedCandidate[] = [
     sourceResumeLink: "/candidates/cand-003",
     potentialGap:
       "Primary expertise is in Go infrastructure rather than Python application development.",
+    suggestedImprovements: [
+      "1. Demonstrate Modern Python Application Depth: Build and showcase production-grade asynchronous FastAPI / Pydantic v2 services to match the job stack.",
+      "2. Include Application-level Data Modeling: Add experience working directly with ORMs, database migrations (Alembic), and domain-driven design.",
+    ],
     suggestedQuestions: [
       "How do you approach automated canary deployments with Istio and Kubernetes?",
       "Can you share how you debug high-memory or CPU throttling issues in containerized workloads?",
@@ -157,6 +169,10 @@ const INITIAL_RANKED_CANDIDATES: RankedCandidate[] = [
     sourceResumeLink: "/candidates/cand-004",
     potentialGap:
       "More oriented toward data platform architecture than user-facing synchronous REST/gRPC API microservices.",
+    suggestedImprovements: [
+      "1. Bridge into Synchronous Web Architectures: Emphasize synchronous REST/gRPC API design and low-latency microservices alongside big data pipeline work.",
+      "2. Add User-Facing Auth & API Security Experience: Highlight OAuth2, JWT, rate-limiting, and API gateway integrations on the resume.",
+    ],
     suggestedQuestions: [
       "How do you handle schema evolution and backpressure in Kafka streaming pipelines?",
     ],
@@ -180,6 +196,10 @@ const INITIAL_RANKED_CANDIDATES: RankedCandidate[] = [
     sourceResumeLink: "/candidates/cand-005",
     potentialGap:
       "Focus is largely on DevOps and Cloud IaC rather than backend business application logic.",
+    suggestedImprovements: [
+      "1. Deepen Backend Business Logic Exposure: Highlight feature development, service business logic, and transactional guarantees in addition to IaC/DevOps.",
+      "2. Quantify User-Facing Application Impact: Detail how infrastructure enhancements directly reduced end-user latency or enabled new product feature releases.",
+    ],
     suggestedQuestions: [
       "What are your strategies for managing complex multi-environment Terraform state files?",
     ],
@@ -820,23 +840,40 @@ export default function JobPipelineDetailPage() {
                             )}
                           </div>
 
-                          {/* Right Column: Suggested Questions & CTA */}
+                          {/* Right Column: Areas for Improvement & CTA */}
                           <div className="lg:col-span-5 flex flex-col justify-between space-y-4">
                             <div className="space-y-3">
-                              <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-zinc-800">
-                                <MessageSquare className="w-4 h-4 stroke-[2]" />
-                                <span>SUGGESTED QUESTIONS</span>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-zinc-800">
+                                  <Sparkles className="w-4 h-4 text-amber-600 stroke-[2]" />
+                                  <span>AREAS FOR IMPROVEMENT</span>
+                                </div>
+                                <span className="text-[10px] font-medium text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded-full border border-zinc-200/60">
+                                  Role & Resume Analysis
+                                </span>
                               </div>
 
-                              {cand.suggestedQuestions &&
-                                cand.suggestedQuestions.map((q, qIdx) => (
-                                  <div
-                                    key={qIdx}
-                                    className="p-3.5 bg-white rounded-xl border border-zinc-200 text-xs text-zinc-700 shadow-2xs leading-relaxed"
-                                  >
-                                    &ldquo;{q}&rdquo;
-                                  </div>
-                                ))}
+                              {(cand.suggestedImprovements && cand.suggestedImprovements.length > 0
+                                ? cand.suggestedImprovements
+                                : cand.suggestedQuestions && cand.suggestedQuestions.length > 0
+                                ? cand.suggestedQuestions
+                                : [
+                                    "1. Upskill in Core Architecture: Deepen hands-on production framework and concurrency experience for this role.",
+                                    "2. Quantify Scale Impact: Add specific throughput, latency, and operational scale metrics to resume work history.",
+                                  ]
+                              ).map((item, itemIdx) => (
+                                <div
+                                  key={itemIdx}
+                                  className="p-3.5 bg-white rounded-xl border border-zinc-200/90 text-xs text-zinc-700 shadow-2xs leading-relaxed flex items-start gap-2.5 transition-colors hover:border-zinc-300"
+                                >
+                                  <span className="font-semibold text-zinc-900 shrink-0 select-none">
+                                    {item.match(/^\d+\./) ? "" : `${itemIdx + 1}.`}
+                                  </span>
+                                  <span className="flex-1 font-normal text-zinc-700">
+                                    {item}
+                                  </span>
+                                </div>
+                              ))}
                             </div>
 
                             {/* Profile & Stage Progression CTAs */}

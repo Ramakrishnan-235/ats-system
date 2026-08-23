@@ -80,6 +80,10 @@ CANDIDATES_STORE: Dict[str, Dict[str, Any]] = {
             "risk_flags": [
                 "No explicit evidence of managing Kubernetes clusters at enterprise scale (mentions usage, not administration)."
             ],
+            "suggested_improvements": [
+                "1. Upskill in Enterprise Kubernetes: Obtain CKA certification or document hands-on multi-cluster orchestration & Helm chart management.",
+                "2. Expand on Cloud Architecture: Include specific AWS infrastructure automation (Terraform, IAM policies) in work history."
+            ],
             "suggested_questions": [
                 "1. Can you describe a specific time you had to debug a failing Kubernetes pod in production?",
                 "2. How do you handle schema migrations across multiple deployed microservices?"
@@ -440,6 +444,7 @@ def register_candidate_profile(cand_dict: Dict[str, Any], job_title: str = "Soft
             "evaluated_at": "Evaluated recently",
             "categories": categories,
             "risk_flags": [gap] if gap else [],
+            "suggested_improvements": improvements,
             "suggested_questions": questions if questions else [
                 f"1. Can you describe how you architected systems using {skills[0] if skills else 'core stack'} in production?",
                 "2. What strategies do you employ for automated monitoring and error recovery?"
@@ -645,6 +650,7 @@ async def upload_resume_async(
                     "evaluated_at": "Evaluated just now",
                     "categories": categories if categories else parsed_candidate["scorecard"]["categories"],
                     "risk_flags": report.risks_and_skill_gaps if report.risks_and_skill_gaps else [f"Validate specific production scale requirements for {job_title_eval}."],
+                    "suggested_improvements": report.suggested_improvements if getattr(report, "suggested_improvements", None) else parsed_candidate["scorecard"].get("suggested_improvements", []),
                     "suggested_questions": [f"{i+1}. {q.question}" if hasattr(q, "question") else f"{i+1}. {str(q)}" for i, q in enumerate(report.suggested_interview_questions)] if report.suggested_interview_questions else parsed_candidate["scorecard"]["suggested_questions"],
                     "team_notes": [
                         {

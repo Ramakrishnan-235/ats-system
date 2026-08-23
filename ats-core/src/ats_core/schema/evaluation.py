@@ -149,6 +149,10 @@ class DeepCandidateEvaluationReport(BaseModel):
         default_factory=list,
         description="Tailored technical and gap-investigation questions for the hiring team."
     )
+    suggested_improvements: List[str] = Field(
+        default_factory=list,
+        description="Actionable recommendations on what the candidate needs to improve for this specific job role based on their resume info and skill gaps."
+    )
 
     model_config = ConfigDict(use_enum_values=True, populate_by_name=True)
 

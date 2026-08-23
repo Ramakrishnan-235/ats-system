@@ -236,6 +236,35 @@ def parse_resume_to_candidate(
     
     primary_skills = found_skills[:4]
     
+    # Calculate job-specific improvement areas based on resume vs target job
+    job_title = target_job.get("title", "this role") if target_job else "this role"
+    required_skills = target_job.get("required_skills", []) if target_job else []
+    
+    missing_skills = [
+        req for req in required_skills
+        if not any(req.lower() in fs.lower() or fs.lower() in req.lower() for fs in found_skills)
+    ]
+    
+    suggested_improvements = []
+    if missing_skills:
+        top_missing = missing_skills[:2]
+        suggested_improvements.append(
+            f"1. Upskill in {', '.join(top_missing)}: Essential for the {job_title} role but not explicitly evidenced in your current resume work history."
+        )
+    else:
+        suggested_improvements.append(
+            f"1. Deepen Production Specialization in {primary_skills[0]}: Expand on enterprise architectural patterns and high-throughput trade-offs for {job_title}."
+        )
+    
+    if years_of_experience < 4.0:
+        suggested_improvements.append(
+            f"2. Highlight Hands-on Scale & System Design: Detail concrete microservice architecture and cloud deployment impact on your recent projects."
+        )
+    else:
+        suggested_improvements.append(
+            f"2. Quantify Business & Performance Impact: Add measurable metrics (e.g., latency reduction, RPS handled, cost savings) to {primary_skills[1] if len(primary_skills) > 1 else 'core'} project descriptions."
+        )
+
     scorecard = {
         "overall_match_score": score,
         "match_tier": tier,
@@ -267,6 +296,7 @@ def parse_resume_to_candidate(
         "risk_flags": [
             f"Verify hands-on scale and depth with {found_skills[-1] if len(found_skills) > 4 else 'distributed microservices'} during technical screening."
         ],
+        "suggested_improvements": suggested_improvements,
         "suggested_questions": [
             f"1. Could you describe a complex system or project where you utilized {primary_skills[0]} to solve a major performance bottleneck?",
             f"2. How do you handle schema design and state management when working with {primary_skills[1] if len(primary_skills) > 1 else 'databases'}?"

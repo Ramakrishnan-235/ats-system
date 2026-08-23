@@ -47,7 +47,8 @@ export interface NewCandidatePayload {
   quote: string;
   sourceResumeLink?: string;
   potentialGap?: string;
-  suggestedQuestions: string[];
+  suggestedImprovements?: string[];
+  suggestedQuestions?: string[];
 }
 
 interface AddCandidateJobModalProps {
@@ -256,6 +257,10 @@ export function AddCandidateJobModal({
       quote: candidate.quote,
       sourceResumeLink: `/candidates/${candidateId}`,
       potentialGap,
+      suggestedImprovements: [
+        `1. Upskill in Specialized Stack for ${jobTitle}: Expand hands-on exposure with [${requiredSkills.slice(0, 2).join(", ") || candidate.skills[0]}].`,
+        `2. Detail Measurable Scale on Resume: Highlight throughput, latency improvements, and team impact for senior alignment.`,
+      ],
       suggestedQuestions: [
         `Can you describe a specific time you architected systems using ${candidate.skills[0] || "distributed microservices"} under heavy load?`,
         `How do you diagnose and resolve database bottlenecks or streaming lag in production?`,
@@ -368,6 +373,13 @@ export function AddCandidateJobModal({
                 quote: quoteText,
                 sourceResumeLink: `/candidates/${res.candidate_id}`,
                 potentialGap,
+                suggestedImprovements:
+                  parsedCandidate?.scorecard?.suggested_improvements && parsedCandidate.scorecard.suggested_improvements.length > 0
+                    ? parsedCandidate.scorecard.suggested_improvements
+                    : [
+                        `1. Upskill in ${requiredSkills.slice(0, 2).join(" & ") || "Core Frameworks"}: Recommended to bridge knowledge required for ${jobTitle}.`,
+                        `2. Highlight Production Scale: Add metrics on request throughput, latency, and concurrency to recent work history.`,
+                      ],
                 suggestedQuestions:
                   parsedCandidate?.scorecard?.suggested_questions && parsedCandidate.scorecard.suggested_questions.length > 0
                     ? parsedCandidate.scorecard.suggested_questions
@@ -446,6 +458,10 @@ export function AddCandidateJobModal({
         quote.trim() ||
         `Demonstrated depth in ${skills.slice(0, 3).join(", ") || "engineering best practices"}.`,
       sourceResumeLink: `/candidates/${manualId}`,
+      suggestedImprovements: [
+        `1. Deepen Hands-on Proficiency in ${requiredSkills[0] || skills[0] || "Specialized Tech"}: Expand domain depth to align with ${jobTitle}.`,
+        `2. Document Enterprise Architectural Trade-offs: Elaborate on system resilience, scaling bottlenecks, and monitoring practices.`,
+      ],
       suggestedQuestions: [
         `Can you describe how you architected systems using ${skills[0] || "your core stack"} to handle high traffic?`,
         `How do you monitor and debug unexpected latency spikes in distributed microservices?`,

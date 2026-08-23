@@ -205,6 +205,10 @@ function getDefaultCandidatesForJob(
           "Engineered multi-region event streaming fabric processing 200k RPS with sub-millisecond p99 latency.",
         sourceResumeLink: "/candidates/cand-pool-001",
         potentialGap: "High focus on proprietary Meta hyper-scale tooling; verify familiarity with standard Terraform modules.",
+        suggestedImprovements: [
+          "1. Bridge Proprietary Tools to Open Standards: Document production experience with open-source Terraform & Helm alongside internal hyper-scale tooling.",
+          "2. Highlight Multi-Cloud Migration: Elaborate on AWS/GCP hybrid network topologies directly in resume experience.",
+        ],
         suggestedQuestions: [
           "Can you describe how you managed cross-region network partition scenarios in your cloud fabric?",
           "How do you approach zero-downtime multi-cloud failover architectures?",
@@ -230,6 +234,10 @@ function getDefaultCandidatesForJob(
           "Architected distributed observability ingest services handling 15M metrics/minute with zero packet drop.",
         sourceResumeLink: "/candidates/cand-pool-002",
         potentialGap: "Fewer years leading multi-region Azure / GCP hybrid migrations.",
+        suggestedImprovements: [
+          "1. Expand on Multi-Cloud Governance: Highlight architectural patterns across GCP / Azure hybrid clouds on your resume.",
+          "2. Add High-Concurrency Database Tuning: Detail PostgreSQL connection pooling, vacuuming, and replication benchmarks.",
+        ],
         suggestedQuestions: [
           "How do you scale Redis clusters and FastAPI worker pools to sustain peak telemetry spikes?",
           "What is your strategy for automated Terraform drift detection?",
@@ -254,6 +262,10 @@ function getDefaultCandidatesForJob(
           "Maintained Kubernetes cluster orchestration and developed automated canary deployment operators across multi-cloud regions.",
         sourceResumeLink: "/candidates/cand-pool-003",
         potentialGap: "Primary expertise in GCP rather than AWS core network peering.",
+        suggestedImprovements: [
+          "1. Upskill in AWS Cloud Networking: Gain hands-on exposure with AWS Transit Gateway, Direct Connect, and VPC peering.",
+          "2. Add Application Layer Metrics: Detail latency reduction and service-level objectives for Go microservices.",
+        ],
         suggestedQuestions: [
           "How do you design Kubernetes RBAC policies for isolated multi-tenant services?",
         ],
@@ -277,6 +289,10 @@ function getDefaultCandidatesForJob(
           "Automated cloud infrastructure provisioning across 12 AWS regions using Terraform and custom Go operators.",
         sourceResumeLink: "/candidates/cand-5",
         potentialGap: "Focus is largely on DevOps and Cloud IaC rather than overarching enterprise application architecture.",
+        suggestedImprovements: [
+          "1. Deepen Application Architecture Exposure: Show end-to-end service design and API lifecycle ownership beyond IaC provisioning.",
+          "2. Add Security Hardening Benchmarks: Include SOC2/ISO compliance automation and IAM least-privilege enforcement in project descriptions.",
+        ],
         suggestedQuestions: [
           "What are your strategies for managing complex multi-environment Terraform state files?",
         ],
@@ -300,6 +316,10 @@ function getDefaultCandidatesForJob(
           "Built financial ledger consistency check services validating 50k transactions/sec with zero race conditions.",
         sourceResumeLink: "/candidates/cand-pool-005",
         potentialGap: "More application level experience than cloud infrastructure governance.",
+        suggestedImprovements: [
+          "1. Gain Cloud Infrastructure Mastery: Complete AWS Solution Architect certifications and document Terraform deployment pipelines.",
+          "2. Expand on Disaster Recovery: Detail failover strategies and cross-datacenter state synchronization on resume.",
+        ],
         suggestedQuestions: [
           "How do you ensure data integrity during cross-region failover?",
         ],
@@ -328,6 +348,10 @@ function getDefaultCandidatesForJob(
       quote: `Led core architecture and microservices for ${targetJob.title}, reducing p99 latency by 40%.`,
       sourceResumeLink: `/candidates/cand-${jobId}-1`,
       potentialGap: "Heavy reliance on managed PaaS historically; probe raw infrastructure depth.",
+      suggestedImprovements: [
+        `1. Upskill in Core Architecture for ${targetJob.title || "Target Role"}: Deepen demonstrated production experience with ${skills[0] || "core stack"}.`,
+        `2. Highlight Scale & Throughput: Detail measurable RPS and latency outcomes directly in recent work history.`,
+      ],
       suggestedQuestions: [
         `Can you describe the microservices architecture you designed for ${skills[0] || "core platform"}?`,
       ],
@@ -350,6 +374,10 @@ function getDefaultCandidatesForJob(
       quote: "Architected real-time processing pipelines handling 50k transactions/sec with zero loss.",
       sourceResumeLink: `/candidates/cand-${jobId}-2`,
       potentialGap: "Limited direct experience with event streaming at high volume.",
+      suggestedImprovements: [
+        `1. Deepen Hands-on Experience with ${skills[1] || "Event Streaming"}: Showcase distributed message broker pipelines for ${targetJob.title || "this role"}.`,
+        `2. Expand on Database Sharding: Add PostgreSQL indexing and partition performance details to resume.`,
+      ],
       suggestedQuestions: [
         "How did you ensure transactional consistency across your distributed services?",
       ],
@@ -372,6 +400,10 @@ function getDefaultCandidatesForJob(
       quote: "Maintained multi-cluster infrastructure running 200+ core microservices with 99.99% availability.",
       sourceResumeLink: `/candidates/cand-${jobId}-3`,
       potentialGap: "Primary expertise is in Go infrastructure rather than application layer.",
+      suggestedImprovements: [
+        `1. Align Application Development Stack: Build projects demonstrating asynchronous backend APIs aligned with ${targetJob.title || "this position"}.`,
+        `2. Highlight Application-Level Data Persistence: Detail relational database query optimizations and caching patterns.`,
+      ],
       suggestedQuestions: [
         "How do you approach automated canary deployments with Kubernetes?",
       ],
@@ -467,6 +499,10 @@ export async function addJobCandidate(
       `Demonstrated depth and practical achievements in ${(payload.skills || ["systems"]).slice(0, 3).join(", ")}.`,
     sourceResumeLink: `/candidates/${candidateId}`,
     potentialGap: payload.potentialGap,
+    suggestedImprovements: payload.suggestedImprovements || [
+      `1. Deepen Hands-on Proficiency for this Role: Expand domain depth and production experience in ${(payload.skills || ["core technologies"])[0] || "primary stack"}.`,
+      `2. Quantify Operational Scale: Detail transaction volume, request throughput, and latency improvements in resume milestones.`,
+    ],
     suggestedQuestions: payload.suggestedQuestions || [
       `Walk us through the architecture and trade-offs of your most recent engineering project.`,
       `How do you monitor and debug unexpected performance bottlenecks in production?`,
@@ -710,6 +746,10 @@ function registerOrSyncCandidateProfile(
         },
       ],
       risk_flags: candidate.potentialGap ? [candidate.potentialGap] : [],
+      suggested_improvements: candidate.suggestedImprovements || [
+        `1. Upskill in Core Architecture for ${jobTitle}: Deepen demonstrated production experience with ${skills[0] || "primary stack"}.`,
+        `2. Quantify Operational Scale: Detail measurable latency and throughput achievements on resume.`,
+      ],
       suggested_questions: candidate.suggestedQuestions || [
         `Can you describe the system architecture and scaling considerations for your recent ${skills[0] || "core"} project?`,
         `How do you diagnose and resolve latency bottlenecks across distributed microservices?`,

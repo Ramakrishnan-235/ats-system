@@ -973,6 +973,10 @@ export const MOCK_CANDIDATE_PRIYA: CandidateDetail = {
     risk_flags: [
       "No explicit evidence of managing Kubernetes clusters at enterprise scale (mentions usage, not administration).",
     ],
+    suggested_improvements: [
+      "1. Upskill in Enterprise Kubernetes: Obtain CKA or document multi-cluster orchestration, Helm deployments, and ingress controller tuning.",
+      "2. Highlight Cloud Infra Automation: Detail Terraform/IaC modules and AWS VPC peering architectures directly in recent work experience.",
+    ],
     suggested_questions: [
       "Can you describe a specific time you had to debug a failing Kubernetes pod in production?",
       "How do you handle schema migrations across multiple deployed microservices?",
