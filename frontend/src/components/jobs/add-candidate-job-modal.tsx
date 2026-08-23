@@ -55,7 +55,7 @@ interface AddCandidateJobModalProps {
   onOpenChange: (open: boolean) => void;
   jobTitle: string;
   requiredSkills: string[];
-  existingCandidateIds: string[];
+  existingCandidateIds?: string[];
   onAddCandidate: (candidate: NewCandidatePayload) => void;
 }
 
@@ -152,7 +152,7 @@ export function AddCandidateJobModal({
   onOpenChange,
   jobTitle,
   requiredSkills,
-  existingCandidateIds,
+  existingCandidateIds = [],
   onAddCandidate,
 }: AddCandidateJobModalProps) {
   const [activeTab, setActiveTab] = useState<"pool" | "upload" | "manual">("pool");
@@ -267,7 +267,17 @@ export function AddCandidateJobModal({
     setUploadedFile(file);
     setIsUploading(true);
     setUploadProgress(15);
-    setUploadStep("Parsing PDF layout & extracting structured sections...");
+    const fileNameLower = file.name.toLowerCase();
+    const isImage = /\.(png|jpe?g|webp|tiff|bmp)$/i.test(fileNameLower);
+    const isDocx = /\.(docx|doc)$/i.test(fileNameLower);
+
+    const initialStep = isImage
+      ? "Scanning Image via OCR (PyMuPDF / Docling Vision)..."
+      : isDocx
+      ? "Parsing Word DOCX Layout & Experience Tables..."
+      : "Parsing PDF layout & extracting structured sections...";
+
+    setUploadStep(initialStep);
 
     uploadResumeFile(file).then((res) => {
       // Simulate pipeline steps
@@ -489,7 +499,7 @@ export function AddCandidateJobModal({
             <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
               {filteredPool.map((cand) => {
                 const score = calculateCandidateScore(cand.skills);
-                const isAlreadyAdded = existingCandidateIds.includes(cand.id);
+                const isAlreadyAdded = (existingCandidateIds || []).includes(cand.id);
 
                 return (
                   <div
@@ -571,7 +581,7 @@ export function AddCandidateJobModal({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,application/pdf"
+              accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.webp,.tiff,.bmp,image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
               className="hidden"
               onChange={(e) => {
                 if (e.target.files && e.target.files[0]) {
@@ -589,18 +599,32 @@ export function AddCandidateJobModal({
                   <UploadCloud className="w-6 h-6" />
                 </div>
                 <h3 className="text-sm font-bold text-zinc-950">
-                  Select or drop a candidate PDF resume
+                  Select or drop a candidate resume
                 </h3>
                 <p className="text-xs text-zinc-500 mt-1">
-                  Automatic Presidio PII scrubbing + Ollama LLM candidate extraction & scoring
+                  Supports PDF Layout Parsing, Word DOCX, and Image OCR extraction + Presidio PII scrubbing
                 </p>
+
+                {/* Badges */}
+                <div className="flex items-center gap-1.5 mt-3 flex-wrap justify-center">
+                  <span className="bg-red-50 text-red-700 border border-red-200/60 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                    PDF
+                  </span>
+                  <span className="bg-blue-50 text-blue-700 border border-blue-200/60 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                    Word DOCX
+                  </span>
+                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200/60 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                    Image OCR (PNG/JPG)
+                  </span>
+                </div>
+
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   className="mt-4 rounded-xl text-xs font-semibold px-4 border-zinc-300"
                 >
-                  Browse PDF File
+                  Browse Document
                 </Button>
               </div>
             ) : (
@@ -610,7 +634,7 @@ export function AddCandidateJobModal({
                     <FileText className="w-5 h-5 text-zinc-800 animate-pulse" />
                     <div>
                       <h4 className="text-xs font-bold text-zinc-950">
-                        {uploadedFile?.name || "Processing resume.pdf"}
+                        {uploadedFile?.name || "Processing resume document"}
                       </h4>
                       <p className="text-[11px] text-zinc-500">{uploadStep}</p>
                     </div>
@@ -629,7 +653,7 @@ export function AddCandidateJobModal({
               </div>
             )}
 
-            {/* Sample Resumes to Test With One Click */}
+            {/* Sample Multi-Format Resumes to Test With One Click */}
             <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200/80 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
@@ -637,15 +661,28 @@ export function AddCandidateJobModal({
                   <span>Or test with a sample resume:</span>
                 </span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {[
                   {
                     name: "Alex_Rivera_Staff_Backend.pdf",
                     role: "Staff Backend Engineer",
+                    badge: "PDF",
+                    badgeClass: "bg-red-50 text-red-700 border-red-200/60",
+                    type: "application/pdf",
                   },
                   {
-                    name: "Elena_Vance_ML_Distributed.pdf",
-                    role: "Senior AI Platform Dev",
+                    name: "David_Chen_Platform_Dev.docx",
+                    role: "Senior Platform Architect",
+                    badge: "DOCX",
+                    badgeClass: "bg-blue-50 text-blue-700 border-blue-200/60",
+                    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                  },
+                  {
+                    name: "Sarah_Jenkins_Frontend.png",
+                    role: "Staff UI/UX Systems Dev",
+                    badge: "OCR PNG",
+                    badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200/60",
+                    type: "image/png",
                   },
                 ].map((sample) => (
                   <button
@@ -653,23 +690,28 @@ export function AddCandidateJobModal({
                     type="button"
                     onClick={() => {
                       const file = new File(
-                        ["Sample ATS resume content"],
+                        ["Sample ATS resume content with skills and experience"],
                         sample.name,
-                        { type: "application/pdf" }
+                        { type: sample.type }
                       );
                       handleResumeFile(file);
                     }}
-                    className="p-2.5 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-lg text-left text-xs transition-colors flex items-center justify-between cursor-pointer"
+                    className="p-2.5 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-lg text-left text-xs transition-colors flex flex-col justify-between cursor-pointer gap-1.5"
                   >
+                    <div className="flex items-center justify-between w-full">
+                      <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${sample.badgeClass}`}>
+                        {sample.badge}
+                      </span>
+                      <ArrowRight className="w-3 h-3 text-zinc-400" />
+                    </div>
                     <div>
-                      <div className="font-bold text-zinc-950 truncate">
+                      <div className="font-bold text-zinc-950 truncate text-[11px]">
                         {sample.name}
                       </div>
-                      <div className="text-[10px] text-zinc-500">
+                      <div className="text-[10px] text-zinc-500 truncate">
                         {sample.role}
                       </div>
                     </div>
-                    <ArrowRight className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                   </button>
                 ))}
               </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { FileText, X, Check, Circle, Disc } from "lucide-react";
+import { FileText, FileCode, Image as ImageIcon, X, Check, Circle, Disc } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { ActiveUpload } from "@/types/ats";
 
@@ -13,8 +13,12 @@ interface ActiveUploadRowProps {
 const STEPS = ["Parsing", "PII Scrub", "LLM Extract", "Indexing", "Done"] as const;
 
 export function ActiveUploadRow({ upload, onCancel }: ActiveUploadRowProps) {
+  const isImage = /\.(png|jpe?g|webp|tiff|bmp)$/i.test(upload.filename);
+  const isDocx = /\.(docx|doc)$/i.test(upload.filename);
+
+  const currentStepClean = upload.currentStep.replace("Image OCR", "Parsing").replace("Docx Parse", "Parsing");
   const currentStepIdx = STEPS.indexOf(
-    upload.currentStep as (typeof STEPS)[number]
+    currentStepClean as (typeof STEPS)[number]
   );
 
   return (
@@ -22,8 +26,20 @@ export function ActiveUploadRow({ upload, onCancel }: ActiveUploadRowProps) {
       {/* Top Row: File info + Status + Cancel */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-zinc-100 border border-zinc-200/80 flex items-center justify-center text-zinc-700">
-            <FileText className="w-4 h-4" />
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+            isImage 
+              ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80"
+              : isDocx
+              ? "bg-blue-50 text-blue-700 border border-blue-200/80"
+              : "bg-zinc-100 text-zinc-700 border border-zinc-200/80"
+          }`}>
+            {isImage ? (
+              <ImageIcon className="w-4 h-4" />
+            ) : isDocx ? (
+              <FileCode className="w-4 h-4" />
+            ) : (
+              <FileText className="w-4 h-4" />
+            )}
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -33,6 +49,16 @@ export function ActiveUploadRow({ upload, onCancel }: ActiveUploadRowProps) {
               <span className="bg-zinc-100 text-zinc-600 text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md border border-zinc-200">
                 {upload.taskId}
               </span>
+              {isImage && (
+                <span className="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                  OCR Image
+                </span>
+              )}
+              {isDocx && (
+                <span className="bg-blue-100 text-blue-800 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                  Word DOCX
+                </span>
+              )}
             </div>
             <span className="text-[11px] font-bold text-zinc-500 tracking-wide uppercase">
               {upload.statusLabel}
@@ -58,42 +84,33 @@ export function ActiveUploadRow({ upload, onCancel }: ActiveUploadRowProps) {
       />
 
       {/* Step Pipeline Indicators */}
-      <div className="flex items-center justify-between gap-2 pt-1">
+      <div className="grid grid-cols-5 gap-2 pt-1">
         {STEPS.map((step, idx) => {
-          const isDone = idx < currentStepIdx;
-          const isActive = idx === currentStepIdx;
+          const isCompleted = currentStepIdx > idx || upload.progress >= (idx + 1) * 20;
+          const isCurrent = currentStepIdx === idx && upload.progress < 100;
+          const displayStepName = idx === 0 ? (isImage ? "Image OCR" : isDocx ? "Docx Parse" : "PDF Parse") : step;
 
           return (
-            <div key={step} className="flex items-center gap-1.5">
-              {isDone ? (
-                <div className="w-3.5 h-3.5 rounded-full border border-zinc-900 flex items-center justify-center text-zinc-900">
-                  <Check className="w-2.5 h-2.5 stroke-[3]" />
+            <div
+              key={step}
+              className={`flex items-center gap-1.5 text-[11px] font-semibold transition-colors ${
+                isCompleted
+                  ? "text-zinc-900"
+                  : isCurrent
+                  ? "text-zinc-950 font-bold"
+                  : "text-zinc-400"
+              }`}
+            >
+              {isCompleted ? (
+                <div className="w-4 h-4 rounded-full bg-black text-white flex items-center justify-center shrink-0">
+                  <Check className="w-2.5 h-2.5" />
                 </div>
-              ) : isActive ? (
-                <div className="w-3.5 h-3.5 flex items-center justify-center text-zinc-950 animate-pulse">
-                  <Disc className="w-3.5 h-3.5" />
-                </div>
+              ) : isCurrent ? (
+                <Disc className="w-4 h-4 text-black animate-spin shrink-0" />
               ) : (
-                <div className="w-3.5 h-3.5 rounded-full border border-zinc-300 flex items-center justify-center text-zinc-300">
-                  <Circle className="w-2 h-2 text-transparent" />
-                </div>
+                <Circle className="w-4 h-4 text-zinc-300 shrink-0" />
               )}
-              <span
-                className={`text-[11px] font-medium ${
-                  isActive
-                    ? "font-bold text-zinc-950"
-                    : isDone
-                    ? "text-zinc-700"
-                    : "text-zinc-400"
-                }`}
-              >
-                {step}
-              </span>
-              {idx < STEPS.length - 1 && (
-                <span className="hidden sm:inline text-zinc-300 mx-1">
-                  •••••
-                </span>
-              )}
+              <span className="truncate">{displayStepName}</span>
             </div>
           );
         })}

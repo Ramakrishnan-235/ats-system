@@ -1,6 +1,13 @@
 import re
-import fitz  # PyMuPDF
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
+from ats_core.parsers.unified_parser import UnifiedDocumentParser
+
+_unified_parser = UnifiedDocumentParser()
+
+def extract_text_from_pdf(pdf_bytes: bytes, filename: str = "resume.pdf") -> str:
+    """Extracts clean formatted text from PDF bytes."""
+    text, _, _ = _unified_parser.parse(pdf_bytes, filename=filename)
+    return text
 
 TECH_SKILLS_CATALOG = [
     # Languages
@@ -17,26 +24,20 @@ TECH_SKILLS_CATALOG = [
     "Git", "GitHub", "GitLab", "Jira", "Agile", "Scrum", "Microservices", "System Design", "Distributed Systems", "TDD", "Unit Testing", "Figma", "UI/UX", "User Research"
 ]
 
-def extract_text_from_pdf(pdf_bytes: bytes) -> str:
-    """Extracts clean formatted text from PDF bytes using PyMuPDF."""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    pages_text = []
-    for page in doc:
-        text = page.get_text("text")
-        if text.strip():
-            pages_text.append(text.strip())
-    return "\n\n".join(pages_text)
+def extract_text_from_document(file_bytes: bytes, filename: str = "resume.pdf") -> Tuple[str, str, str]:
+    """Extracts clean formatted text from PDF, Word DOCX, or Image OCR."""
+    return _unified_parser.parse(file_bytes, filename=filename)
 
 def parse_resume_to_candidate(
-    pdf_bytes: bytes,
+    file_bytes: bytes,
     filename: str = "resume.pdf",
     target_job: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
-    Parses a PDF resume and extracts complete profile data,
+    Parses a PDF, Word DOCX, or Image (OCR) resume and extracts complete profile data,
     work experience, education, skills, and AI evaluation scorecard.
     """
-    raw_text = extract_text_from_pdf(pdf_bytes)
+    raw_text, engine_used, doc_format = extract_text_from_document(file_bytes, filename=filename)
     lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
 
     # 1. Name extraction
@@ -45,18 +46,19 @@ def parse_resume_to_candidate(
     target_headline = target_job.get("title", "Software Engineer") if target_job else "Software Engineer"
     
     if lines:
-        first_line = lines[0]
+        first_line = re.sub(r"^[#\*\_\•\-\s]+", "", lines[0]).strip()
         # If first line looks like a name (not an email or phone or url)
         if len(first_line) < 50 and not re.search(r"(@|http|www|phone|resume|curriculum)", first_line, re.I):
             name = first_line
         elif len(lines) > 1 and len(lines[1]) < 50:
-            name = lines[1]
+            name = re.sub(r"^[#\*\_\•\-\s]+", "", lines[1]).strip()
         
         # Second or third line often contains the title / headline
         for l in lines[1:5]:
-            if any(role in l.lower() for role in ["engineer", "developer", "architect", "designer", "manager", "lead", "scientist", "analyst", "consultant", "intern"]):
-                if len(l) < 80 and not "@" in l:
-                    target_headline = l
+            clean_l = re.sub(r"^[#\*\_\•\-\s]+", "", l).strip()
+            if any(role in clean_l.lower() for role in ["engineer", "developer", "architect", "designer", "manager", "lead", "scientist", "analyst", "consultant", "intern"]):
+                if len(clean_l) < 80 and not "@" in clean_l:
+                    target_headline = clean_l
                     break
 
     # 2. Email extraction

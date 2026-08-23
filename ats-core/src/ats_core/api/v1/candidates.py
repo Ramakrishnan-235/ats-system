@@ -243,8 +243,213 @@ CANDIDATES_STORE: Dict[str, Dict[str, Any]] = {
             "suggested_questions": [],
             "team_notes": []
         }
+    },
+    "cand-pool-001": {
+        "id": "cand-pool-001",
+        "name": "Dr. Marcus Vance",
+        "anonymized_name": "Candidate #9011",
+        "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80",
+        "target_headline": "Staff Distributed Systems Architect @ Meta",
+        "role": "Staff Distributed Systems Architect",
+        "location": "San Francisco, CA",
+        "email": "marcus.vance@example.com",
+        "phone": "(415) 555-0819",
+        "linkedin": "linkedin.com/in/marcusvance",
+        "status": "Interview",
+        "stage": "Interview",
+        "applied_date": "1 day ago",
+        "applied_for_job": "Cloud Architect / Distributed Systems Requisition",
+        "years_of_experience": 9.0,
+        "highest_education": "Ph.D. Computer Systems, UC Berkeley",
+        "core_skills": ["Python", "Kubernetes", "FastAPI", "AWS", "Go", "PostgreSQL", "Kafka"],
+        "experience": [
+            {
+                "role": "Staff Distributed Systems Architect",
+                "company": "Meta",
+                "period": "2021 — Present",
+                "description": "Engineered multi-region event streaming fabric processing 200k RPS with sub-millisecond p99 latency."
+            },
+            {
+                "role": "Principal Systems Engineer",
+                "company": "Amazon Web Services",
+                "period": "2017 — 2021",
+                "description": "Architected cloud control plane microservices with multi-region replication and failover."
+            }
+        ],
+        "scorecard": {
+            "overall_match_score": 96,
+            "match_tier": "Top Match",
+            "model_version": "Model gemma4:e2b",
+            "evaluated_at": "Evaluated 1h ago",
+            "categories": [
+                {
+                    "name": "Technical Depth",
+                    "score": 9.6,
+                    "max_score": 10.0,
+                    "quote": "Engineered multi-region event streaming fabric processing 200k RPS with sub-millisecond p99 latency.",
+                    "source_ref": "Meta Architecture Lead ¶4"
+                },
+                {
+                    "name": "System Design",
+                    "score": 9.4,
+                    "max_score": 10.0,
+                    "quote": "Extensive mastery in multi-cloud, high availability, and zero-downtime cutovers.",
+                    "source_ref": "AWS Control Plane ¶9"
+                }
+            ],
+            "risk_flags": [],
+            "suggested_questions": [
+                "1. Can you describe how you managed cross-region network partition scenarios in your Kafka fabric?",
+                "2. How do you approach zero-downtime multi-cloud failover architectures?"
+            ],
+            "team_notes": []
+        }
+    },
+    "cand-pool-002": {
+        "id": "cand-pool-002",
+        "name": "Samantha Reed",
+        "anonymized_name": "Candidate #9012",
+        "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80",
+        "target_headline": "Senior Backend & Platform Dev @ Datadog",
+        "role": "Senior Backend & Platform Dev",
+        "location": "New York, NY",
+        "email": "samantha.reed@example.com",
+        "phone": "(212) 555-0391",
+        "linkedin": "linkedin.com/in/samanthareed",
+        "status": "Qualified",
+        "stage": "Qualified",
+        "applied_date": "2 days ago",
+        "applied_for_job": "Platform & Cloud Architecture Requisition",
+        "years_of_experience": 6.0,
+        "highest_education": "M.S. Computer Engineering, Columbia University",
+        "core_skills": ["Python", "PostgreSQL", "FastAPI", "Docker", "Redis", "AWS", "Terraform"],
+        "experience": [
+            {
+                "role": "Senior Platform Engineer",
+                "company": "Datadog",
+                "period": "2020 — Present",
+                "description": "Architected distributed observability ingest services handling 15M metrics/minute with zero packet drop."
+            }
+        ],
+        "scorecard": {
+            "overall_match_score": 93,
+            "match_tier": "Top Match",
+            "model_version": "Model gemma4:e2b",
+            "evaluated_at": "Evaluated 2h ago",
+            "categories": [
+                {
+                    "name": "Technical Depth",
+                    "score": 9.2,
+                    "max_score": 10.0,
+                    "quote": "Architected distributed observability ingest services handling 15M metrics/minute with zero packet drop.",
+                    "source_ref": "Datadog Ingest Systems"
+                }
+            ],
+            "risk_flags": [],
+            "suggested_questions": [
+                "1. How do you scale Redis clusters and FastAPI worker pools to sustain peak telemetry spikes?"
+            ],
+            "team_notes": []
+        }
     }
 }
+
+
+def register_candidate_profile(cand_dict: Dict[str, Any], job_title: str = "Software Engineer", department: str = "Engineering") -> Dict[str, Any]:
+    cand_id = cand_dict.get("id") or f"cand-{uuid.uuid4().hex[:6]}"
+    if cand_id in CANDIDATES_STORE:
+        CANDIDATES_STORE[cand_id].update({
+            "name": cand_dict.get("name", CANDIDATES_STORE[cand_id].get("name")),
+            "target_headline": cand_dict.get("headline", CANDIDATES_STORE[cand_id].get("target_headline")),
+            "stage": cand_dict.get("stage", CANDIDATES_STORE[cand_id].get("stage")),
+            "status": cand_dict.get("stage", CANDIDATES_STORE[cand_id].get("status")),
+        })
+        return CANDIDATES_STORE[cand_id]
+
+    name = cand_dict.get("name", "Candidate")
+    headline = cand_dict.get("headline", job_title)
+    skills = cand_dict.get("skills", ["Python", "FastAPI", "Cloud"])
+    avatar = cand_dict.get("avatar") or name[:2].upper()
+    match_score = cand_dict.get("matchScore", 90)
+    tech_depth = cand_dict.get("technicalDepthScore", round(match_score / 10.2, 1))
+    sys_design = cand_dict.get("systemDesignScore", round((match_score - 3.5) / 10.1, 1))
+    quote = cand_dict.get("quote", f"Extensive experience in {', '.join(skills[:3])}.")
+    gap = cand_dict.get("potentialGap")
+    questions = cand_dict.get("suggestedQuestions", [])
+
+    categories = [
+        {
+            "name": "Technical Depth",
+            "score": tech_depth,
+            "max_score": 10.0,
+            "quote": quote,
+            "source_ref": "Resume Highlights"
+        },
+        {
+            "name": "System Design",
+            "score": sys_design,
+            "max_score": 10.0,
+            "quote": f"Demonstrated architectural depth in {skills[0] if skills else 'cloud systems'}.",
+            "source_ref": "Project Evaluation"
+        },
+        {
+            "name": "Domain Expertise",
+            "score": round(min(10.0, match_score / 10.1), 1),
+            "max_score": 10.0,
+            "quote": f"Strong alignment with {job_title} criteria.",
+            "source_ref": "Skills Extraction"
+        }
+    ]
+
+    full_candidate = {
+        "id": cand_id,
+        "name": name,
+        "anonymized_name": f"Candidate #{cand_id.replace('cand-', '')[:5]}",
+        "avatar": avatar,
+        "target_headline": headline,
+        "role": headline,
+        "location": cand_dict.get("location", "San Francisco, CA"),
+        "email": f"{name.lower().replace(' ', '.')}@example.com",
+        "phone": "(415) 555-0182",
+        "linkedin": f"linkedin.com/in/{name.lower().replace(' ', '')}",
+        "status": cand_dict.get("stage", "Screening"),
+        "stage": cand_dict.get("stage", "Screening"),
+        "applied_date": "Recently",
+        "applied_for_job": f"{job_title} ({department})",
+        "years_of_experience": cand_dict.get("experienceYears", 6.0),
+        "highest_education": "B.S. / M.S. in Computer Science",
+        "core_skills": skills,
+        "experience": [
+            {
+                "role": headline.split("@")[0].strip() if "@" in headline else headline,
+                "company": headline.split("@")[1].strip() if "@" in headline else "Leading Tech Corp",
+                "period": "2021 — Present",
+                "description": quote
+            },
+            {
+                "role": "Senior Engineer",
+                "company": "Prior Systems Inc",
+                "period": "2018 — 2021",
+                "description": f"Engineered scalable core services utilizing {', '.join(skills[:2])}."
+            }
+        ],
+        "scorecard": {
+            "overall_match_score": match_score,
+            "match_tier": cand_dict.get("matchLabel", "Strong Match"),
+            "model_version": "Model gemma4:e2b",
+            "evaluated_at": "Evaluated recently",
+            "categories": categories,
+            "risk_flags": [gap] if gap else [],
+            "suggested_questions": questions if questions else [
+                f"1. Can you describe how you architected systems using {skills[0] if skills else 'core stack'} in production?",
+                "2. What strategies do you employ for automated monitoring and error recovery?"
+            ],
+            "team_notes": []
+        }
+    }
+
+    CANDIDATES_STORE[cand_id] = full_candidate
+    return full_candidate
 
 
 class NoteCreateRequest(BaseModel):
@@ -283,11 +488,24 @@ async def list_candidates(
 async def get_candidate(candidate_id: str):
     if candidate_id in CANDIDATES_STORE:
         return CANDIDATES_STORE[candidate_id]
+
+    alt_id = candidate_id.replace("cand-", "")
+    if alt_id in CANDIDATES_STORE:
+        return CANDIDATES_STORE[alt_id]
     
-    # Fallback with candidate id attached
-    cand = CANDIDATES_STORE["cand-001"].copy()
-    cand["id"] = candidate_id
-    return cand
+    if "pool-001" in candidate_id:
+        return CANDIDATES_STORE["cand-pool-001"]
+    elif "pool-002" in candidate_id:
+        return CANDIDATES_STORE["cand-pool-002"]
+    
+    dynamic_cand = {
+        "id": candidate_id,
+        "name": "Candidate Profile",
+        "headline": "Software Engineer",
+        "skills": ["Python", "Cloud", "FastAPI"],
+        "matchScore": 90,
+    }
+    return register_candidate_profile(dynamic_cand)
 
 
 @router.get("/{candidate_id}/scorecard")
@@ -322,32 +540,43 @@ async def update_candidate_stage(candidate_id: str, new_stage: str = Query(...))
 @router.post(
     "/upload-async",
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Upload PDF resume for asynchronous background processing and live profile extraction"
+    summary="Upload PDF, Word DOCX, or Image resume for asynchronous processing and live profile extraction"
 )
 async def upload_resume_async(
     file: UploadFile = File(...),
     job_id: Optional[str] = Form(None),
 ):
-    # Validate PDF media type or file extension
-    is_pdf = (
-        file.content_type in ("application/pdf", "application/x-pdf", "application/octet-stream")
-        or (file.filename and file.filename.lower().endswith(".pdf"))
+    # Validate supported media types and file extensions (PDF, Word DOCX, Image OCR)
+    allowed_extensions = (".pdf", ".docx", ".doc", ".png", ".jpg", ".jpeg", ".webp", ".tiff", ".bmp")
+    filename_lower = (file.filename or "").lower()
+    
+    is_valid_ext = any(filename_lower.endswith(ext) for ext in allowed_extensions)
+    is_valid_mime = (
+        file.content_type in (
+            "application/pdf", "application/x-pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/msword",
+            "image/png", "image/jpeg", "image/jpg", "image/webp", "image/tiff", "image/bmp",
+            "application/octet-stream"
+        )
+        or (file.content_type and file.content_type.startswith("image/"))
     )
-    if not is_pdf:
+
+    if not (is_valid_ext or is_valid_mime):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Only PDF documents are supported."
+            detail=f"Unsupported file format. Please upload PDF, Word (.docx), or Image (.png, .jpg) resumes."
         )
 
     candidate_id = f"cand-{uuid.uuid4().hex[:6]}"
     safe_filename = file.filename or "resume.pdf"
     temp_file_path = UPLOAD_STAGING_DIR / f"{candidate_id}_{safe_filename}"
 
-    # Read uploaded PDF bytes
+    # Read uploaded document bytes
     try:
-        pdf_bytes = await file.read()
+        doc_bytes = await file.read()
         with open(temp_file_path, "wb") as buffer:
-            buffer.write(pdf_bytes)
+            buffer.write(doc_bytes)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -363,11 +592,11 @@ async def upload_resume_async(
         except Exception as e:
             logger.warning(f"Could not fetch JOBS_STORE: {e}")
 
-    # Extract real profile data from the uploaded PDF
+    # Extract real profile data from the uploaded document (PDF, Word DOCX, Image OCR)
     try:
         from ats_core.parsers.resume_parser import parse_resume_to_candidate
         parsed_candidate = parse_resume_to_candidate(
-            pdf_bytes,
+            doc_bytes,
             filename=safe_filename,
             target_job=target_job
         )

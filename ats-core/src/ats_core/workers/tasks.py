@@ -11,7 +11,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from ats_core.workers.celery_app import celery_app
-from ats_core.parsers.pdf_parser import HybridPDFParser
+from ats_core.parsers.unified_parser import UnifiedDocumentParser
 from ats_core.parsers.anonymizer import ResumeAnonymizer
 from ats_core.parsers.ollama_extractor import OllamaCandidateExtractor
 from ats_core.models.db import Candidate
@@ -28,7 +28,7 @@ engine = create_engine(SYNC_DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Module-level singletons (initialized once per worker process)
-pdf_parser = HybridPDFParser()
+document_parser = UnifiedDocumentParser()
 anonymizer = ResumeAnonymizer(min_score_threshold=0.55)
 extractor = OllamaCandidateExtractor(
     base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
@@ -50,6 +50,20 @@ class BaseTaskWithRetry(Task):
 @celery_app.task(
     bind=True,
     base=BaseTaskWithRetry,
+    name="ats.tasks.process_resume"
+)
+def process_resume_task(
+    self,
+    file_path: str,
+    candidate_id: str,
+    original_filename: str = "resume.pdf"
+) -> Dict[str, Any]:
+    return process_resume_pdf_task(self, file_path, candidate_id, original_filename)
+
+
+@celery_app.task(
+    bind=True,
+    base=BaseTaskWithRetry,
     name="ats.tasks.process_resume_pdf"
 )
 def process_resume_pdf_task(
@@ -59,12 +73,12 @@ def process_resume_pdf_task(
     original_filename: str = "resume.pdf"
 ) -> Dict[str, Any]:
     """
-    Asynchronously parses a PDF resume, masks PII, extracts structured profile,
-    and updates PostgreSQL and vector embeddings.
+    Asynchronously parses a PDF, Word DOCX, or Image (OCR) resume, masks PII,
+    extracts structured profile, and updates PostgreSQL and vector embeddings.
     """
-    logger.info(f"[{self.request.id}] Starting resume processing for candidate {candidate_id}")
+    logger.info(f"[{self.request.id}] Starting multi-format resume processing for candidate {candidate_id} ({original_filename})")
     
-    # Step 1: Read PDF Buffer
+    # Step 1: Read File Buffer
     self.update_state(state="PROGRESS", meta={"step": "READING_FILE", "progress": 10})
     file_p = Path(file_path)
     if not file_p.exists():
@@ -72,14 +86,20 @@ def process_resume_pdf_task(
 
     try:
         with open(file_p, "rb") as f:
-            pdf_bytes = f.read()
+            file_bytes = f.read()
 
-        # Step 2: Hybrid PDF Layout Extraction (PyMuPDF / Docling)
-        self.update_state(state="PROGRESS", meta={"step": "PARSING_LAYOUT", "progress": 30})
-        extracted_text, engine_used = pdf_parser.parse_pdf(pdf_bytes, filename=original_filename)
+        # Step 2: Multi-format Extraction (PDF Layout, Word DOCX, Image OCR)
+        doc_format = document_parser.detect_format(file_bytes, filename=original_filename)
+        parsing_step_name = (
+            "PERFORMING_IMAGE_OCR" if doc_format == "image"
+            else "PARSING_WORD_DOCX" if doc_format == "docx"
+            else "PARSING_PDF_LAYOUT"
+        )
+        self.update_state(state="PROGRESS", meta={"step": parsing_step_name, "progress": 30, "format": doc_format})
+        extracted_text, engine_used, detected_format = document_parser.parse(file_bytes, filename=original_filename)
 
         # Step 3: Microsoft Presidio PII Masking
-        self.update_state(state="PROGRESS", meta={"step": "SCRUBBING_PII", "progress": 50})
+        self.update_state(state="PROGRESS", meta={"step": "SCRUBBING_PII", "progress": 50, "engine": engine_used})
         sanitized_text = anonymizer.anonymize(extracted_text)
 
         # Step 4: Ollama Local LLM Structured Extraction

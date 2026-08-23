@@ -920,3 +920,270 @@ async def update_job_status(job_id: str, new_status: str = Query(..., pattern="^
         JOBS_STORE[job_id]["top_match"]["status"] = "ACTIVE"
 
     return JOBS_STORE[job_id]
+
+
+class JobCandidatePayload(BaseModel):
+    id: Optional[str] = None
+    rank: Optional[int] = 0
+    name: str
+    headline: str
+    avatar: Optional[str] = None
+    isImageAvatar: Optional[bool] = False
+    matchScore: int = 85
+    matchLabel: Optional[str] = "Match"
+    skills: List[str] = Field(default_factory=list)
+    stage: str = "Screening"
+    stageBadgeStyle: Optional[str] = "bg-zinc-100 text-zinc-700"
+    technicalDepthScore: Optional[float] = 8.5
+    systemDesignScore: Optional[float] = 8.0
+    quote: Optional[str] = ""
+    sourceResumeLink: Optional[str] = None
+    potentialGap: Optional[str] = None
+    suggestedQuestions: Optional[List[str]] = Field(default_factory=list)
+
+
+JOB_CANDIDATES_STORE: Dict[str, List[Dict[str, Any]]] = {}
+
+
+def get_or_create_job_candidates(job_id: str) -> List[Dict[str, Any]]:
+    if job_id in JOB_CANDIDATES_STORE and JOB_CANDIDATES_STORE[job_id]:
+        return JOB_CANDIDATES_STORE[job_id]
+
+    job = JOBS_STORE.get(job_id)
+    if not job:
+        matched = [j for j in JOBS_STORE.values() if j["id"] == job_id or j["title"].lower() == job_id.lower()]
+        job = matched[0] if matched else None
+
+    title = job["title"] if job else "Engineering Specialist"
+    skills = job["required_skills"] if job and job.get("required_skills") else ["Architecture", "Python", "Cloud", "Kubernetes"]
+    dept = job["department"] if job else "Engineering"
+
+    # 5 high-quality ranked candidates tailored specifically to this job
+    base_pool = [
+        {
+            "id": f"cand-{job_id}-1",
+            "rank": 1,
+            "name": "Dr. Marcus Vance",
+            "headline": f"Principal {title} @ Stripe",
+            "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
+            "isImageAvatar": True,
+            "matchScore": 96,
+            "matchLabel": "Top Match",
+            "skills": skills[:3] if len(skills) >= 3 else skills + ["Architecture", "Scalability"],
+            "stage": "Interview",
+            "stageBadgeStyle": "bg-[#ede8dc] text-zinc-800",
+            "technicalDepthScore": 9.5,
+            "systemDesignScore": 9.2,
+            "quote": f"Designed and delivered large-scale enterprise systems leveraging {', '.join(skills[:2])} with 99.999% availability.",
+            "sourceResumeLink": f"/candidates/cand-{job_id}-1",
+            "potentialGap": "High compensation expectations at current tier; verify budget alignment.",
+            "suggestedQuestions": [
+                f"How did you architect your core platform to handle extreme scale using {skills[0] if skills else 'distributed systems'}?",
+                "Walk us through your approach to zero-downtime migrations and disaster recovery."
+            ]
+        },
+        {
+            "id": f"cand-{job_id}-2",
+            "rank": 2,
+            "name": "Samantha Reed",
+            "headline": f"Lead {title} @ Datadog",
+            "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
+            "isImageAvatar": True,
+            "matchScore": 92,
+            "matchLabel": "Strong Match",
+            "skills": skills[1:4] if len(skills) >= 4 else skills + ["Reliability", "Cloud Automation"],
+            "stage": "Qualified",
+            "stageBadgeStyle": "bg-emerald-100 text-emerald-900",
+            "technicalDepthScore": 9.0,
+            "systemDesignScore": 8.8,
+            "quote": f"Spearheaded multi-region cloud optimization reducing monthly infrastructure spend by 35% using {skills[1] if len(skills)>1 else 'automated pipelines'}.",
+            "sourceResumeLink": f"/candidates/cand-{job_id}-2",
+            "potentialGap": "Less direct experience leading offshore teams across multiple timezones.",
+            "suggestedQuestions": [
+                f"What criteria do you use when evaluating trade-offs in {skills[1] if len(skills)>1 else 'distributed systems'}?",
+                "How do you implement robust observability and automated failure mitigation?"
+            ]
+        },
+        {
+            "id": f"cand-{job_id}-3",
+            "rank": 3,
+            "name": "Kai Nakamura",
+            "headline": f"Senior {title} @ Shopify",
+            "avatar": "KN",
+            "isImageAvatar": False,
+            "matchScore": 88,
+            "matchLabel": "Match",
+            "skills": skills[2:5] if len(skills) >= 5 else skills + ["Automation", "CI/CD"],
+            "stage": "Screening",
+            "stageBadgeStyle": "bg-zinc-100 text-zinc-700",
+            "technicalDepthScore": 8.6,
+            "systemDesignScore": 8.4,
+            "quote": f"Built high-throughput service topology with automated canary deployments and resilient failovers.",
+            "sourceResumeLink": f"/candidates/cand-{job_id}-3",
+            "potentialGap": "Primarily focused on internal platform tooling rather than customer-facing SLA systems.",
+            "suggestedQuestions": [
+                "How do you approach automated testing and canary deployment validation in critical paths?",
+                "Can you share how you resolve complex distributed tracing anomalies?"
+            ]
+        },
+        {
+            "id": f"cand-{job_id}-4",
+            "rank": 4,
+            "name": "Aisha Patel",
+            "headline": f"Senior Engineer @ Anthropic",
+            "avatar": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80",
+            "isImageAvatar": True,
+            "matchScore": 85,
+            "matchLabel": "Match",
+            "skills": skills[:3] + ["Docker", "Kubernetes"],
+            "stage": "Screening",
+            "stageBadgeStyle": "bg-zinc-100 text-zinc-700",
+            "technicalDepthScore": 8.4,
+            "systemDesignScore": 8.2,
+            "quote": f"Developed scalable distributed runtime environments supporting heavy concurrent workloads.",
+            "sourceResumeLink": f"/candidates/cand-{job_id}-4",
+            "potentialGap": "Experience is centered around fast-paced research environments rather than enterprise compliance.",
+            "suggestedQuestions": [
+                "How do you maintain strict data isolation and compliance in multi-tenant environments?"
+            ]
+        },
+        {
+            "id": f"cand-{job_id}-5",
+            "rank": 5,
+            "name": "David Ross",
+            "headline": f"Systems Engineer @ Block",
+            "avatar": "DR",
+            "isImageAvatar": False,
+            "matchScore": 81,
+            "matchLabel": "Potential Match",
+            "skills": skills[:2] + ["Linux", "Networking"],
+            "stage": "Applied",
+            "stageBadgeStyle": "bg-zinc-100 text-zinc-600",
+            "technicalDepthScore": 8.0,
+            "systemDesignScore": 7.8,
+            "quote": f"Maintained critical infrastructure pipelines and automated telemetry gathering.",
+            "sourceResumeLink": f"/candidates/cand-{job_id}-5",
+            "potentialGap": "More experience in systems administration than senior architecture design.",
+            "suggestedQuestions": [
+                "Describe how you troubleshoot network latency spikes under peak loads."
+            ]
+        }
+    ]
+
+    JOB_CANDIDATES_STORE[job_id] = base_pool
+
+    # Register them into CANDIDATES_STORE
+    try:
+        from ats_core.api.v1.candidates import register_candidate_profile
+        for c in base_pool:
+            register_candidate_profile(c, job_title=title, department=dept)
+    except Exception:
+        pass
+
+    return base_pool
+
+
+@router.get("/{job_id}/candidates", response_model=List[Dict[str, Any]])
+async def get_job_candidates(job_id: str):
+    return get_or_create_job_candidates(job_id)
+
+
+@router.post("/{job_id}/candidates", response_model=List[Dict[str, Any]])
+async def add_job_candidate(job_id: str, candidate: JobCandidatePayload):
+    current = get_or_create_job_candidates(job_id)
+
+    new_id = candidate.id or f"cand-{job_id}-{int(datetime.utcnow().timestamp() * 1000)}"
+    initials = candidate.name.split(" ")[0][:1] + (candidate.name.split(" ")[1][:1] if len(candidate.name.split(" ")) > 1 else "")
+    avatar = candidate.avatar or initials.upper() or "CD"
+
+    cand_obj = candidate.model_dump()
+    cand_obj["id"] = new_id
+    cand_obj["avatar"] = avatar
+    cand_obj["sourceResumeLink"] = f"/candidates/{new_id}"
+
+    # Remove any existing duplicate by ID
+    updated_list = [c for c in current if c.get("id") != new_id]
+    updated_list.append(cand_obj)
+
+    # Re-rank by match score descending (with technicalDepth as tiebreaker)
+    updated_list.sort(
+        key=lambda c: (
+            c.get("matchScore", 0),
+            c.get("technicalDepthScore", 0.0)
+        ),
+        reverse=True
+    )
+
+    # Re-index ranks 1..N
+    for idx, c in enumerate(updated_list):
+        c["rank"] = idx + 1
+
+    JOB_CANDIDATES_STORE[job_id] = updated_list
+
+    # Update job requisition candidates_count
+    if job_id in JOBS_STORE:
+        JOBS_STORE[job_id]["candidates_count"] = len(updated_list)
+
+    # Register in CANDIDATES_STORE for immediate profile viewing
+    try:
+        from ats_core.api.v1.candidates import register_candidate_profile
+        job = JOBS_STORE.get(job_id, {})
+        register_candidate_profile(
+            cand_obj,
+            job_title=job.get("title", "Engineering Specialist"),
+            department=job.get("department", "Engineering")
+        )
+    except Exception:
+        pass
+
+    return updated_list
+
+
+@router.delete("/{job_id}/candidates/{candidate_id}", response_model=List[Dict[str, Any]])
+async def remove_job_candidate(job_id: str, candidate_id: str):
+    current = get_or_create_job_candidates(job_id)
+
+    updated_list = [c for c in current if c.get("id") != candidate_id]
+
+    # Re-rank remaining candidates 1..N
+    for idx, c in enumerate(updated_list):
+        c["rank"] = idx + 1
+
+    JOB_CANDIDATES_STORE[job_id] = updated_list
+
+    if job_id in JOBS_STORE:
+        JOBS_STORE[job_id]["candidates_count"] = max(0, len(updated_list))
+
+    return updated_list
+
+
+@router.patch("/{job_id}/candidates/{candidate_id}/stage")
+async def update_job_candidate_stage(job_id: str, candidate_id: str, new_stage: str = Query(...)):
+    current = get_or_create_job_candidates(job_id)
+
+    matched_candidate = None
+    for c in current:
+        if c.get("id") == candidate_id:
+            c["stage"] = new_stage
+            c["stageBadgeStyle"] = (
+                "bg-emerald-100 text-emerald-900"
+                if new_stage in ("Qualified", "Offer")
+                else "bg-[#ede8dc] text-zinc-800"
+                if new_stage == "Interview"
+                else "bg-zinc-100 text-zinc-700"
+            )
+            matched_candidate = c
+            break
+
+    if not matched_candidate:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidate not found on this job")
+
+    try:
+        from ats_core.api.v1.candidates import CANDIDATES_STORE
+        if candidate_id in CANDIDATES_STORE:
+            CANDIDATES_STORE[candidate_id]["stage"] = new_stage
+            CANDIDATES_STORE[candidate_id]["status"] = new_stage
+    except Exception:
+        pass
+
+    return matched_candidate
