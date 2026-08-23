@@ -34,11 +34,8 @@ export function Sidebar() {
       {/* Top Header & Brand */}
       <div>
         <div className="p-6 pb-5 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-black flex items-center justify-center text-white shadow-xs">
-            <LayoutGrid className="w-4 h-4 text-white" />
-          </div>
-          <span className="font-bold text-lg tracking-tight text-zinc-900 leading-none">
-            ATS Core
+          <span className="font-serif font-black text-2xl tracking-wider text-zinc-950 leading-none select-none">
+            CORE
           </span>
         </div>
 
@@ -76,7 +73,7 @@ export function Sidebar() {
       </div>
 
       {/* Footer / User Profile */}
-      <div className="p-4 border-t border-[#e8e6df]/70 bg-[#fbfbfa]">
+      <div className="p-3 m-3 rounded-2xl border border-zinc-200/80 bg-white shadow-2xs">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center shrink-0">
@@ -84,16 +81,16 @@ export function Sidebar() {
             </div>
             <div className="flex flex-col">
               <span className="text-xs font-bold text-zinc-900 leading-tight">
-                Recruiter Admin
+                Alex Rivet
               </span>
-              <span className="text-[10px] text-zinc-400 font-sans">v1.2.4</span>
+              <span className="text-[10px] text-zinc-400 font-medium">Admin</span>
             </div>
           </div>
           <button
             title="Sign out"
-            className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-950 hover:bg-[#eae6db] transition-colors"
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-950 hover:bg-zinc-100 transition-colors"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>

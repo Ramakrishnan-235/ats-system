@@ -9,18 +9,18 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-zinc-900 text-zinc-50 shadow hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-50/90",
+          "bg-black text-white hover:bg-zinc-800 hover:text-zinc-300 shadow-xs transition-colors",
         destructive:
-          "bg-red-500 text-zinc-50 shadow-sm hover:bg-red-500/90 dark:bg-red-900 dark:text-zinc-50 dark:hover:bg-red-900/90",
+          "bg-red-500 text-white shadow-xs hover:bg-red-600 hover:text-zinc-200 transition-colors",
         outline:
-          "border border-zinc-200 bg-white shadow-sm hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-800 dark:hover:text-zinc-50",
+          "border border-zinc-300 bg-white text-zinc-900 shadow-xs hover:bg-zinc-100 hover:text-zinc-700 transition-colors",
         secondary:
-          "bg-zinc-100 text-zinc-900 shadow-sm hover:bg-zinc-200/80 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-800/80",
-        ghost: "hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-50",
-        link: "text-zinc-900 underline-offset-4 hover:underline dark:text-zinc-50",
-        pill: "bg-zinc-950 text-white hover:bg-zinc-800 rounded-full px-5 py-2 font-medium shadow-sm",
-        pillOutline: "border border-zinc-300 text-zinc-800 bg-white hover:bg-zinc-50 rounded-full px-5 py-2 font-medium",
-        purpleGradient: "bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-700 hover:to-violet-700 shadow-md",
+          "bg-zinc-100 text-zinc-900 shadow-xs hover:bg-zinc-200/80 hover:text-zinc-700 transition-colors",
+        ghost: "hover:bg-zinc-100 hover:text-zinc-900 transition-colors",
+        link: "text-zinc-900 underline-offset-4 hover:underline transition-colors",
+        pill: "bg-black text-white hover:bg-zinc-800 hover:text-zinc-300 rounded-full px-5 py-2 font-medium shadow-xs transition-colors",
+        pillOutline: "border border-zinc-300 text-zinc-900 bg-white hover:bg-zinc-100 hover:text-zinc-700 rounded-full px-5 py-2 font-medium transition-colors",
+        purpleGradient: "bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-700 hover:to-violet-700 hover:text-zinc-200 shadow-md transition-colors",
       },
       size: {
         default: "h-9 px-4 py-2",

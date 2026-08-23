@@ -27,7 +27,11 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
             pages_text.append(text.strip())
     return "\n\n".join(pages_text)
 
-def parse_resume_to_candidate(pdf_bytes: bytes, filename: str = "resume.pdf") -> Dict[str, Any]:
+def parse_resume_to_candidate(
+    pdf_bytes: bytes,
+    filename: str = "resume.pdf",
+    target_job: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     """
     Parses a PDF resume and extracts complete profile data,
     work experience, education, skills, and AI evaluation scorecard.
@@ -38,7 +42,7 @@ def parse_resume_to_candidate(pdf_bytes: bytes, filename: str = "resume.pdf") ->
     # 1. Name extraction
     # The name is almost always the first prominent non-empty line
     name = "Candidate"
-    target_headline = "Software Engineer"
+    target_headline = target_job.get("title", "Software Engineer") if target_job else "Software Engineer"
     
     if lines:
         first_line = lines[0]

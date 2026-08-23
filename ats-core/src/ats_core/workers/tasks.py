@@ -32,7 +32,7 @@ pdf_parser = HybridPDFParser()
 anonymizer = ResumeAnonymizer(min_score_threshold=0.55)
 extractor = OllamaCandidateExtractor(
     base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
-    model_name=os.getenv("OLLAMA_MODEL", "gemma4:e2b"),
+    model_name=os.getenv("OLLAMA_MODEL", "deepseek-v4-flash:cloud"),
     temperature=0.0
 )
 vector_store = PgVectorStore()

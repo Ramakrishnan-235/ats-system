@@ -264,7 +264,7 @@ export default function AuditLogPage() {
             {/* Export Log */}
             <Button
               size="sm"
-              className="h-9 px-4 text-xs font-semibold bg-black hover:bg-zinc-800 text-white rounded-xl shadow-xs cursor-pointer shrink-0"
+              className="h-9 px-4 text-xs font-semibold bg-black hover:bg-zinc-800 text-white hover:text-zinc-300 rounded-xl shadow-xs cursor-pointer shrink-0 transition-colors"
             >
               Export Log
             </Button>
@@ -400,7 +400,7 @@ export default function AuditLogPage() {
               <button className="w-8 h-8 rounded-lg border border-zinc-200 bg-white flex items-center justify-center hover:bg-zinc-50 disabled:opacity-50">
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <button className="w-8 h-8 rounded-lg bg-black text-white font-bold flex items-center justify-center">
+              <button className="w-8 h-8 rounded-lg bg-black text-white hover:text-zinc-300 font-bold flex items-center justify-center transition-colors">
                 1
               </button>
               <button className="w-8 h-8 rounded-lg border border-zinc-200 bg-white flex items-center justify-center hover:bg-zinc-50">

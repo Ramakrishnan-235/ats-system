@@ -142,7 +142,7 @@ export default function AnalyticsPage() {
               <Button
                 onClick={exportCSV}
                 size="sm"
-                className="h-9 px-4 text-xs font-semibold bg-black hover:bg-zinc-800 text-white rounded-full gap-1.5 shadow-xs cursor-pointer"
+                className="h-9 px-4 text-xs font-semibold bg-black hover:bg-zinc-800 text-white hover:text-zinc-300 rounded-full gap-1.5 shadow-xs cursor-pointer transition-colors"
               >
                 <Download className="w-3.5 h-3.5 stroke-[2.2]" />
                 <span>Export CSV</span>

@@ -32,7 +32,7 @@ export function PipelineKanban({ pipeline, onAddCandidate }: PipelineKanbanProps
         <Button
           onClick={onAddCandidate}
           size="sm"
-          className="gap-1.5 text-xs font-semibold px-4 h-9 bg-black hover:bg-zinc-800 text-white rounded-full transition-all shadow-xs cursor-pointer"
+          className="gap-1.5 text-xs font-semibold px-4 h-9 bg-black hover:bg-zinc-800 text-white hover:text-zinc-300 rounded-full transition-all shadow-xs cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
           <span>Add Candidate</span>

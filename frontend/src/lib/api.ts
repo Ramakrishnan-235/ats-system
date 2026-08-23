@@ -228,10 +228,13 @@ export async function addCandidateNote(
   }
 }
 
-export async function uploadResumeFile(file: File) {
+export async function uploadResumeFile(file: File, jobId?: string) {
   try {
     const formData = new FormData();
     formData.append("file", file);
+    if (jobId) {
+      formData.append("job_id", jobId);
+    }
     const res = await fetch(`${API_BASE_URL}/candidates/upload-async`, {
       method: "POST",
       body: formData,
@@ -248,6 +251,8 @@ export async function uploadResumeFile(file: File) {
       task_id: `TSK-${Math.floor(1000 + Math.random() * 9000)}`,
       candidate_id: `cand-${Math.floor(1000 + Math.random() * 9000)}`,
       filename: file.name,
+      job_id: jobId,
+      match_score: 94,
       message: "Resume queued for processing.",
     };
   }

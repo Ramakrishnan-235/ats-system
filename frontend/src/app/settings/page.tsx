@@ -259,7 +259,7 @@ export default function SettingsPage() {
                         className={cn(
                           "w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer",
                           isActive
-                            ? "bg-black text-white shadow-xs"
+                            ? "bg-black text-white hover:text-zinc-300 shadow-xs"
                             : "text-zinc-600 hover:text-zinc-950 hover:bg-[#ede9de]"
                         )}
                       >
@@ -469,7 +469,7 @@ export default function SettingsPage() {
                       <Button
                         onClick={() => setIsInviteOpen(true)}
                         size="sm"
-                        className="w-full sm:w-auto h-9 px-4 bg-black hover:bg-zinc-800 text-white rounded-full text-xs font-semibold gap-1.5 shadow-xs cursor-pointer"
+                        className="w-full sm:w-auto h-9 px-4 bg-black hover:bg-zinc-800 text-white hover:text-zinc-300 rounded-full text-xs font-semibold gap-1.5 shadow-xs cursor-pointer transition-colors"
                       >
                         <UserPlus className="w-3.5 h-3.5" />
                         <span>Invite Member</span>
@@ -946,7 +946,7 @@ export default function SettingsPage() {
               <Button
                 type="submit"
                 size="sm"
-                className="bg-black hover:bg-zinc-800 text-white rounded-xl text-xs px-4"
+                className="bg-black hover:bg-zinc-800 text-white hover:text-zinc-300 rounded-xl text-xs px-4 transition-colors"
               >
                 Send Invite
               </Button>

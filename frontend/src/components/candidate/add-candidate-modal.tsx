@@ -187,7 +187,7 @@ export function AddCandidateModal({
             <Button
               type="submit"
               size="sm"
-              className="bg-black hover:bg-zinc-800 text-white rounded-xl text-xs px-5"
+              className="bg-black hover:bg-zinc-800 text-white hover:text-zinc-300 rounded-xl text-xs px-5 transition-colors"
             >
               Add to Pipeline
             </Button>

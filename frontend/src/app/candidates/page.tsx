@@ -237,7 +237,7 @@ export default function CandidatesPage() {
                     className={cn(
                       "px-4 py-1.5 rounded-full transition-all cursor-pointer",
                       searchMode === mode
-                        ? "bg-black text-white shadow-xs"
+                        ? "bg-black text-white hover:text-zinc-300 shadow-xs"
                         : "text-zinc-600 hover:text-zinc-950"
                     )}
                   >
@@ -316,7 +316,7 @@ export default function CandidatesPage() {
                       className={cn(
                         "py-1.5 text-xs font-semibold rounded-xl transition-all cursor-pointer",
                         selectedExp === exp
-                          ? "bg-black text-white"
+                          ? "bg-black text-white hover:text-zinc-300"
                           : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
                       )}
                     >
@@ -470,7 +470,7 @@ export default function CandidatesPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="w-full text-xs font-semibold rounded-full h-8.5 border-zinc-200 hover:bg-zinc-50"
+                          className="w-full text-xs font-semibold rounded-full h-8.5 border-zinc-300 bg-white text-zinc-900 hover:bg-zinc-100 hover:text-zinc-700 shadow-none transition-colors"
                         >
                           View
                         </Button>
@@ -480,14 +480,14 @@ export default function CandidatesPage() {
                         <DropdownMenuTrigger asChild>
                           <Button
                             size="sm"
-                            className="flex-1 bg-black hover:bg-zinc-800 text-white text-xs font-semibold rounded-full h-8.5 gap-1 shadow-none cursor-pointer"
+                            className="flex-1 bg-black hover:bg-zinc-800 text-white hover:text-zinc-300 text-xs font-semibold rounded-full h-8.5 gap-1 shadow-none cursor-pointer transition-colors"
                           >
                             <span>
                               {addedJobs[cand.id]
                                 ? addedJobs[cand.id]
                                 : "Add to Job"}
                             </span>
-                            <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+                            <ChevronDown className="w-3.5 h-3.5 text-zinc-300" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent

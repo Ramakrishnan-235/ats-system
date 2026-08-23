@@ -52,6 +52,52 @@ body {
   background: #a1a1aa;
 }
 
+/* Button text color rules for dark/black buttons */
+button.bg-black,
+button.bg-zinc-950,
+button.bg-zinc-900,
+.btn-black,
+[role="button"].bg-black,
+[role="button"].bg-zinc-950,
+[role="button"].bg-zinc-900 {
+  color: #ffffff !important;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+button.bg-black *,
+button.bg-zinc-950 *,
+button.bg-zinc-900 * {
+  color: inherit;
+}
+
+button.bg-black:hover,
+button.bg-zinc-950:hover,
+button.bg-zinc-900:hover,
+.btn-black:hover,
+[role="button"].bg-black:hover,
+[role="button"].bg-zinc-950:hover,
+[role="button"].bg-zinc-900:hover {
+  color: #d1d5db !important; /* light gray on hover */
+}
+
+button.bg-black:hover *,
+button.bg-zinc-950:hover *,
+button.bg-zinc-900:hover * {
+  color: #d1d5db !important;
+}
+
+/* Button text color rules for white/outline buttons */
+button.bg-white,
+button[class*="border-zinc"],
+button[class*="bg-white"] {
+  color: #18181b;
+}
+
+button.bg-white:hover,
+button[class*="border-zinc"]:hover {
+  color: #3f3f46;
+}
+
 /* Animations */
 @keyframes pulse-subtle {
   0%, 100% { opacity: 1; }

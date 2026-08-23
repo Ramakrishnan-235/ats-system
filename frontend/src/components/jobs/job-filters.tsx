@@ -3,6 +3,18 @@
 import React from "react";
 import { Search, ChevronDown, SlidersHorizontal } from "lucide-react";
 
+export const DEPARTMENTS = [
+  { id: "ALL", label: "All Departments" },
+  { id: "AI & Intelligent Systems", label: "AI, Machine Learning & Systems" },
+  { id: "Cloud & Infrastructure", label: "Cloud, DevOps & Infrastructure" },
+  { id: "Data Science & Analytics", label: "Data Science, Analytics & Big Data" },
+  { id: "Cybersecurity & Risk", label: "Cybersecurity & Risk Management" },
+  { id: "Software Engineering", label: "Software Engineering & Digital Design" },
+  { id: "Quality Assurance & Support", label: "QA, Automation & IT Support" },
+  { id: "Tech Leadership & Strategy", label: "Tech Leadership, Product & Strategy" },
+  { id: "Specialized & Emerging Domains", label: "Specialized & Emerging Domains" },
+];
+
 interface JobFiltersProps {
   search: string;
   onSearchChange: (val: string) => void;
@@ -29,7 +41,7 @@ export function JobFilters({
           type="text"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search by title, department, or skill..."
+          placeholder="Search by job title, department, or required skills (e.g. LLMs, Python, AWS)..."
           className="w-full h-10 pl-10 pr-4 text-xs bg-zinc-50/70 rounded-xl border border-transparent focus:border-zinc-300 focus:bg-white focus:outline-none transition-all placeholder:text-zinc-400"
         />
       </div>
@@ -56,24 +68,30 @@ export function JobFilters({
           <select
             value={department}
             onChange={(e) => onDepartmentChange(e.target.value)}
-            className="h-10 pl-3 pr-8 rounded-xl bg-zinc-50/80 border border-zinc-200/70 text-xs font-semibold text-zinc-700 appearance-none focus:outline-none focus:ring-2 focus:ring-zinc-950 cursor-pointer"
+            className="h-10 pl-3 pr-8 rounded-xl bg-zinc-50/80 border border-zinc-200/70 text-xs font-semibold text-zinc-700 appearance-none focus:outline-none focus:ring-2 focus:ring-zinc-950 cursor-pointer max-w-[200px] truncate"
           >
-            <option value="ALL">Department: All</option>
-            <option value="Engineering">Engineering</option>
-            <option value="Data">Data</option>
-            <option value="Design">Design</option>
-            <option value="Product">Product</option>
+            {DEPARTMENTS.map((dept) => (
+              <option key={dept.id} value={dept.id}>
+                {dept.label}
+              </option>
+            ))}
           </select>
           <ChevronDown className="w-3.5 h-3.5 text-zinc-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
         </div>
 
-        {/* Filter Sliders Toggle Icon */}
-        <button
-          title="Advanced Filters"
-          className="h-10 w-10 rounded-xl bg-zinc-50/80 border border-zinc-200/70 flex items-center justify-center text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100 transition-colors shrink-0"
-        >
-          <SlidersHorizontal className="w-4 h-4" />
-        </button>
+        {/* Clear Filters Button if any active */}
+        {(search || status !== "ALL" || department !== "ALL") && (
+          <button
+            onClick={() => {
+              onSearchChange("");
+              onStatusChange("ALL");
+              onDepartmentChange("ALL");
+            }}
+            className="text-xs text-zinc-500 hover:text-zinc-900 font-semibold px-2 py-1 transition-colors"
+          >
+            Reset
+          </button>
+        )}
       </div>
     </div>
   );

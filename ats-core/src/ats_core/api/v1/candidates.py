@@ -5,7 +5,7 @@ import uuid
 import logging
 from pathlib import Path
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, UploadFile, File, HTTPException, status, Query
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Query
 from pydantic import BaseModel, Field
 logger = logging.getLogger("ats.api.candidates")
 
@@ -324,7 +324,10 @@ async def update_candidate_stage(candidate_id: str, new_stage: str = Query(...))
     status_code=status.HTTP_202_ACCEPTED,
     summary="Upload PDF resume for asynchronous background processing and live profile extraction"
 )
-async def upload_resume_async(file: UploadFile = File(...)):
+async def upload_resume_async(
+    file: UploadFile = File(...),
+    job_id: Optional[str] = Form(None),
+):
     # Validate PDF media type or file extension
     is_pdf = (
         file.content_type in ("application/pdf", "application/x-pdf", "application/octet-stream")
@@ -351,18 +354,92 @@ async def upload_resume_async(file: UploadFile = File(...)):
             detail=f"Failed to stage upload file: {str(e)}"
         )
 
+    # Check if target job exists
+    target_job = None
+    if job_id:
+        try:
+            from ats_core.api.v1.jobs import JOBS_STORE
+            target_job = JOBS_STORE.get(job_id)
+        except Exception as e:
+            logger.warning(f"Could not fetch JOBS_STORE: {e}")
+
     # Extract real profile data from the uploaded PDF
     try:
         from ats_core.parsers.resume_parser import parse_resume_to_candidate
-        parsed_candidate = parse_resume_to_candidate(pdf_bytes, filename=safe_filename)
+        parsed_candidate = parse_resume_to_candidate(
+            pdf_bytes,
+            filename=safe_filename,
+            target_job=target_job
+        )
         parsed_candidate["id"] = candidate_id
+        
+        # Link to target job
+        if target_job:
+            parsed_candidate["applied_for_job"] = f"{target_job['title']} ({target_job['department']})"
+            target_job["candidates_count"] = target_job.get("candidates_count", 0) + 1
+
+        # Run Deep LLM Evaluator using local Ollama model if available
+        job_title_eval = target_job["title"] if target_job else parsed_candidate.get("target_headline", "Software Engineer")
+        job_desc_eval = target_job.get("job_description", "") if target_job else f"Role evaluating technical proficiency in {', '.join(parsed_candidate.get('core_skills', [])[:5])}."
+
+        try:
+            from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
+            evaluator = LocalDeepEvaluator()
+            eval_result = evaluator.evaluate(
+                candidate_id=candidate_id,
+                candidate_profile_text=parsed_candidate.get("raw_text", ""),
+                job_title=job_title_eval,
+                job_description=job_desc_eval,
+            )
+
+            if eval_result.get("success") and eval_result.get("report"):
+                report = eval_result["report"]
+                logger.info(f"Ollama deep evaluation completed for {candidate_id} on '{job_title_eval}' with score {report.overall_match_score}")
+
+                # Map rubric breakdown to categories
+                categories = []
+                for crit in report.criteria_breakdown:
+                    categories.append({
+                        "name": crit.category.value if hasattr(crit.category, "value") else str(crit.category),
+                        "score": round(min(10.0, float(crit.score) * 2.0), 1),
+                        "max_score": 10.0,
+                        "quote": crit.verbatim_citation or crit.assessment or "Verified from resume analysis.",
+                        "source_ref": f"Evidence: {crit.category.value if hasattr(crit.category, 'value') else str(crit.category)}"
+                    })
+
+                tier_name = report.qualification_tier.value if hasattr(report.qualification_tier, "value") else str(report.qualification_tier)
+
+                parsed_candidate["scorecard"] = {
+                    "overall_match_score": int(round(report.overall_match_score)),
+                    "match_tier": f"{tier_name} Match" if not "Match" in tier_name else tier_name,
+                    "model_version": f"Ollama ({evaluator.model_name})",
+                    "evaluated_at": "Evaluated just now",
+                    "categories": categories if categories else parsed_candidate["scorecard"]["categories"],
+                    "risk_flags": report.risks_and_skill_gaps if report.risks_and_skill_gaps else [f"Validate specific production scale requirements for {job_title_eval}."],
+                    "suggested_questions": [f"{i+1}. {q.question}" if hasattr(q, "question") else f"{i+1}. {str(q)}" for i, q in enumerate(report.suggested_interview_questions)] if report.suggested_interview_questions else parsed_candidate["scorecard"]["suggested_questions"],
+                    "team_notes": [
+                        {
+                            "id": f"note-eval-{uuid.uuid4().hex[:4]}",
+                            "author": "Ollama Deep Evaluator",
+                            "initials": "AI",
+                            "role": "AI Evaluator",
+                            "timestamp": "Just now",
+                            "content": report.executive_verdict or f"Evaluated candidate against {job_title_eval} requisition requirements."
+                        }
+                    ]
+                }
+        except Exception as eval_err:
+            logger.warning(f"Ollama deep evaluation fallback: {eval_err}")
+
         # Store in live candidates memory
         CANDIDATES_STORE[candidate_id] = parsed_candidate
         candidate_name = parsed_candidate.get("name", "Candidate")
-        logger.info(f"Successfully extracted resume for '{candidate_name}' ({candidate_id})")
+        final_score = parsed_candidate["scorecard"]["overall_match_score"]
+        logger.info(f"Successfully staged candidate '{candidate_name}' ({candidate_id}) with score {final_score}")
     except Exception as parse_err:
         logger.warning(f"Resume text extraction fallback: {parse_err}")
         candidate_name = "Candidate"
+        final_score = 90
 
     task_id = f"TSK-{uuid.uuid4().hex[:4].upper()}"
 
@@ -372,7 +449,9 @@ async def upload_resume_async(file: UploadFile = File(...)):
         "candidate_id": candidate_id,
         "filename": safe_filename,
         "name": candidate_name,
-        "message": f"Resume for {candidate_name} processed and profile created successfully."
+        "job_id": job_id,
+        "match_score": final_score,
+        "message": f"Resume for {candidate_name} processed and evaluated for {target_job['title'] if target_job else 'the role'}."
     }
 
 

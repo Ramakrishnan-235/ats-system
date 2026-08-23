@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from openai import OpenAI
@@ -33,17 +34,18 @@ class EvaluationReport(BaseModel):
 
 
 class LLMEvaluator:
-    """Stage 3 Deep LLM Evaluator using local Ollama or OpenAI-compatible model."""
+    """Stage 3 Deep LLM Evaluator using local Ollama model in Docker or host."""
 
     def __init__(
         self,
-        base_url: str = "http://localhost:11434/v1",
-        model_name: str = "gemma4:e2b",
+        base_url: Optional[str] = None,
+        model_name: Optional[str] = None,
         temperature: float = 0.0,
     ):
-        self.model_name = model_name
+        self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+        self.model_name = model_name or os.getenv("OLLAMA_MODEL", "deepseek-v4-flash:cloud")
         self.temperature = temperature
-        raw_client = OpenAI(base_url=base_url, api_key="ollama")
+        raw_client = OpenAI(base_url=self.base_url, api_key="ollama")
         self.client = instructor.from_openai(raw_client, mode=instructor.Mode.JSON)
 
     def evaluate(self, candidate_summary: str, job_description: str) -> EvaluationReport:
@@ -73,7 +75,7 @@ class LLMEvaluator:
             )
             return report
         except Exception as e:
-            logger.warning(f"LLM evaluation via Ollama failed or offline ({e}). Generating fallback rule-based evaluation.")
+            logger.warning(f"LLM evaluation via Ollama ({self.model_name}) failed or offline ({e}). Generating fallback rule-based evaluation.")
             return EvaluationReport(
                 match_score=75.0,
                 qualification_tier="Potential Fit",

@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Optional
 from openai import OpenAI
 import instructor
@@ -9,22 +10,23 @@ from ats_core.schema.candidate import CandidateProfile
 logger = logging.getLogger("ats.parsers.ollama")
 
 class OllamaCandidateExtractor:
-    """Extracts structured CandidateProfile from sanitized text using a local Ollama model."""
+    """Extracts structured CandidateProfile from sanitized text using a local Ollama model in Docker/host."""
 
     def __init__(
         self,
-        base_url: str = "http://localhost:11434/v1",
-        model_name: str = "gemma4:e2b",
+        base_url: Optional[str] = None,
+        model_name: Optional[str] = None,
         temperature: float = 0.0,
         max_retries: int = 3,
     ):
-        self.model_name = model_name
+        self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+        self.model_name = model_name or os.getenv("OLLAMA_MODEL", "deepseek-v4-flash:cloud")
         self.temperature = temperature
         self.max_retries = max_retries
 
         # Initialize standard OpenAI client pointed at Ollama
         raw_client = OpenAI(
-            base_url=base_url,
+            base_url=self.base_url,
             api_key="ollama",  # Required non-empty string for OpenAI client
         )
 
@@ -33,6 +35,7 @@ class OllamaCandidateExtractor:
             raw_client,
             mode=instructor.Mode.JSON
         )
+        logger.info(f"Initialized Ollama Extractor with model: {self.model_name} at {self.base_url}")
 
     def extract_profile(self, anonymized_text: str) -> CandidateProfile:
         """

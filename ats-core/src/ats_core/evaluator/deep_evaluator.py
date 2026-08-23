@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from typing import Dict, Any, Optional
 from openai import OpenAI
@@ -18,25 +19,25 @@ logger = logging.getLogger("ats.evaluator.deep")
 
 class LocalDeepEvaluator:
     """
-    Stage 3 Deep LLM Evaluator powered by local Ollama models (e.g. gemma4:e2b).
+    Stage 3 Deep LLM Evaluator powered by local Ollama models (e.g. deepseek-v4-flash:cloud).
     Produces structured scorecards, evidence citations, and tailored interview plans.
     """
 
     def __init__(
         self,
-        base_url: str = "http://localhost:11434/v1",
-        model_name: str = "gemma4:e2b",
+        base_url: Optional[str] = None,
+        model_name: Optional[str] = None,
         temperature: float = 0.1,
         max_retries: int = 3,
     ):
-        self.model_name = model_name
+        self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+        self.model_name = model_name or os.getenv("OLLAMA_MODEL", "deepseek-v4-flash:cloud")
         self.temperature = temperature
         self.max_retries = max_retries
-        self.base_url = base_url
 
         # Initialize OpenAI client pointed to local Ollama server
         raw_client = OpenAI(
-            base_url=base_url,
+            base_url=self.base_url,
             api_key="ollama",  # Placeholder non-empty API key for OpenAI SDK
         )
 
@@ -45,7 +46,7 @@ class LocalDeepEvaluator:
             raw_client,
             mode=instructor.Mode.JSON,
         )
-        logger.info(f"Initialized Deep Evaluator with Ollama model: {self.model_name}")
+        logger.info(f"Initialized Deep Evaluator with Ollama model: {self.model_name} at {self.base_url}")
 
     def _build_evaluation_prompt(
         self,

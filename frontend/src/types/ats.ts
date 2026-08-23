@@ -49,7 +49,17 @@ export interface JobRequisition {
     last_run: string;
     status: "ACTIVE" | "PAUSED";
   };
-  icon_type: "code" | "database" | "design" | "product";
+  icon_type:
+    | "code"
+    | "database"
+    | "design"
+    | "product"
+    | "ai"
+    | "cloud"
+    | "security"
+    | "qa"
+    | "leadership"
+    | "emerging";
   job_description: string;
   min_years_experience: number;
   required_skills: string[];

@@ -263,7 +263,7 @@ export function AIScorecardTab({ candidate }: AIScorecardTabProps) {
                 type="submit"
                 size="sm"
                 disabled={!newNoteText.trim() || isSubmittingNote}
-                className="h-7 px-3 text-xs font-semibold rounded-lg bg-zinc-950 text-white"
+                className="h-7 px-3 text-xs font-semibold rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white hover:text-zinc-300 transition-colors"
               >
                 <Send className="w-3 h-3 mr-1" />
                 <span>Post Note</span>

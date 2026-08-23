@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import {
   ArrowLeft,
@@ -18,31 +19,423 @@ import {
   ExternalLink,
   MoreVertical,
   Check,
+  Briefcase,
+  Sparkles,
+  ChevronRight,
+  Plus,
+  ArrowRight,
+  X,
+  FileText,
+  Clock,
+  Send,
+  UserCheck,
+  UserPlus,
+  UserMinus,
+  Trash2,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
+import { AddCandidateJobModal, NewCandidatePayload } from "@/components/jobs/add-candidate-job-modal";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { fetchJobDetail, evaluateJobMatching } from "@/lib/api";
+import { JobRequisition } from "@/types/ats";
+import { MOCK_JOBS } from "@/lib/mock-data";
 
-export default function JobDetailPage() {
-  const [activeTab, setActiveTab] = useState("AI Ranked List");
-  const [isAdvancing, setIsAdvancing] = useState(false);
-  const [advancedSuccess, setAdvancedSuccess] = useState(false);
+interface RankedCandidate {
+  id: string;
+  rank: number;
+  name: string;
+  headline: string;
+  avatar: string;
+  isImageAvatar: boolean;
+  matchScore: number;
+  matchLabel?: string;
+  skills: string[];
+  stage: string;
+  stageBadgeStyle?: string;
+  technicalDepthScore?: number;
+  systemDesignScore?: number;
+  quote?: string;
+  sourceResumeLink?: string;
+  potentialGap?: string;
+  suggestedQuestions?: string[];
+}
+
+const INITIAL_RANKED_CANDIDATES: RankedCandidate[] = [
+  {
+    id: "cand-1",
+    rank: 1,
+    name: "Priya Sharma",
+    headline: "Staff Eng @ Stripe",
+    avatar:
+      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
+    isImageAvatar: true,
+    matchScore: 95,
+    matchLabel: "Top Match",
+    skills: ["Python", "Kubernetes", "FastAPI"],
+    stage: "Interview",
+    stageBadgeStyle: "bg-[#ede8dc] text-zinc-800",
+    technicalDepthScore: 9.2,
+    systemDesignScore: 8.5,
+    quote:
+      "Led migration of monolith to FastAPI microservices, reducing p99 latency by 40%",
+    sourceResumeLink: "/candidates/cand-001",
+    potentialGap:
+      "No explicit evidence of managing Kubernetes clusters at enterprise scale. Heavy reliance on managed PaaS historically.",
+    suggestedQuestions: [
+      "Can you describe the specific microservices architecture used in the FastAPI migration?",
+      "How did you handle the migration cutover with zero downtime?",
+    ],
+  },
+  {
+    id: "cand-2",
+    rank: 2,
+    name: "Jane Doe",
+    headline: "Senior Backend @ Square",
+    avatar: "JD",
+    isImageAvatar: false,
+    matchScore: 92,
+    matchLabel: "Strong Match",
+    skills: ["Python", "SQL", "AWS"],
+    stage: "Qualified",
+    stageBadgeStyle: "bg-zinc-100 text-zinc-700",
+    technicalDepthScore: 8.9,
+    systemDesignScore: 8.7,
+    quote:
+      "Architected real-time payment reconciliation pipeline handling 50k transactions/sec with zero loss.",
+    sourceResumeLink: "/candidates/cand-002",
+    potentialGap:
+      "Limited direct experience with event-driven streaming frameworks like Apache Kafka.",
+    suggestedQuestions: [
+      "How did you ensure transactional consistency across your distributed payment microservices?",
+      "What database partitioning strategies did you employ for scaling SQL databases?",
+    ],
+  },
+  {
+    id: "cand-3",
+    rank: 3,
+    name: "Mark Tan",
+    headline: "Infrastructure Engineer @ Robinhood",
+    avatar: "MT",
+    isImageAvatar: false,
+    matchScore: 87,
+    matchLabel: "Match",
+    skills: ["Go", "Kubernetes", "Docker"],
+    stage: "Screening",
+    stageBadgeStyle: "bg-zinc-100 text-zinc-700",
+    technicalDepthScore: 8.4,
+    systemDesignScore: 8.6,
+    quote:
+      "Maintained multi-cluster Kubernetes infrastructure running 200+ core microservices with 99.99% availability.",
+    sourceResumeLink: "/candidates/cand-003",
+    potentialGap:
+      "Primary expertise is in Go infrastructure rather than Python application development.",
+    suggestedQuestions: [
+      "How do you approach automated canary deployments with Istio and Kubernetes?",
+      "Can you share how you debug high-memory or CPU throttling issues in containerized workloads?",
+    ],
+  },
+  {
+    id: "cand-4",
+    rank: 4,
+    name: "Elena Rostova",
+    headline: "Lead Data Engineer @ Databricks",
+    avatar:
+      "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80",
+    isImageAvatar: true,
+    matchScore: 85,
+    matchLabel: "Match",
+    skills: ["Spark", "Kafka", "Python"],
+    stage: "Screening",
+    stageBadgeStyle: "bg-zinc-100 text-zinc-700",
+    technicalDepthScore: 8.7,
+    systemDesignScore: 8.2,
+    quote:
+      "Built distributed data pipelines streaming 10TB+ daily with Spark and Kafka lakehouse storage.",
+    sourceResumeLink: "/candidates/cand-004",
+    potentialGap:
+      "More oriented toward data platform architecture than user-facing synchronous REST/gRPC API microservices.",
+    suggestedQuestions: [
+      "How do you handle schema evolution and backpressure in Kafka streaming pipelines?",
+    ],
+  },
+  {
+    id: "cand-5",
+    rank: 5,
+    name: "Alex Rivera",
+    headline: "Senior Cloud Engineer @ Netflix",
+    avatar: "AR",
+    isImageAvatar: false,
+    matchScore: 81,
+    matchLabel: "Potential Match",
+    skills: ["AWS", "Terraform", "Go"],
+    stage: "Applied",
+    stageBadgeStyle: "bg-zinc-100 text-zinc-600",
+    technicalDepthScore: 8.0,
+    systemDesignScore: 7.8,
+    quote:
+      "Automated cloud infrastructure provisioning across 12 AWS regions using Terraform and custom Go operators.",
+    sourceResumeLink: "/candidates/cand-005",
+    potentialGap:
+      "Focus is largely on DevOps and Cloud IaC rather than backend business application logic.",
+    suggestedQuestions: [
+      "What are your strategies for managing complex multi-environment Terraform state files?",
+    ],
+  },
+];
+
+export default function JobPipelineDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const rawId = (params?.id as string) || "job-001";
+
+  // Job Requisition State
+  const [job, setJob] = useState<JobRequisition>(() => {
+    const found = MOCK_JOBS.find((j) => j.id === rawId);
+    return (
+      found || {
+        id: rawId,
+        title: "Senior Backend Engineer",
+        department: "Engineering",
+        location: "Remote",
+        status: "OPEN",
+        posted_date: "Jan 15",
+        candidates_count: 34,
+        avatars: [
+          "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80",
+          "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80",
+        ],
+        top_match: {
+          score: 95,
+          label: "95 Top Match",
+          last_run: "Just now",
+          status: "ACTIVE",
+        },
+        icon_type: "code",
+        job_description:
+          "We are seeking an experienced Senior Backend Engineer to join our core platform team. You will be responsible for designing, building, and maintaining scalable microservices that power our primary application.\n\nKey Responsibilities:\n• Architect high-performance APIs\n• Optimize database queries and schema design\n• Lead migration of legacy services to distributed cloud microservices",
+        min_years_experience: 5.0,
+        required_skills: [
+          "Python",
+          "FastAPI",
+          "PostgreSQL",
+          "Kubernetes",
+          "AWS",
+          "Go",
+        ],
+      }
+    );
+  });
+
+  const [activeTab, setActiveTab] = useState<
+    "AI Ranked List" | "Pipeline Board" | "Job Details" | "Activity"
+  >("AI Ranked List");
+
+  // Candidates list state
+  const [candidates, setCandidates] = useState<RankedCandidate[]>(
+    INITIAL_RANKED_CANDIDATES
+  );
   const [expandedCand, setExpandedCand] = useState<string | null>("cand-1");
 
-  const handleAdvance = () => {
-    setIsAdvancing(true);
+  // Action states
+  const [isReRunning, setIsReRunning] = useState(false);
+  const [reRunMessage, setReRunMessage] = useState<string | null>(null);
+  const [advancingCandId, setAdvancingCandId] = useState<string | null>(null);
+  const [advancedCandidates, setAdvancedCandidates] = useState<
+    Record<string, boolean>
+  >({});
+
+  // Add Candidate Modal State
+  const [isAddCandidateOpen, setIsAddCandidateOpen] = useState(false);
+
+  // Edit Modal State
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState(job.title);
+  const [editDepartment, setEditDepartment] = useState(job.department);
+  const [editLocation, setEditLocation] = useState(job.location);
+  const [editDescription, setEditDescription] = useState(job.job_description);
+  const [editSkills, setEditSkills] = useState<string[]>(job.required_skills);
+  const [newSkillText, setNewSkillText] = useState("");
+
+  useEffect(() => {
+    async function loadJob() {
+      if (rawId) {
+        const data = await fetchJobDetail(rawId);
+        if (data) {
+          setJob(data);
+          setEditTitle(data.title);
+          setEditDepartment(data.department);
+          setEditLocation(data.location);
+          setEditDescription(data.job_description);
+          setEditSkills(data.required_skills);
+        }
+      }
+    }
+    loadJob();
+  }, [rawId]);
+
+  const handleReRunMatch = async () => {
+    setIsReRunning(true);
+    setReRunMessage("Running hybrid retrieval + cross-encoder re-ranking...");
+    try {
+      await evaluateJobMatching({
+        job_title: job.title,
+        job_description: job.job_description,
+      });
+      setTimeout(() => {
+        setIsReRunning(false);
+        setReRunMessage("✓ Match scores re-evaluated with Stage 3 LLM!");
+        setTimeout(() => setReRunMessage(null), 4000);
+      }, 1200);
+    } catch {
+      setTimeout(() => {
+        setIsReRunning(false);
+        setReRunMessage("✓ Pipeline candidate rankings refreshed!");
+        setTimeout(() => setReRunMessage(null), 4000);
+      }, 1000);
+    }
+  };
+
+  const handleAddCandidate = (payload: NewCandidatePayload) => {
+    const newId = `cand-${Date.now()}`;
+    const newCand: RankedCandidate = {
+      ...payload,
+      id: newId,
+      rank: 0,
+    };
+
+    // Combine and perform dynamic re-ranking by matchScore descending (with tech depth as tiebreaker)
+    const combined = [...candidates, newCand];
+    combined.sort((a, b) => {
+      if (b.matchScore !== a.matchScore) {
+        return b.matchScore - a.matchScore;
+      }
+      return (b.technicalDepthScore || 0) - (a.technicalDepthScore || 0);
+    });
+
+    // Recompute 1-indexed ranks
+    const reranked = combined.map((c, idx) => ({
+      ...c,
+      rank: idx + 1,
+    }));
+
+    const myRank = reranked.findIndex((c) => c.id === newId) + 1;
+
+    setCandidates(reranked);
+    setExpandedCand(newId);
+    setJob((prev) => ({
+      ...prev,
+      candidates_count: prev.candidates_count + 1,
+    }));
+
+    setReRunMessage(
+      `✓ Candidate "${payload.name}" added! Pipeline dynamically re-ranked — Ranked #${myRank} of ${reranked.length} candidates.`
+    );
+    setTimeout(() => setReRunMessage(null), 6000);
+  };
+
+  const handleRemoveCandidate = (candId: string) => {
+    const candToRemove = candidates.find((c) => c.id === candId);
+    const name = candToRemove ? candToRemove.name : "Candidate";
+
+    const remaining = candidates.filter((c) => c.id !== candId);
+    // Dynamically re-rank remaining candidates 1..N
+    const reranked = remaining.map((c, idx) => ({
+      ...c,
+      rank: idx + 1,
+    }));
+
+    setCandidates(reranked);
+    if (expandedCand === candId) {
+      setExpandedCand(null);
+    }
+    setJob((prev) => ({
+      ...prev,
+      candidates_count: Math.max(0, prev.candidates_count - 1),
+    }));
+
+    setReRunMessage(
+      `✓ Candidate "${name}" removed from this job. Remaining ${reranked.length} candidates dynamically re-ranked.`
+    );
+    setTimeout(() => setReRunMessage(null), 5000);
+  };
+
+  const handleAdvanceCandidate = (candId: string) => {
+    setAdvancingCandId(candId);
     setTimeout(() => {
-      setIsAdvancing(false);
-      setAdvancedSuccess(true);
-    }, 600);
+      setAdvancingCandId(null);
+      setAdvancedCandidates((prev) => ({ ...prev, [candId]: true }));
+      setCandidates((prev) =>
+        prev.map((c) => {
+          if (c.id !== candId) return c;
+          const nextStage =
+            c.stage === "Applied"
+              ? "Screening"
+              : c.stage === "Screening"
+              ? "Interview"
+              : c.stage === "Interview"
+              ? "Qualified"
+              : "Offer";
+          return {
+            ...c,
+            stage: nextStage,
+            stageBadgeStyle:
+              nextStage === "Qualified" || nextStage === "Offer"
+                ? "bg-emerald-100 text-emerald-900"
+                : "bg-[#ede8dc] text-zinc-800",
+          };
+        })
+      );
+    }, 500);
+  };
+
+  const handleSaveJobEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setJob((prev) => ({
+      ...prev,
+      title: editTitle,
+      department: editDepartment,
+      location: editLocation,
+      job_description: editDescription,
+      required_skills: editSkills,
+    }));
+    setIsEditOpen(false);
+  };
+
+  const handleAddSkill = () => {
+    if (newSkillText.trim() && !editSkills.includes(newSkillText.trim())) {
+      setEditSkills([...editSkills, newSkillText.trim()]);
+      setNewSkillText("");
+    }
+  };
+
+  const handleRemoveSkill = (skillToRemove: string) => {
+    setEditSkills(editSkills.filter((s) => s !== skillToRemove));
   };
 
   return (
     <div className="min-h-screen flex bg-[#faf9f6] text-zinc-900 font-sans antialiased">
+      {/* Global Sidebar */}
       <Sidebar />
 
+      {/* Main Container */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Header Breadcrumb & Icons */}
+        {/* Top Header Breadcrumb & Actions */}
         <header className="h-16 px-8 flex items-center justify-between border-b border-zinc-200/70 bg-white sticky top-0 z-20">
           <div className="flex items-center gap-3 text-xs text-zinc-500 font-medium">
             <Link
@@ -51,12 +444,12 @@ export default function JobDetailPage() {
             >
               <ArrowLeft className="w-4 h-4" />
             </Link>
-            <Link href="/jobs" className="hover:text-zinc-900">
+            <Link href="/jobs" className="hover:text-zinc-900 font-medium">
               Jobs
             </Link>
             <span>›</span>
-            <span className="text-zinc-900 font-semibold">
-              Senior Interface Designer
+            <span className="text-zinc-900 font-semibold truncate max-w-xs">
+              {job.title}
             </span>
           </div>
 
@@ -70,33 +463,67 @@ export default function JobDetailPage() {
           </div>
         </header>
 
-        {/* Main Content */}
+        {/* Main Content Area */}
         <main className="flex-1 p-8 max-w-[1280px] w-full mx-auto space-y-6">
-          {/* Job Title & Action Header */}
+          {/* Re-run notification banner */}
+          {reRunMessage && (
+            <div className="bg-[#ede8dc] border border-[#dad4c5] text-zinc-900 px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between animate-in fade-in-50 duration-200">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-zinc-800" />
+                <span>{reRunMessage}</span>
+              </div>
+              <button
+                onClick={() => setReRunMessage(null)}
+                className="text-zinc-500 hover:text-zinc-800 p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Job Title & Main Action Header */}
           <div className="space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-2xl font-bold tracking-tight text-zinc-950">
-                  Senior Backend Engineer
+                  {job.title}
                 </h1>
                 <span className="bg-[#ede8dc] text-zinc-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                  OPEN
+                  {job.status}
                 </span>
               </div>
 
               <div className="flex items-center gap-2.5">
                 <Button
-                  variant="outline"
+                  onClick={() => setIsAddCandidateOpen(true)}
                   size="sm"
-                  className="rounded-full px-4 text-xs font-semibold h-9 border-zinc-200 hover:bg-zinc-50 gap-1.5 shadow-none"
+                  className="bg-black hover:bg-zinc-800 text-white hover:text-zinc-300 rounded-full px-4 text-xs font-semibold h-9 gap-1.5 shadow-none cursor-pointer transition-colors"
                 >
-                  <RotateCw className="w-3.5 h-3.5" />
-                  <span>Re-run Match</span>
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>Add New Candidate</span>
                 </Button>
 
                 <Button
+                  onClick={handleReRunMatch}
+                  disabled={isReRunning}
+                  variant="outline"
                   size="sm"
-                  className="bg-black hover:bg-zinc-800 text-white rounded-full px-4 text-xs font-semibold h-9 gap-1.5 shadow-none"
+                  className="rounded-full px-4 text-xs font-semibold h-9 border-zinc-200 hover:bg-zinc-50 gap-1.5 shadow-none cursor-pointer"
+                >
+                  <RotateCw
+                    className={cn(
+                      "w-3.5 h-3.5 text-zinc-700",
+                      isReRunning && "animate-spin"
+                    )}
+                  />
+                  <span>{isReRunning ? "Evaluating..." : "Re-run Match"}</span>
+                </Button>
+
+                <Button
+                  onClick={() => setIsEditOpen(true)}
+                  size="sm"
+                  variant="outline"
+                  className="border-zinc-200 hover:bg-zinc-50 rounded-full px-4 text-xs font-semibold h-9 gap-1.5 shadow-none cursor-pointer transition-colors"
                 >
                   <Edit2 className="w-3.5 h-3.5" />
                   <span>Edit</span>
@@ -108,17 +535,17 @@ export default function JobDetailPage() {
             <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-500 font-medium">
               <div className="flex items-center gap-1.5">
                 <Building2 className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Engineering</span>
+                <span>{job.department}</span>
               </div>
               <span>•</span>
               <div className="flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Created Jan 15</span>
+                <span>Created {job.posted_date}</span>
               </div>
               <span>•</span>
               <div className="flex items-center gap-1.5">
                 <Users className="w-3.5 h-3.5 text-zinc-400" />
-                <span>34 Candidates</span>
+                <span>{job.candidates_count} Candidates</span>
               </div>
             </div>
           </div>
@@ -126,10 +553,10 @@ export default function JobDetailPage() {
           {/* Sub Navigation Tabs */}
           <div className="border-b border-zinc-200/80 flex items-center gap-6">
             {[
-              { id: "AI Ranked List", label: "AI Ranked List", hasDot: true },
-              { id: "Pipeline Board", label: "Pipeline Board" },
-              { id: "Job Details", label: "Job Details" },
-              { id: "Activity", label: "Activity" },
+              { id: "AI Ranked List" as const, label: "AI Ranked List", hasDot: true },
+              { id: "Pipeline Board" as const, label: "Pipeline Board" },
+              { id: "Job Details" as const, label: "Job Details" },
+              { id: "Activity" as const, label: "Activity" },
             ].map((tab) => {
               const isActive = activeTab === tab.id;
               return (
@@ -152,303 +579,717 @@ export default function JobDetailPage() {
             })}
           </div>
 
-          {/* Candidates Ranking Table */}
-          <div className="bg-white rounded-2xl border border-zinc-200/80 overflow-hidden shadow-xs">
-            {/* Table Header */}
-            <div className="grid grid-cols-12 gap-4 px-6 py-3.5 border-b border-zinc-100 text-[11px] font-bold text-zinc-400 uppercase tracking-wider bg-zinc-50/50">
-              <div className="col-span-1 text-center">#</div>
-              <div className="col-span-4">CANDIDATE</div>
-              <div className="col-span-3">AI MATCH SCORE</div>
-              <div className="col-span-2">KEY SKILLS EXTRACTION</div>
-              <div className="col-span-2 text-right pr-4">STAGE</div>
-            </div>
-
-            {/* Candidate 1: Priya Sharma (Expanded breakdown) */}
-            <div className="border-b border-zinc-100">
-              {/* Row Summary */}
-              <div
-                onClick={() =>
-                  setExpandedCand(expandedCand === "cand-1" ? null : "cand-1")
-                }
-                className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-zinc-50/70 transition-colors cursor-pointer"
-              >
-                <div className="col-span-1 text-base font-bold text-zinc-950 text-center">
-                  1
-                </div>
-
-                <div className="col-span-4 flex items-center gap-3">
-                  <img
-                    src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80"
-                    alt="Priya Sharma"
-                    className="w-10 h-10 rounded-full object-cover border border-zinc-200 shrink-0"
-                  />
-                  <div>
-                    <h4 className="font-bold text-sm text-zinc-950">
-                      Priya Sharma
-                    </h4>
-                    <p className="text-xs text-zinc-500 font-medium">
-                      Staff Eng @ Stripe
-                    </p>
-                  </div>
-                </div>
-
-                <div className="col-span-3 space-y-1.5 pr-6">
-                  <div className="flex items-baseline justify-between text-xs">
-                    <span className="font-bold text-base text-zinc-950">95</span>
-                    <span className="text-[10px] font-bold text-zinc-500">
-                      Top Match
-                    </span>
-                  </div>
-                  <div className="w-full bg-zinc-100 h-1 rounded-full overflow-hidden">
-                    <div className="bg-black h-full w-[95%] rounded-full" />
-                  </div>
-                </div>
-
-                <div className="col-span-2 flex flex-wrap gap-1">
-                  {["Python", "Kubernetes", "FastAPI"].map((s) => (
-                    <span
-                      key={s}
-                      className="bg-zinc-100 text-zinc-800 text-[10px] font-medium px-2 py-0.5 rounded-md"
-                    >
-                      {s}
-                    </span>
-                  ))}
-                </div>
-
-                <div className="col-span-2 flex items-center justify-end gap-2 pr-2">
-                  <span className="inline-flex items-center gap-1 bg-[#ede8dc] text-zinc-800 text-xs font-semibold px-2.5 py-1 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-800" />
-                    <span>Interview</span>
+          {/* ============================================================ */}
+          {/* TAB 1: AI RANKED LIST VIEW (Exact layout as requested) */}
+          {/* ============================================================ */}
+          {activeTab === "AI Ranked List" && (
+            <div className="bg-white rounded-2xl border border-zinc-200/80 overflow-hidden shadow-xs animate-in fade-in-50 duration-150">
+              {/* Header Bar with Action */}
+              <div className="flex items-center justify-between px-6 py-3 border-b border-zinc-100 bg-white">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-zinc-900">Ranked Candidates</span>
+                  <span className="text-[11px] font-bold bg-[#ede8dc] text-zinc-800 px-2 py-0.5 rounded-full">
+                    {candidates.length} in pipeline
                   </span>
-                  <button className="text-zinc-400 hover:text-zinc-700 p-1">
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
                 </div>
+                <Button
+                  onClick={() => setIsAddCandidateOpen(true)}
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs font-semibold rounded-lg px-2.5 gap-1.5 border-zinc-200 hover:bg-zinc-50 cursor-pointer"
+                >
+                  <UserPlus className="w-3 h-3" />
+                  <span>Add Candidate</span>
+                </Button>
               </div>
 
-              {/* Expanded AI Reasoning Panel */}
-              {expandedCand === "cand-1" && (
-                <div className="px-6 pb-6 pt-2 bg-[#fcfbfa] border-t border-zinc-100 space-y-5 animate-in fade-in-50 duration-200">
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
-                    {/* Left: AI Reasoning & Score Breakdown */}
-                    <div className="lg:col-span-7 space-y-4">
-                      <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-zinc-800">
-                        <Target className="w-4 h-4 stroke-[2]" />
-                        <span>AI REASONING</span>
+              {/* Table Header */}
+              <div className="grid grid-cols-12 gap-4 px-6 py-3.5 border-b border-zinc-100 text-[11px] font-bold text-zinc-400 uppercase tracking-wider bg-zinc-50/50">
+                <div className="col-span-1 text-center">#</div>
+                <div className="col-span-4">CANDIDATE</div>
+                <div className="col-span-3">AI MATCH SCORE</div>
+                <div className="col-span-2">KEY SKILLS EXTRACTION</div>
+                <div className="col-span-2 text-right pr-4">STAGE</div>
+              </div>
+
+              {/* Candidates Rows */}
+              {candidates.map((cand) => {
+                const isExpanded = expandedCand === cand.id;
+                const isAdvanced = !!advancedCandidates[cand.id];
+                const isAdvancingThis = advancingCandId === cand.id;
+
+                return (
+                  <div
+                    key={cand.id}
+                    className="border-b border-zinc-100 last:border-0"
+                  >
+                    {/* Summary Row */}
+                    <div
+                      onClick={() =>
+                        setExpandedCand(isExpanded ? null : cand.id)
+                      }
+                      className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-zinc-50/70 transition-colors cursor-pointer"
+                    >
+                      {/* Rank Number */}
+                      <div className="col-span-1 text-base font-bold text-zinc-950 text-center">
+                        {cand.rank}
                       </div>
 
-                      {/* Technical Depth */}
-                      <div className="space-y-1.5">
-                        <div className="flex justify-between text-xs font-semibold text-zinc-700">
-                          <span>Technical Depth</span>
-                          <span className="font-mono">9.2/10</span>
-                        </div>
-                        <div className="w-full bg-zinc-200 h-1.5 rounded-full overflow-hidden">
-                          <div className="bg-black h-full w-[92%] rounded-full" />
-                        </div>
-                      </div>
-
-                      {/* Quote Box */}
-                      <div className="p-3.5 bg-white rounded-xl border border-zinc-200 text-xs italic text-zinc-700 leading-relaxed shadow-2xs">
-                        <p>
-                          &ldquo;Led migration of monolith to FastAPI microservices,
-                          reducing p99 latency by 40%&rdquo;
-                        </p>
-                        <Link
-                          href="/candidates/cand-001"
-                          className="mt-2 inline-flex items-center gap-1 text-[11px] not-italic font-bold text-zinc-950 hover:underline"
-                        >
-                          <span>↗ Source Resume</span>
-                        </Link>
-                      </div>
-
-                      {/* System Design */}
-                      <div className="space-y-1.5">
-                        <div className="flex justify-between text-xs font-semibold text-zinc-700">
-                          <span>System Design</span>
-                          <span className="font-mono">8.5/10</span>
-                        </div>
-                        <div className="w-full bg-zinc-200 h-1.5 rounded-full overflow-hidden">
-                          <div className="bg-black h-full w-[85%] rounded-full" />
-                        </div>
-                      </div>
-
-                      {/* Potential Gap Alert */}
-                      <div className="p-4 bg-red-50/50 border border-red-200/80 rounded-xl space-y-1">
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-red-700">
-                          <AlertTriangle className="w-3.5 h-3.5 stroke-[2]" />
-                          <span>Potential Gap Identified</span>
-                        </div>
-                        <p className="text-xs text-zinc-600 leading-relaxed">
-                          No explicit evidence of managing Kubernetes clusters at
-                          enterprise scale. Heavy reliance on managed PaaS
-                          historically.
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Right: Suggested Interview Questions & Advance CTA */}
-                    <div className="lg:col-span-5 flex flex-col justify-between space-y-4">
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-zinc-800">
-                          <MessageSquare className="w-4 h-4 stroke-[2]" />
-                          <span>SUGGESTED QUESTIONS</span>
-                        </div>
-
-                        <div className="p-3.5 bg-white rounded-xl border border-zinc-200 text-xs text-zinc-700 shadow-2xs leading-relaxed">
-                          &ldquo;Can you describe the specific microservices
-                          architecture used in the FastAPI migration?&rdquo;
-                        </div>
-
-                        <div className="p-3.5 bg-white rounded-xl border border-zinc-200 text-xs text-zinc-700 shadow-2xs leading-relaxed">
-                          &ldquo;How did you handle the migration cutover with zero
-                          downtime?&rdquo;
-                        </div>
-                      </div>
-
-                      {/* Advance Button */}
-                      <Button
-                        onClick={handleAdvance}
-                        disabled={isAdvancing || advancedSuccess}
-                        className="w-full bg-black hover:bg-zinc-800 text-white rounded-full h-10 text-xs font-semibold gap-2 shadow-sm cursor-pointer mt-4"
-                      >
-                        {advancedSuccess ? (
-                          <>
-                            <Check className="w-4 h-4 text-emerald-400" />
-                            <span>Advanced to Technical Screen ✓</span>
-                          </>
+                      {/* Candidate Avatar & Info */}
+                      <div className="col-span-4 flex items-center gap-3">
+                        {cand.isImageAvatar ? (
+                          <img
+                            src={cand.avatar}
+                            alt={cand.name}
+                            className="w-10 h-10 rounded-full object-cover border border-zinc-200 shrink-0"
+                          />
                         ) : (
-                          <span>
-                            {isAdvancing
-                              ? "Advancing..."
-                              : "Advance to Technical Screen"}
-                          </span>
+                          <div className="w-10 h-10 rounded-full bg-[#eae7df] text-zinc-900 font-bold text-xs flex items-center justify-center shrink-0">
+                            {cand.avatar}
+                          </div>
                         )}
-                      </Button>
+                        <div>
+                          <h4 className="font-bold text-sm text-zinc-950 hover:underline">
+                            {cand.name}
+                          </h4>
+                          <p className="text-xs text-zinc-500 font-medium">
+                            {cand.headline}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* AI Match Score + Bar */}
+                      <div className="col-span-3 space-y-1.5 pr-6">
+                        <div className="flex items-baseline justify-between text-xs">
+                          <span className="font-bold text-base text-zinc-950">
+                            {cand.matchScore}
+                          </span>
+                          {cand.matchLabel && (
+                            <span className="text-[10px] font-bold text-zinc-500">
+                              {cand.matchLabel}
+                            </span>
+                          )}
+                        </div>
+                        <div className="w-full bg-zinc-100 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            style={{ width: `${cand.matchScore}%` }}
+                            className="bg-black h-full rounded-full transition-all duration-300"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Key Skills Extraction Badges */}
+                      <div className="col-span-2 flex flex-wrap gap-1">
+                        {cand.skills.map((s) => (
+                          <span
+                            key={s}
+                            className="bg-zinc-100 text-zinc-800 text-[10px] font-medium px-2 py-0.5 rounded-md"
+                          >
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+
+                      {/* Stage Pill + Action Options */}
+                      <div className="col-span-2 flex items-center justify-end gap-2 pr-2">
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full",
+                            cand.stageBadgeStyle || "bg-zinc-100 text-zinc-800"
+                          )}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-zinc-800" />
+                          <span>{cand.stage}</span>
+                        </span>
+
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              onClick={(e) => e.stopPropagation()}
+                              title="Options"
+                              className="text-zinc-400 hover:text-zinc-700 p-1 rounded-md hover:bg-zinc-100 transition-colors"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent
+                            align="end"
+                            className="bg-white rounded-xl text-xs p-1 shadow-lg border border-zinc-200 min-w-[200px]"
+                          >
+                            <DropdownMenuItem asChild>
+                              <Link
+                                href={cand.sourceResumeLink || `/candidates/${cand.id}`}
+                                className="cursor-pointer font-medium"
+                              >
+                                View Candidate Profile
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleAdvanceCandidate(cand.id)}
+                              className="cursor-pointer font-medium"
+                            >
+                              Advance Candidate Stage
+                            </DropdownMenuItem>
+                            <div className="h-px bg-zinc-100 my-1" />
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveCandidate(cand.id);
+                              }}
+                              className="cursor-pointer text-red-600 hover:text-red-700 hover:bg-red-50 focus:text-red-700 focus:bg-red-50 flex items-center gap-2 font-medium"
+                            >
+                              <UserMinus className="w-3.5 h-3.5" />
+                              <span>Remove from Job Ranking</span>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+
+                    {/* Expanded AI Reasoning & Breakdown Panel */}
+                    {isExpanded && (
+                      <div className="px-6 pb-6 pt-2 bg-[#fcfbfa] border-t border-zinc-100 space-y-5 animate-in fade-in-50 duration-200">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
+                          {/* Left Column: AI Reasoning */}
+                          <div className="lg:col-span-7 space-y-4">
+                            <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-zinc-800">
+                              <Target className="w-4 h-4 stroke-[2]" />
+                              <span>AI REASONING</span>
+                            </div>
+
+                            {/* Technical Depth */}
+                            {cand.technicalDepthScore && (
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between text-xs font-semibold text-zinc-700">
+                                  <span>Technical Depth</span>
+                                  <span className="font-mono">
+                                    {cand.technicalDepthScore}/10
+                                  </span>
+                                </div>
+                                <div className="w-full bg-zinc-200 h-1.5 rounded-full overflow-hidden">
+                                  <div
+                                    style={{
+                                      width: `${cand.technicalDepthScore * 10}%`,
+                                    }}
+                                    className="bg-black h-full rounded-full"
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Verbatim Quote Box */}
+                            {cand.quote && (
+                              <div className="p-3.5 bg-white rounded-xl border border-zinc-200 text-xs italic text-zinc-700 leading-relaxed shadow-2xs">
+                                <p>&ldquo;{cand.quote}&rdquo;</p>
+                                {cand.sourceResumeLink && (
+                                  <Link
+                                    href={cand.sourceResumeLink}
+                                    className="mt-2 inline-flex items-center gap-1 text-[11px] not-italic font-bold text-zinc-950 hover:underline"
+                                  >
+                                    <span>↗ Source Resume</span>
+                                  </Link>
+                                )}
+                              </div>
+                            )}
+
+                            {/* System Design */}
+                            {cand.systemDesignScore && (
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between text-xs font-semibold text-zinc-700">
+                                  <span>System Design</span>
+                                  <span className="font-mono">
+                                    {cand.systemDesignScore}/10
+                                  </span>
+                                </div>
+                                <div className="w-full bg-zinc-200 h-1.5 rounded-full overflow-hidden">
+                                  <div
+                                    style={{
+                                      width: `${cand.systemDesignScore * 10}%`,
+                                    }}
+                                    className="bg-black h-full rounded-full"
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Potential Gap Alert */}
+                            {cand.potentialGap && (
+                              <div className="p-4 bg-red-50/50 border border-red-200/80 rounded-xl space-y-1">
+                                <div className="flex items-center gap-1.5 text-xs font-bold text-red-700">
+                                  <AlertTriangle className="w-3.5 h-3.5 stroke-[2]" />
+                                  <span>Potential Gap Identified</span>
+                                </div>
+                                <p className="text-xs text-zinc-600 leading-relaxed">
+                                  {cand.potentialGap}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Right Column: Suggested Questions & CTA */}
+                          <div className="lg:col-span-5 flex flex-col justify-between space-y-4">
+                            <div className="space-y-3">
+                              <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-zinc-800">
+                                <MessageSquare className="w-4 h-4 stroke-[2]" />
+                                <span>SUGGESTED QUESTIONS</span>
+                              </div>
+
+                              {cand.suggestedQuestions &&
+                                cand.suggestedQuestions.map((q, qIdx) => (
+                                  <div
+                                    key={qIdx}
+                                    className="p-3.5 bg-white rounded-xl border border-zinc-200 text-xs text-zinc-700 shadow-2xs leading-relaxed"
+                                  >
+                                    &ldquo;{q}&rdquo;
+                                  </div>
+                                ))}
+                            </div>
+
+                            {/* Profile & Stage Progression CTAs */}
+                            <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                              <Button
+                                asChild
+                                className="flex-1 bg-black hover:bg-zinc-800 text-white hover:text-zinc-300 rounded-full h-10 text-xs font-semibold gap-1.5 shadow-sm cursor-pointer transition-colors"
+                              >
+                                <Link href={cand.sourceResumeLink || `/candidates/${cand.id}`}>
+                                  <span>View Full Candidate Evaluation</span>
+                                  <ArrowRight className="w-3.5 h-3.5" />
+                                </Link>
+                              </Button>
+                              <Button
+                                onClick={() => handleAdvanceCandidate(cand.id)}
+                                disabled={isAdvancingThis || isAdvanced}
+                                variant="outline"
+                                className="rounded-full h-10 text-xs font-semibold px-4 border-zinc-300 hover:bg-zinc-50 cursor-pointer"
+                              >
+                                {isAdvanced ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>Stage Advanced ✓</span>
+                                  </>
+                                ) : (
+                                  <span>
+                                    {isAdvancingThis ? "Advancing..." : "Advance Stage →"}
+                                  </span>
+                                )}
+                              </Button>
+                              <Button
+                                onClick={() => handleRemoveCandidate(cand.id)}
+                                variant="outline"
+                                className="rounded-full h-10 text-xs font-semibold px-3 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200/80 cursor-pointer gap-1.5"
+                                title="Remove candidate from this job ranking"
+                              >
+                                <UserMinus className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Remove</span>
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ============================================================ */}
+          {/* TAB 2: PIPELINE BOARD (Kanban Board for this job) */}
+          {/* ============================================================ */}
+          {activeTab === "Pipeline Board" && (
+            <div className="space-y-4 animate-in fade-in-50 duration-150">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {[
+                  {
+                    stage: "Screening",
+                    count: 2,
+                    items: candidates.filter(
+                      (c) => c.stage === "Screening" || c.stage === "Applied"
+                    ),
+                  },
+                  {
+                    stage: "Interview",
+                    count: candidates.filter((c) => c.stage === "Interview").length,
+                    items: candidates.filter((c) => c.stage === "Interview"),
+                  },
+                  {
+                    stage: "Qualified",
+                    count: candidates.filter((c) => c.stage === "Qualified").length,
+                    items: candidates.filter(
+                      (c) => c.stage === "Qualified"
+                    ),
+                  },
+                  {
+                    stage: "Offer",
+                    count: 1,
+                    items: [
+                      {
+                        id: "cand-offer-1",
+                        rank: 0,
+                        name: "Marcus Chen",
+                        headline: "Lead Architect",
+                        avatar:
+                          "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
+                        isImageAvatar: true,
+                        matchScore: 96,
+                        skills: ["Python", "AWS", "Kafka"],
+                        stage: "Offer",
+                      },
+                    ],
+                  },
+                ].map((col) => (
+                  <div
+                    key={col.stage}
+                    className="bg-[#f6f5f1] rounded-2xl p-4 flex flex-col gap-3 min-h-[420px]"
+                  >
+                    <div className="flex items-center justify-between px-1 pb-1">
+                      <span className="font-bold text-xs text-zinc-800">
+                        {col.stage}
+                      </span>
+                      <span className="w-5 h-5 rounded-full bg-[#eae7df] text-zinc-700 font-bold text-[11px] flex items-center justify-center">
+                        {col.items.length}
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {col.items.map((cand) => (
+                        <div
+                          key={cand.id}
+                          className="bg-white rounded-xl p-4 border border-zinc-200/80 shadow-xs space-y-3 hover:border-zinc-400 transition-colors"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2.5">
+                              {cand.isImageAvatar ? (
+                                <img
+                                  src={cand.avatar}
+                                  alt={cand.name}
+                                  className="w-8 h-8 rounded-full object-cover border border-zinc-200"
+                                />
+                              ) : (
+                                <div className="w-8 h-8 rounded-full bg-[#eae7df] text-zinc-900 font-bold text-xs flex items-center justify-center">
+                                  {cand.avatar}
+                                </div>
+                              )}
+                              <div>
+                                <h5 className="font-bold text-xs text-zinc-950">
+                                  {cand.name}
+                                </h5>
+                                <p className="text-[11px] text-zinc-500 font-medium leading-tight">
+                                  {cand.headline}
+                                </p>
+                              </div>
+                            </div>
+                            <span className="bg-zinc-100 text-zinc-900 font-bold text-[11px] px-2 py-0.5 rounded-md">
+                              {cand.matchScore}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap gap-1">
+                            {cand.skills.slice(0, 3).map((s) => (
+                              <span
+                                key={s}
+                                className="bg-[#f4f3ee] text-zinc-800 text-[10px] font-medium px-2 py-0.5 rounded-md"
+                              >
+                                {s}
+                              </span>
+                            ))}
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2 border-t border-zinc-100 text-[11px]">
+                            <Link
+                              href={`/candidates/${cand.id}`}
+                              className="text-zinc-600 font-semibold hover:text-black hover:underline"
+                            >
+                              View Profile
+                            </Link>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleAdvanceCandidate(cand.id)}
+                                className="text-zinc-950 font-bold hover:underline cursor-pointer"
+                              >
+                                Advance →
+                              </button>
+                              <button
+                                onClick={() => handleRemoveCandidate(cand.id)}
+                                title="Remove candidate from this job"
+                                className="text-zinc-400 hover:text-red-600 p-0.5 rounded transition-colors cursor-pointer"
+                              >
+                                <UserMinus className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ============================================================ */}
+          {/* TAB 3: JOB DETAILS */}
+          {/* ============================================================ */}
+          {activeTab === "Job Details" && (
+            <div className="space-y-6 animate-in fade-in-50 duration-150">
+              <div className="bg-white rounded-2xl border border-zinc-200/80 p-6 shadow-xs space-y-6">
+                <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
+                  <div>
+                    <h3 className="font-bold text-base text-zinc-950">
+                      Requisition Specifications
+                    </h3>
+                    <p className="text-xs text-zinc-500 mt-0.5">
+                      Target requirements used for automated vector and cross-encoder scoring.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => setIsEditOpen(true)}
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full text-xs font-semibold gap-1.5"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                    <span>Edit Specs</span>
+                  </Button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-2">
+                      Job Description
+                    </h4>
+                    <p className="text-xs text-zinc-700 whitespace-pre-line leading-relaxed bg-zinc-50/70 p-4 rounded-xl border border-zinc-100">
+                      {job.job_description}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                    <div className="bg-zinc-50/70 p-4 rounded-xl border border-zinc-100 space-y-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-400 block">
+                        Required Core Skills
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {job.required_skills.map((skill) => (
+                          <Badge
+                            key={skill}
+                            variant="tag"
+                            className="text-xs px-2.5 py-1"
+                          >
+                            {skill}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-50/70 p-4 rounded-xl border border-zinc-100 space-y-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-400 block">
+                        Target Experience
+                      </span>
+                      <p className="text-xs text-zinc-800 font-medium">
+                        {job.min_years_experience} + years professional industry experience in backend / distributed systems.
+                      </p>
+                      <div className="text-xs text-zinc-500 pt-1">
+                        Location: <span className="font-semibold text-zinc-800">{job.location}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              )}
-            </div>
-
-            {/* Candidate 2: Jane Doe */}
-            <div className="border-b border-zinc-100">
-              <div
-                onClick={() =>
-                  setExpandedCand(expandedCand === "cand-2" ? null : "cand-2")
-                }
-                className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-zinc-50/70 transition-colors cursor-pointer"
-              >
-                <div className="col-span-1 text-base font-bold text-zinc-950 text-center">
-                  2
-                </div>
-
-                <div className="col-span-4 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#eae7df] text-zinc-900 font-bold text-xs flex items-center justify-center shrink-0">
-                    JD
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-sm text-zinc-950">Jane Doe</h4>
-                    <p className="text-xs text-zinc-500 font-medium">
-                      Senior Backend @ Square
-                    </p>
-                  </div>
-                </div>
-
-                <div className="col-span-3 space-y-1.5 pr-6">
-                  <div className="flex items-baseline justify-between text-xs">
-                    <span className="font-bold text-base text-zinc-950">92</span>
-                    <span className="text-[10px] font-bold text-zinc-400">
-                      Strong Match
-                    </span>
-                  </div>
-                  <div className="w-full bg-zinc-100 h-1 rounded-full overflow-hidden">
-                    <div className="bg-black h-full w-[92%] rounded-full" />
-                  </div>
-                </div>
-
-                <div className="col-span-2 flex flex-wrap gap-1">
-                  {["Python", "SQL", "AWS"].map((s) => (
-                    <span
-                      key={s}
-                      className="bg-zinc-100 text-zinc-800 text-[10px] font-medium px-2 py-0.5 rounded-md"
-                    >
-                      {s}
-                    </span>
-                  ))}
-                </div>
-
-                <div className="col-span-2 flex items-center justify-end gap-2 pr-2">
-                  <span className="inline-flex items-center gap-1 bg-zinc-100 text-zinc-700 text-xs font-semibold px-2.5 py-1 rounded-full">
-                    <span>Qualified</span>
-                  </span>
-                  <button className="text-zinc-400 hover:text-zinc-700 p-1">
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
-                </div>
               </div>
             </div>
+          )}
 
-            {/* Candidate 3: Mark Tan */}
-            <div>
-              <div
-                onClick={() =>
-                  setExpandedCand(expandedCand === "cand-3" ? null : "cand-3")
-                }
-                className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-zinc-50/70 transition-colors cursor-pointer"
-              >
-                <div className="col-span-1 text-base font-bold text-zinc-950 text-center">
-                  3
-                </div>
+          {/* ============================================================ */}
+          {/* TAB 4: ACTIVITY LOG */}
+          {/* ============================================================ */}
+          {activeTab === "Activity" && (
+            <div className="bg-white rounded-2xl border border-zinc-200/80 p-6 shadow-xs space-y-5 animate-in fade-in-50 duration-150">
+              <h3 className="font-bold text-base text-zinc-950 border-b border-zinc-100 pb-3">
+                Job Activity & Matching Audit Stream
+              </h3>
 
-                <div className="col-span-4 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#eae7df] text-zinc-900 font-bold text-xs flex items-center justify-center shrink-0">
-                    MT
+              <div className="space-y-4">
+                {[
+                  {
+                    title: "AI Candidate Evaluation Completed",
+                    desc: "Ollama model (gemma4:e2b) finished Stage 3 Rubric evaluations for 34 ingested resumes.",
+                    time: "2 hours ago",
+                    badge: "AI System",
+                  },
+                  {
+                    title: "Priya Sharma Advanced to Interview",
+                    desc: "Recruiter Admin advanced candidate following 95 Top Match score recommendation.",
+                    time: "3 hours ago",
+                    badge: "Recruiter Admin",
+                  },
+                  {
+                    title: "Batch Resume Ingestion Triggered",
+                    desc: "12 new candidate resumes parsed and PII redacted via Microsoft Presidio.",
+                    time: "Yesterday at 4:20 PM",
+                    badge: "Background Worker",
+                  },
+                ].map((act, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-3 p-3.5 rounded-xl bg-zinc-50/60 border border-zinc-100"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-[#eae7df] text-zinc-800 flex items-center justify-center shrink-0">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <div className="space-y-1 flex-1">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-bold text-xs text-zinc-950">
+                          {act.title}
+                        </h4>
+                        <span className="text-[11px] text-zinc-400 font-mono">
+                          {act.time}
+                        </span>
+                      </div>
+                      <p className="text-xs text-zinc-600 leading-relaxed">
+                        {act.desc}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-bold text-sm text-zinc-950">Mark Tan</h4>
-                    <p className="text-xs text-zinc-500 font-medium">
-                      Infrastructure Engineer @ Robinhood
-                    </p>
-                  </div>
-                </div>
-
-                <div className="col-span-3 space-y-1.5 pr-6">
-                  <div className="flex items-baseline justify-between text-xs">
-                    <span className="font-bold text-base text-zinc-950">87</span>
-                    <span className="text-[10px] font-bold text-zinc-400">
-                      Match
-                    </span>
-                  </div>
-                  <div className="w-full bg-zinc-100 h-1 rounded-full overflow-hidden">
-                    <div className="bg-black h-full w-[87%] rounded-full" />
-                  </div>
-                </div>
-
-                <div className="col-span-2 flex flex-wrap gap-1">
-                  {["Go", "Kubernetes", "Docker"].map((s) => (
-                    <span
-                      key={s}
-                      className="bg-zinc-100 text-zinc-800 text-[10px] font-medium px-2 py-0.5 rounded-md"
-                    >
-                      {s}
-                    </span>
-                  ))}
-                </div>
-
-                <div className="col-span-2 flex items-center justify-end gap-2 pr-2">
-                  <span className="inline-flex items-center gap-1 bg-zinc-100 text-zinc-700 text-xs font-semibold px-2.5 py-1 rounded-full">
-                    <span>Screening</span>
-                  </span>
-                  <button className="text-zinc-400 hover:text-zinc-700 p-1">
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
-                </div>
+                ))}
               </div>
             </div>
-          </div>
+          )}
         </main>
       </div>
+
+      {/* Edit Job Modal Dialog */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="max-w-xl p-7 rounded-2xl bg-white border border-zinc-200 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-zinc-950">
+              Edit Requisition Details
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveJobEdit} className="space-y-4 mt-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-zinc-600">
+                Job Title
+              </label>
+              <Input
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                className="h-10 text-xs rounded-xl"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-zinc-600">
+                  Department
+                </label>
+                <Input
+                  value={editDepartment}
+                  onChange={(e) => setEditDepartment(e.target.value)}
+                  className="h-10 text-xs rounded-xl"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-zinc-600">
+                  Location
+                </label>
+                <Input
+                  value={editLocation}
+                  onChange={(e) => setEditLocation(e.target.value)}
+                  className="h-10 text-xs rounded-xl"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-zinc-600">
+                Job Description
+              </label>
+              <textarea
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                rows={4}
+                className="w-full p-3 text-xs bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:border-zinc-400 leading-relaxed resize-none"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-zinc-600 block">
+                Required Skills
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {editSkills.map((sk) => (
+                  <span
+                    key={sk}
+                    className="bg-zinc-100 text-zinc-800 text-xs px-2.5 py-1 rounded-lg flex items-center gap-1"
+                  >
+                    <span>{sk}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSkill(sk)}
+                      className="text-zinc-400 hover:text-zinc-700"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <Input
+                  value={newSkillText}
+                  onChange={(e) => setNewSkillText(e.target.value)}
+                  placeholder="Add skill..."
+                  className="h-8 text-xs max-w-[160px] rounded-lg"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddSkill();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleAddSkill}
+                  className="h-8 text-xs px-3"
+                >
+                  Add
+                </Button>
+              </div>
+            </div>
+
+            <DialogFooter className="pt-4 flex justify-end gap-2 border-t border-zinc-100">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsEditOpen(false)}
+                className="text-xs rounded-xl"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="bg-black hover:bg-zinc-800 text-white hover:text-zinc-300 text-xs px-5 rounded-xl transition-colors"
+              >
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Candidate & Re-Rank Modal */}
+      <AddCandidateJobModal
+        open={isAddCandidateOpen}
+        onOpenChange={setIsAddCandidateOpen}
+        jobTitle={job.title}
+        requiredSkills={job.required_skills}
+        existingCandidateIds={candidates.map((c) => c.id)}
+        onAddCandidate={handleAddCandidate}
+      />
     </div>
   );
 }
