@@ -13,6 +13,8 @@ import {
   Code2,
   Workflow,
   Users2,
+  Briefcase,
+  GraduationCap,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -22,7 +24,11 @@ import { addCandidateNote } from "@/lib/api";
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
   "Technical Depth": Code2,
   "System Design": Workflow,
-  Leadership: Users2,
+  "Experience & Seniority": Briefcase,
+  "Leadership": Users2,
+  "Leadership & Culture": Users2,
+  "Domain Expertise": GraduationCap,
+  "Domain / Industry Knowledge": GraduationCap,
 };
 
 interface AIScorecardTabProps {
@@ -109,7 +115,95 @@ export function AIScorecardTab({ candidate }: AIScorecardTabProps) {
         </button>
       </div>
 
-      {/* 2. Category Dimension Breakdown Cards */}
+      {/* 2. Dynamic Rubric Weighting Transparency */}
+      <div className="bg-white rounded-2xl border border-zinc-200/80 p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-600" />
+            <h4 className="text-xs font-bold text-zinc-950 uppercase tracking-wider">
+              Rubric Dimension Weights & Score Calculation
+            </h4>
+          </div>
+          <span className="text-[11px] font-mono text-zinc-500 bg-zinc-50 border border-zinc-200 px-2 py-0.5 rounded-md">
+            Stage 3 Weighted Scoring
+          </span>
+        </div>
+
+        <p className="text-xs text-zinc-500 leading-relaxed">
+          The candidate&apos;s composite score is computed using the job requisition&apos;s active rubric weights across all 5 standard dimensions.
+        </p>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 pt-1">
+          {[
+            {
+              name: "Technical Depth",
+              weight: 30,
+              score: candidate.criteriaScores?.technical_depth ?? 92,
+              color: "bg-emerald-500",
+              textColor: "text-emerald-700",
+              bgLight: "bg-emerald-50",
+            },
+            {
+              name: "System Design",
+              weight: 25,
+              score: candidate.criteriaScores?.system_design ?? 88,
+              color: "bg-indigo-500",
+              textColor: "text-indigo-700",
+              bgLight: "bg-indigo-50",
+            },
+            {
+              name: "Seniority",
+              weight: 20,
+              score: candidate.criteriaScores?.experience_seniority ?? 85,
+              color: "bg-purple-500",
+              textColor: "text-purple-700",
+              bgLight: "bg-purple-50",
+            },
+            {
+              name: "Leadership",
+              weight: 15,
+              score: candidate.criteriaScores?.leadership_culture ?? 80,
+              color: "bg-amber-500",
+              textColor: "text-amber-800",
+              bgLight: "bg-amber-50",
+            },
+            {
+              name: "Domain",
+              weight: 10,
+              score: candidate.criteriaScores?.domain_expertise ?? 86,
+              color: "bg-rose-500",
+              textColor: "text-rose-700",
+              bgLight: "bg-rose-50",
+            },
+          ].map((dim) => (
+            <div
+              key={dim.name}
+              className={`p-3 rounded-xl border border-zinc-200/70 ${dim.bgLight}/40 space-y-1.5`}
+            >
+              <div className="flex items-center justify-between text-[11px] font-semibold text-zinc-700">
+                <span className="truncate">{dim.name}</span>
+                <span className="text-[10px] text-zinc-400 font-mono font-normal">
+                  {dim.weight}% wt
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className={`text-base font-bold font-mono ${dim.textColor}`}>
+                  {dim.score}
+                </span>
+                <span className="text-[10px] text-zinc-400 font-mono">/100</span>
+              </div>
+              <div className="w-full bg-zinc-200/70 h-1.5 rounded-full overflow-hidden">
+                <div
+                  style={{ width: `${dim.score}%` }}
+                  className={`h-full rounded-full ${dim.color}`}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 3. Category Dimension Breakdown Cards */}
       <div className="space-y-4">
         {scorecard.categories.map((cat) => {
           const Icon = CATEGORY_ICONS[cat.name] || Code2;

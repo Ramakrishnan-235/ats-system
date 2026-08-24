@@ -642,12 +642,15 @@ async def upload_resume_async(
                     })
 
                 tier_name = report.qualification_tier.value if hasattr(report.qualification_tier, "value") else str(report.qualification_tier)
+                extracted_scores = report.extract_criteria_scores().model_dump()
+                parsed_candidate["criteriaScores"] = extracted_scores
 
                 parsed_candidate["scorecard"] = {
                     "overall_match_score": int(round(report.overall_match_score)),
                     "match_tier": f"{tier_name} Match" if not "Match" in tier_name else tier_name,
                     "model_version": f"Ollama ({evaluator.model_name})",
                     "evaluated_at": "Evaluated just now",
+                    "criteria_scores": extracted_scores,
                     "categories": categories if categories else parsed_candidate["scorecard"]["categories"],
                     "risk_flags": report.risks_and_skill_gaps if report.risks_and_skill_gaps else [f"Validate specific production scale requirements for {job_title_eval}."],
                     "suggested_improvements": report.suggested_improvements if getattr(report, "suggested_improvements", None) else parsed_candidate["scorecard"].get("suggested_improvements", []),
@@ -729,3 +732,97 @@ async def get_task_status(task_id: str):
         response["traceback"] = traceback
 
     return response
+
+
+def register_candidate_profile(cand_obj: Dict[str, Any], job_title: str = "Engineering Specialist", department: str = "Engineering"):
+    cid = cand_obj.get("id")
+    if not cid:
+        return
+    if cid not in CANDIDATES_STORE:
+        name = cand_obj.get("name", "Candidate")
+        tech_score = cand_obj.get("technicalDepthScore", 8.5)
+        sys_score = cand_obj.get("systemDesignScore", 8.0)
+        c_scores = cand_obj.get("criteriaScores") or {
+            "technical_depth": tech_score * 10,
+            "system_design": sys_score * 10,
+            "experience_seniority": 85.0,
+            "leadership_culture": 80.0,
+            "domain_expertise": 82.0,
+        }
+        CANDIDATES_STORE[cid] = {
+            "id": cid,
+            "name": name,
+            "anonymized_name": f"Candidate #{abs(hash(cid)) % 9000 + 1000}",
+            "avatar": cand_obj.get("avatar", "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80"),
+            "target_headline": cand_obj.get("headline", f"Senior {job_title}"),
+            "role": cand_obj.get("headline", f"Senior {job_title}"),
+            "location": "San Francisco, CA / Remote",
+            "email": f"{name.lower().replace(' ', '.')}@example.com",
+            "phone": "(415) 555-0199",
+            "linkedin": f"linkedin.com/in/{name.lower().replace(' ', '')}",
+            "status": cand_obj.get("stage", "Interview"),
+            "stage": cand_obj.get("stage", "Interview"),
+            "applied_date": "Recently",
+            "applied_for_job": job_title,
+            "years_of_experience": 7.0,
+            "highest_education": "B.S. Computer Science",
+            "core_skills": cand_obj.get("skills", ["Python", "Cloud", "Architecture"]),
+            "criteriaScores": c_scores,
+            "experience": [
+                {
+                    "role": cand_obj.get("headline", f"Senior {job_title}"),
+                    "company": "Tech Systems Inc.",
+                    "period": "2022 — Present",
+                    "description": cand_obj.get("quote", "Architected and delivered core scalable service topology.")
+                }
+            ],
+            "scorecard": {
+                "overall_match_score": cand_obj.get("matchScore", 90),
+                "match_tier": cand_obj.get("matchLabel", "Top Match"),
+                "model_version": "Model deepseek-v4-flash",
+                "evaluated_at": "Evaluated recently",
+                "criteria_scores": c_scores,
+                "categories": [
+                    {
+                        "name": "Technical Depth",
+                        "score": round(c_scores["technical_depth"] / 10, 1),
+                        "max_score": 10.0,
+                        "quote": cand_obj.get("quote", "Demonstrated high technical mastery."),
+                        "source_ref": "Resume ¶1"
+                    },
+                    {
+                        "name": "System Design",
+                        "score": round(c_scores["system_design"] / 10, 1),
+                        "max_score": 10.0,
+                        "quote": "Architected resilient distributed microservices topology.",
+                        "source_ref": "Resume ¶2"
+                    },
+                    {
+                        "name": "Experience & Seniority",
+                        "score": round(c_scores["experience_seniority"] / 10, 1),
+                        "max_score": 10.0,
+                        "quote": "Demonstrated consistent track record across production systems.",
+                        "source_ref": "Resume ¶3"
+                    },
+                    {
+                        "name": "Leadership & Culture",
+                        "score": round(c_scores["leadership_culture"] / 10, 1),
+                        "max_score": 10.0,
+                        "quote": "Active mentor and technical lead across teams.",
+                        "source_ref": "Resume ¶4"
+                    },
+                    {
+                        "name": "Domain Expertise",
+                        "score": round(c_scores["domain_expertise"] / 10, 1),
+                        "max_score": 10.0,
+                        "quote": f"Strong alignment with {job_title} requirements.",
+                        "source_ref": "Resume ¶5"
+                    }
+                ],
+                "risk_flags": [cand_obj.get("potentialGap", "None identified.")],
+                "suggested_improvements": cand_obj.get("suggestedImprovements", []),
+                "suggested_questions": cand_obj.get("suggestedQuestions", []),
+                "team_notes": []
+            }
+        }
+

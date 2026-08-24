@@ -76,12 +76,18 @@ Your task is to conduct an uncompromising, objective technical evaluation of a c
 ### EVALUATION RULES:
 1. Ground every claim in verifiable evidence. If quoting from the resume, populate `verbatim_citation` with the exact snippet.
 2. Differentiate between active technical ownership (e.g., "architected", "designed", "optimized") and passive participation (e.g., "assisted", "used", "monitored").
-3. Penalize buzzword stuffing that lacks quantifiable metrics or technical depth.
-4. Calibrate the overall score:
+3. Score all 5 standardized criteria dimensions in `criteria_breakdown` (scores 1-5 with evidence):
+   - "Technical Depth & Skills": Programming languages, frameworks, hands-on coding mastery.
+   - "Architecture & System Design": Distributed systems, microservices, scalability, cloud infrastructure.
+   - "Experience & Seniority Level": Years of experience, track record, career progression, production impact.
+   - "Leadership & Communication": Cross-functional collaboration, mentorship, tech direction, soft skills.
+   - "Domain & Industry Knowledge": Vertical specific knowledge (e.g. AI/ML, Fintech, Cloud, SaaS).
+4. Penalize buzzword stuffing that lacks quantifiable metrics or technical depth.
+5. Calibrate the overall score:
    - 80-100 (Strong Fit): Exceeds core requirements with proven high-scale impact.
    - 60-79 (Potential Fit): Solid foundational skills with minor gaps in specific frameworks or domain depth.
    - 0-59 (Low Match): Missing core prerequisites, insufficient experience, or level mismatch.
-5. Identify 2-3 specific, actionable `suggested_improvements`: Analyze the candidate's resume against this specific job role requisition and state concrete actions they need to take to bridge their skill gaps, deepen required framework experience, or enhance their resume presentation (e.g., missing specific tools required in the JD, lacking production scale metrics, need deeper architectural exposure).
+6. Identify 2-3 specific, actionable `suggested_improvements`: Analyze the candidate's resume against this specific job role requisition and state concrete actions they need to take to bridge their skill gaps, deepen required framework experience, or enhance their resume presentation (e.g., missing specific tools required in the JD, lacking production scale metrics, need deeper architectural exposure).
 
 --- TARGET JOB REQUISITION ---
 <job_requisition>

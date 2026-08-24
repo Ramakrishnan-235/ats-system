@@ -734,6 +734,14 @@ RAW_50_JOBS = [
     },
 ]
 
+DEFAULT_CRITERIA_WEIGHTS: Dict[str, float] = {
+    "technical_depth": 30.0,
+    "system_design": 25.0,
+    "experience_seniority": 20.0,
+    "leadership_culture": 15.0,
+    "domain_expertise": 10.0,
+}
+
 # Populate in-memory store
 JOBS_STORE: Dict[str, Dict[str, Any]] = {}
 for i, item in enumerate(RAW_50_JOBS):
@@ -766,6 +774,7 @@ for i, item in enumerate(RAW_50_JOBS):
             "domain_expertise_weight": 0.4,
             "execution_weight": 0.2
         },
+        "criteria_weights": dict(DEFAULT_CRITERIA_WEIGHTS),
         "created_at": f"{item['posted_date']}T09:00:00Z",
         "updated_at": f"{item['posted_date']}T09:00:00Z"
     }
@@ -796,6 +805,7 @@ class JobResponse(BaseModel):
     min_years_experience: float
     required_skills: List[str]
     structured_criteria: Dict[str, Any]
+    criteria_weights: Optional[Dict[str, float]] = None
     created_at: str
     updated_at: str
 
@@ -922,23 +932,68 @@ async def update_job_status(job_id: str, new_status: str = Query(..., pattern="^
     return JOBS_STORE[job_id]
 
 
+class CriteriaWeightsPayload(BaseModel):
+    technical_depth: float = Field(default=30.0, ge=0.0, le=100.0)
+    system_design: float = Field(default=25.0, ge=0.0, le=100.0)
+    experience_seniority: float = Field(default=20.0, ge=0.0, le=100.0)
+    leadership_culture: float = Field(default=15.0, ge=0.0, le=100.0)
+    domain_expertise: float = Field(default=10.0, ge=0.0, le=100.0)
+
+
+class RerankPayload(BaseModel):
+    weights: CriteriaWeightsPayload
+    persist_as_default: Optional[bool] = False
+
+
+def compute_composite_match_score(criteria_scores: Dict[str, float], weights: Dict[str, float]) -> float:
+    total_w = sum(weights.get(k, 0.0) for k in ["technical_depth", "system_design", "experience_seniority", "leadership_culture", "domain_expertise"])
+    if total_w <= 0:
+        total_w = 100.0
+
+    score = (
+        criteria_scores.get("technical_depth", 80.0) * weights.get("technical_depth", 30.0)
+        + criteria_scores.get("system_design", 80.0) * weights.get("system_design", 25.0)
+        + criteria_scores.get("experience_seniority", 80.0) * weights.get("experience_seniority", 20.0)
+        + criteria_scores.get("leadership_culture", 75.0) * weights.get("leadership_culture", 15.0)
+        + criteria_scores.get("domain_expertise", 80.0) * weights.get("domain_expertise", 10.0)
+    ) / total_w
+    return round(score, 1)
+
+
+def get_match_label(score: float) -> str:
+    if score >= 93:
+        return "Top Match"
+    elif score >= 88:
+        return "Strong Match"
+    elif score >= 80:
+        return "Match"
+    elif score >= 65:
+        return "Potential Match"
+    return "Low Match"
+
+
 class JobCandidatePayload(BaseModel):
     id: Optional[str] = None
     rank: Optional[int] = 0
+    previousRank: Optional[int] = None
+    rankDelta: Optional[int] = 0
     name: str
     headline: str
     avatar: Optional[str] = None
     isImageAvatar: Optional[bool] = False
     matchScore: int = 85
+    matchScoreExact: Optional[float] = 85.0
     matchLabel: Optional[str] = "Match"
     skills: List[str] = Field(default_factory=list)
     stage: str = "Screening"
     stageBadgeStyle: Optional[str] = "bg-zinc-100 text-zinc-700"
     technicalDepthScore: Optional[float] = 8.5
     systemDesignScore: Optional[float] = 8.0
+    criteriaScores: Optional[Dict[str, float]] = None
     quote: Optional[str] = ""
     sourceResumeLink: Optional[str] = None
     potentialGap: Optional[str] = None
+    suggestedImprovements: Optional[List[str]] = Field(default_factory=list)
     suggestedQuestions: Optional[List[str]] = Field(default_factory=list)
 
 
@@ -957,26 +1012,47 @@ def get_or_create_job_candidates(job_id: str) -> List[Dict[str, Any]]:
     title = job["title"] if job else "Engineering Specialist"
     skills = job["required_skills"] if job and job.get("required_skills") else ["Architecture", "Python", "Cloud", "Kubernetes"]
     dept = job["department"] if job else "Engineering"
+    weights = job.get("criteria_weights", DEFAULT_CRITERIA_WEIGHTS) if job else DEFAULT_CRITERIA_WEIGHTS
 
-    # 5 high-quality ranked candidates tailored specifically to this job
+    # 5 high-quality ranked candidates with comprehensive 5-factor dimension scores
+    c1_scores = {"technical_depth": 96.0, "system_design": 94.0, "experience_seniority": 95.0, "leadership_culture": 92.0, "domain_expertise": 93.0}
+    c2_scores = {"technical_depth": 92.0, "system_design": 90.0, "experience_seniority": 88.0, "leadership_culture": 85.0, "domain_expertise": 94.0}
+    c3_scores = {"technical_depth": 94.0, "system_design": 82.0, "experience_seniority": 85.0, "leadership_culture": 78.0, "domain_expertise": 86.0}
+    c4_scores = {"technical_depth": 88.0, "system_design": 84.0, "experience_seniority": 80.0, "leadership_culture": 86.0, "domain_expertise": 82.0}
+    c5_scores = {"technical_depth": 80.0, "system_design": 78.0, "experience_seniority": 86.0, "leadership_culture": 75.0, "domain_expertise": 80.0}
+
+    s1 = compute_composite_match_score(c1_scores, weights)
+    s2 = compute_composite_match_score(c2_scores, weights)
+    s3 = compute_composite_match_score(c3_scores, weights)
+    s4 = compute_composite_match_score(c4_scores, weights)
+    s5 = compute_composite_match_score(c5_scores, weights)
+
     base_pool = [
         {
             "id": f"cand-{job_id}-1",
             "rank": 1,
+            "previousRank": 1,
+            "rankDelta": 0,
             "name": "Dr. Marcus Vance",
             "headline": f"Principal {title} @ Stripe",
             "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
             "isImageAvatar": True,
-            "matchScore": 96,
-            "matchLabel": "Top Match",
+            "matchScore": int(round(s1)),
+            "matchScoreExact": s1,
+            "matchLabel": get_match_label(s1),
             "skills": skills[:3] if len(skills) >= 3 else skills + ["Architecture", "Scalability"],
             "stage": "Interview",
             "stageBadgeStyle": "bg-[#ede8dc] text-zinc-800",
-            "technicalDepthScore": 9.5,
-            "systemDesignScore": 9.2,
+            "technicalDepthScore": 9.6,
+            "systemDesignScore": 9.4,
+            "criteriaScores": c1_scores,
             "quote": f"Designed and delivered large-scale enterprise systems leveraging {', '.join(skills[:2])} with 99.999% availability.",
             "sourceResumeLink": f"/candidates/cand-{job_id}-1",
             "potentialGap": "High compensation expectations at current tier; verify budget alignment.",
+            "suggestedImprovements": [
+                f"1. Bridge Enterprise Tooling: Document hands-on experience with {skills[0] if skills else 'distributed frameworks'} in modern cloud environments.",
+                "2. Clarify Multi-Region Topologies: Add detailed latency SLAs and failover playbooks to resume profile."
+            ],
             "suggestedQuestions": [
                 f"How did you architect your core platform to handle extreme scale using {skills[0] if skills else 'distributed systems'}?",
                 "Walk us through your approach to zero-downtime migrations and disaster recovery."
@@ -985,20 +1061,28 @@ def get_or_create_job_candidates(job_id: str) -> List[Dict[str, Any]]:
         {
             "id": f"cand-{job_id}-2",
             "rank": 2,
+            "previousRank": 2,
+            "rankDelta": 0,
             "name": "Samantha Reed",
             "headline": f"Lead {title} @ Datadog",
             "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
             "isImageAvatar": True,
-            "matchScore": 92,
-            "matchLabel": "Strong Match",
+            "matchScore": int(round(s2)),
+            "matchScoreExact": s2,
+            "matchLabel": get_match_label(s2),
             "skills": skills[1:4] if len(skills) >= 4 else skills + ["Reliability", "Cloud Automation"],
             "stage": "Qualified",
             "stageBadgeStyle": "bg-emerald-100 text-emerald-900",
-            "technicalDepthScore": 9.0,
-            "systemDesignScore": 8.8,
+            "technicalDepthScore": 9.2,
+            "systemDesignScore": 9.0,
+            "criteriaScores": c2_scores,
             "quote": f"Spearheaded multi-region cloud optimization reducing monthly infrastructure spend by 35% using {skills[1] if len(skills)>1 else 'automated pipelines'}.",
             "sourceResumeLink": f"/candidates/cand-{job_id}-2",
             "potentialGap": "Less direct experience leading offshore teams across multiple timezones.",
+            "suggestedImprovements": [
+                "1. Expand on Multi-Cloud Governance: Highlight architectural patterns across GCP / Azure hybrid clouds on your resume.",
+                "2. Add High-Concurrency Database Tuning: Detail PostgreSQL connection pooling, vacuuming, and replication benchmarks."
+            ],
             "suggestedQuestions": [
                 f"What criteria do you use when evaluating trade-offs in {skills[1] if len(skills)>1 else 'distributed systems'}?",
                 "How do you implement robust observability and automated failure mitigation?"
@@ -1007,20 +1091,28 @@ def get_or_create_job_candidates(job_id: str) -> List[Dict[str, Any]]:
         {
             "id": f"cand-{job_id}-3",
             "rank": 3,
+            "previousRank": 3,
+            "rankDelta": 0,
             "name": "Kai Nakamura",
             "headline": f"Senior {title} @ Shopify",
             "avatar": "KN",
             "isImageAvatar": False,
-            "matchScore": 88,
-            "matchLabel": "Match",
+            "matchScore": int(round(s3)),
+            "matchScoreExact": s3,
+            "matchLabel": get_match_label(s3),
             "skills": skills[2:5] if len(skills) >= 5 else skills + ["Automation", "CI/CD"],
             "stage": "Screening",
             "stageBadgeStyle": "bg-zinc-100 text-zinc-700",
-            "technicalDepthScore": 8.6,
-            "systemDesignScore": 8.4,
+            "technicalDepthScore": 9.4,
+            "systemDesignScore": 8.2,
+            "criteriaScores": c3_scores,
             "quote": f"Built high-throughput service topology with automated canary deployments and resilient failovers.",
             "sourceResumeLink": f"/candidates/cand-{job_id}-3",
             "potentialGap": "Primarily focused on internal platform tooling rather than customer-facing SLA systems.",
+            "suggestedImprovements": [
+                "1. Showcase Public Customer Impact: Highlight user-facing SLA numbers and revenue-critical features built.",
+                "2. Deepen Distributed Consensus: Document Raft/Paxos experience or multi-region database sharding."
+            ],
             "suggestedQuestions": [
                 "How do you approach automated testing and canary deployment validation in critical paths?",
                 "Can you share how you resolve complex distributed tracing anomalies?"
@@ -1029,20 +1121,28 @@ def get_or_create_job_candidates(job_id: str) -> List[Dict[str, Any]]:
         {
             "id": f"cand-{job_id}-4",
             "rank": 4,
+            "previousRank": 4,
+            "rankDelta": 0,
             "name": "Aisha Patel",
             "headline": f"Senior Engineer @ Anthropic",
             "avatar": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80",
             "isImageAvatar": True,
-            "matchScore": 85,
-            "matchLabel": "Match",
+            "matchScore": int(round(s4)),
+            "matchScoreExact": s4,
+            "matchLabel": get_match_label(s4),
             "skills": skills[:3] + ["Docker", "Kubernetes"],
             "stage": "Screening",
             "stageBadgeStyle": "bg-zinc-100 text-zinc-700",
-            "technicalDepthScore": 8.4,
-            "systemDesignScore": 8.2,
+            "technicalDepthScore": 8.8,
+            "systemDesignScore": 8.4,
+            "criteriaScores": c4_scores,
             "quote": f"Developed scalable distributed runtime environments supporting heavy concurrent workloads.",
             "sourceResumeLink": f"/candidates/cand-{job_id}-4",
             "potentialGap": "Experience is centered around fast-paced research environments rather than enterprise compliance.",
+            "suggestedImprovements": [
+                "1. Document Enterprise SOC2/HIPAA: Detail experience hardening container runtimes and secrets management.",
+                "2. Highlight Cost Optimization: Add specific ROI and compute optimization metrics."
+            ],
             "suggestedQuestions": [
                 "How do you maintain strict data isolation and compliance in multi-tenant environments?"
             ]
@@ -1050,20 +1150,28 @@ def get_or_create_job_candidates(job_id: str) -> List[Dict[str, Any]]:
         {
             "id": f"cand-{job_id}-5",
             "rank": 5,
+            "previousRank": 5,
+            "rankDelta": 0,
             "name": "David Ross",
             "headline": f"Systems Engineer @ Block",
             "avatar": "DR",
             "isImageAvatar": False,
-            "matchScore": 81,
-            "matchLabel": "Potential Match",
+            "matchScore": int(round(s5)),
+            "matchScoreExact": s5,
+            "matchLabel": get_match_label(s5),
             "skills": skills[:2] + ["Linux", "Networking"],
             "stage": "Applied",
             "stageBadgeStyle": "bg-zinc-100 text-zinc-600",
             "technicalDepthScore": 8.0,
             "systemDesignScore": 7.8,
+            "criteriaScores": c5_scores,
             "quote": f"Maintained critical infrastructure pipelines and automated telemetry gathering.",
             "sourceResumeLink": f"/candidates/cand-{job_id}-5",
             "potentialGap": "More experience in systems administration than senior architecture design.",
+            "suggestedImprovements": [
+                "1. Add Microservices Architecture: Build and document polyglot microservice deployments.",
+                "2. Upskill in Cloud-Native Orchestration: Complete CKA or AWS Solutions Architect certifications."
+            ],
             "suggestedQuestions": [
                 "Describe how you troubleshoot network latency spikes under peak loads."
             ]
@@ -1088,6 +1196,65 @@ async def get_job_candidates(job_id: str):
     return get_or_create_job_candidates(job_id)
 
 
+@router.patch("/{job_id}/weights")
+async def update_job_criteria_weights(job_id: str, payload: CriteriaWeightsPayload):
+    if job_id not in JOBS_STORE:
+        matched = [j for j in JOBS_STORE.values() if j["id"] == job_id or j["title"].lower() == job_id.lower()]
+        if matched:
+            job_id = matched[0]["id"]
+        else:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+
+    weights_dict = payload.model_dump()
+    JOBS_STORE[job_id]["criteria_weights"] = weights_dict
+    return {"job_id": job_id, "criteria_weights": weights_dict, "status": "SAVED"}
+
+
+@router.post("/{job_id}/rerank", response_model=List[Dict[str, Any]])
+async def rerank_job_candidates(job_id: str, payload: RerankPayload):
+    current = get_or_create_job_candidates(job_id)
+    weights_dict = payload.weights.model_dump()
+
+    if payload.persist_as_default and job_id in JOBS_STORE:
+        JOBS_STORE[job_id]["criteria_weights"] = weights_dict
+
+    # Calculate new dynamic score for each candidate and store old rank
+    for c in current:
+        c["previousRank"] = c.get("rank", 1)
+        c_scores = c.get("criteriaScores") or {
+            "technical_depth": c.get("technicalDepthScore", 8.5) * 10,
+            "system_design": c.get("systemDesignScore", 8.0) * 10,
+            "experience_seniority": 85.0,
+            "leadership_culture": 80.0,
+            "domain_expertise": 82.0,
+        }
+        c["criteriaScores"] = c_scores
+        new_score = compute_composite_match_score(c_scores, weights_dict)
+        c["matchScore"] = int(round(new_score))
+        c["matchScoreExact"] = new_score
+        c["matchLabel"] = get_match_label(new_score)
+
+    # Sort descending by new score
+    current.sort(
+        key=lambda c: (
+            c.get("matchScoreExact", c.get("matchScore", 0)),
+            c.get("technicalDepthScore", 0.0),
+            c.get("systemDesignScore", 0.0)
+        ),
+        reverse=True
+    )
+
+    # Re-index ranks and calculate rank deltas
+    for idx, c in enumerate(current):
+        new_rank = idx + 1
+        prev_rank = c.get("previousRank", new_rank)
+        c["rank"] = new_rank
+        c["rankDelta"] = prev_rank - new_rank  # e.g. was rank 3, now rank 1 => delta = +2
+
+    JOB_CANDIDATES_STORE[job_id] = current
+    return current
+
+
 @router.post("/{job_id}/candidates", response_model=List[Dict[str, Any]])
 async def add_job_candidate(job_id: str, candidate: JobCandidatePayload):
     current = get_or_create_job_candidates(job_id)
@@ -1101,6 +1268,27 @@ async def add_job_candidate(job_id: str, candidate: JobCandidatePayload):
     cand_obj["avatar"] = avatar
     cand_obj["sourceResumeLink"] = f"/candidates/{new_id}"
 
+    job = JOBS_STORE.get(job_id, {})
+    weights = job.get("criteria_weights", DEFAULT_CRITERIA_WEIGHTS) if job else DEFAULT_CRITERIA_WEIGHTS
+
+    if not cand_obj.get("criteriaScores"):
+        tech = (cand_obj.get("technicalDepthScore") or 8.5) * 10.0
+        sys_des = (cand_obj.get("systemDesignScore") or 8.0) * 10.0
+        cand_obj["criteriaScores"] = {
+            "technical_depth": tech,
+            "system_design": sys_des,
+            "experience_seniority": 85.0,
+            "leadership_culture": 80.0,
+            "domain_expertise": 82.0,
+        }
+
+    computed_score = compute_composite_match_score(cand_obj["criteriaScores"], weights)
+    cand_obj["matchScore"] = int(round(computed_score))
+    cand_obj["matchScoreExact"] = computed_score
+    cand_obj["matchLabel"] = get_match_label(computed_score)
+    cand_obj["previousRank"] = 1
+    cand_obj["rankDelta"] = 0
+
     # Remove any existing duplicate by ID
     updated_list = [c for c in current if c.get("id") != new_id]
     updated_list.append(cand_obj)
@@ -1108,7 +1296,7 @@ async def add_job_candidate(job_id: str, candidate: JobCandidatePayload):
     # Re-rank by match score descending (with technicalDepth as tiebreaker)
     updated_list.sort(
         key=lambda c: (
-            c.get("matchScore", 0),
+            c.get("matchScoreExact", c.get("matchScore", 0)),
             c.get("technicalDepthScore", 0.0)
         ),
         reverse=True
@@ -1187,3 +1375,4 @@ async def update_job_candidate_stage(job_id: str, candidate_id: str, new_stage: 
         pass
 
     return matched_candidate
+
