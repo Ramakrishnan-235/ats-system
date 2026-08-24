@@ -10,79 +10,16 @@ class QualificationTier(str, Enum):
 
 
 class CriterionCategory(str, Enum):
-    TECHNICAL_DEPTH = "Technical Depth & Skills"
-    SYSTEM_DESIGN = "Architecture & System Design"
+    TECH_STACK_ALIGNMENT = "Tech Stack Alignment"
     EXPERIENCE_SENIORITY = "Experience & Seniority Level"
-    LEADERSHIP_CULTURE = "Leadership & Communication"
+    SYSTEM_DESIGN_ARCH = "Architecture & Systems Depth"
+    QUANTIFIED_IMPACT = "Quantified Impact & Scope"
     DOMAIN_EXPERTISE = "Domain / Industry Knowledge"
-
-    # Backward compatibility aliases
-    TECH_STACK_ALIGNMENT = "Technical Depth & Skills"
-    SYSTEM_DESIGN_ARCH = "Architecture & System Design"
-    QUANTIFIED_IMPACT = "Leadership & Communication"
-
-
-class CriteriaWeights(BaseModel):
-    technical_depth: float = Field(default=30.0, ge=0.0, le=100.0, description="Weight % for Technical Depth & Skills")
-    system_design: float = Field(default=25.0, ge=0.0, le=100.0, description="Weight % for Architecture & System Design")
-    experience_seniority: float = Field(default=20.0, ge=0.0, le=100.0, description="Weight % for Experience & Seniority")
-    leadership_culture: float = Field(default=15.0, ge=0.0, le=100.0, description="Weight % for Leadership & Communication")
-    domain_expertise: float = Field(default=10.0, ge=0.0, le=100.0, description="Weight % for Domain & Industry Knowledge")
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    def normalize_proportions(self) -> dict:
-        """Returns normalized weight fractions summing to 1.0."""
-        total = (
-            self.technical_depth
-            + self.system_design
-            + self.experience_seniority
-            + self.leadership_culture
-            + self.domain_expertise
-        )
-        if total <= 0:
-            return {
-                "technical_depth": 0.30,
-                "system_design": 0.25,
-                "experience_seniority": 0.20,
-                "leadership_culture": 0.15,
-                "domain_expertise": 0.10,
-            }
-        return {
-            "technical_depth": self.technical_depth / total,
-            "system_design": self.system_design / total,
-            "experience_seniority": self.experience_seniority / total,
-            "leadership_culture": self.leadership_culture / total,
-            "domain_expertise": self.domain_expertise / total,
-        }
-
-
-class CriteriaScoreMap(BaseModel):
-    technical_depth: float = Field(default=85.0, ge=0.0, le=100.0)
-    system_design: float = Field(default=80.0, ge=0.0, le=100.0)
-    experience_seniority: float = Field(default=80.0, ge=0.0, le=100.0)
-    leadership_culture: float = Field(default=75.0, ge=0.0, le=100.0)
-    domain_expertise: float = Field(default=80.0, ge=0.0, le=100.0)
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    def compute_composite_score(self, weights: Optional[CriteriaWeights] = None) -> float:
-        """Computes weighted composite score (0-100) using the given weights."""
-        w = weights or CriteriaWeights()
-        proportions = w.normalize_proportions()
-        composite = (
-            self.technical_depth * proportions["technical_depth"]
-            + self.system_design * proportions["system_design"]
-            + self.experience_seniority * proportions["experience_seniority"]
-            + self.leadership_culture * proportions["leadership_culture"]
-            + self.domain_expertise * proportions["domain_expertise"]
-        )
-        return round(max(0.0, min(100.0, composite)), 1)
 
 
 class CriterionScore(BaseModel):
     category: CriterionCategory = Field(
-        default=CriterionCategory.TECHNICAL_DEPTH,
+        default=CriterionCategory.TECH_STACK_ALIGNMENT,
         description="The dimension being evaluated."
     )
     score: int = Field(
@@ -112,18 +49,18 @@ class CriterionScore(BaseModel):
             cat = data.get("category")
             if cat and cat not in [e.value for e in CriterionCategory]:
                 cat_str = str(cat).lower()
-                if "domain" in cat_str or "indus" in cat_str or "know" in cat_str or "vertical" in cat_str or "fintech" in cat_str or "health" in cat_str or "biotech" in cat_str:
-                    data["category"] = CriterionCategory.DOMAIN_EXPERTISE.value
-                elif "lead" in cat_str or "culture" in cat_str or "communicat" in cat_str or "impact" in cat_str or "quant" in cat_str or "behav" in cat_str or "mentor" in cat_str:
-                    data["category"] = CriterionCategory.LEADERSHIP_CULTURE.value
-                elif "arch" in cat_str or "system" in cat_str or "design" in cat_str or "topology" in cat_str or "infra" in cat_str:
-                    data["category"] = CriterionCategory.SYSTEM_DESIGN.value
-                elif "exp" in cat_str or "senior" in cat_str or "year" in cat_str or "track" in cat_str:
+                if "tech" in cat_str or "stack" in cat_str or "skill" in cat_str:
+                    data["category"] = CriterionCategory.TECH_STACK_ALIGNMENT.value
+                elif "exp" in cat_str or "senior" in cat_str or "year" in cat_str:
                     data["category"] = CriterionCategory.EXPERIENCE_SENIORITY.value
-                elif "tech" in cat_str or "stack" in cat_str or "skill" in cat_str or "code" in cat_str or "coding" in cat_str:
-                    data["category"] = CriterionCategory.TECHNICAL_DEPTH.value
+                elif "arch" in cat_str or "system" in cat_str or "design" in cat_str:
+                    data["category"] = CriterionCategory.SYSTEM_DESIGN_ARCH.value
+                elif "impact" in cat_str or "quant" in cat_str or "metric" in cat_str:
+                    data["category"] = CriterionCategory.QUANTIFIED_IMPACT.value
+                elif "domain" in cat_str or "indus" in cat_str or "know" in cat_str:
+                    data["category"] = CriterionCategory.DOMAIN_EXPERTISE.value
                 else:
-                    data["category"] = CriterionCategory.TECHNICAL_DEPTH.value
+                    data["category"] = CriterionCategory.TECH_STACK_ALIGNMENT.value
 
             score = data.get("score")
             if score is not None:
@@ -241,29 +178,3 @@ class DeepCandidateEvaluationReport(BaseModel):
                 except (ValueError, TypeError):
                     data["overall_match_score"] = 50.0
         return data
-
-    def extract_criteria_scores(self) -> CriteriaScoreMap:
-        """Extracts normalized 0-100 scores across all 5 standard dimensions from the evaluation breakdown."""
-        scores = {
-            "technical_depth": 80.0,
-            "system_design": 80.0,
-            "experience_seniority": 80.0,
-            "leadership_culture": 75.0,
-            "domain_expertise": 80.0,
-        }
-        for c in self.criteria_breakdown:
-            cat_val = c.category if isinstance(c.category, str) else getattr(c.category, "value", str(c.category))
-            norm_score = float(c.score) * 20.0  # Scale 1-5 to 20-100
-            cat_lower = cat_val.lower()
-            if "technical" in cat_lower or "tech" in cat_lower or "coding" in cat_lower or "stack" in cat_lower:
-                scores["technical_depth"] = norm_score
-            elif "architecture" in cat_lower or "system" in cat_lower or "design" in cat_lower:
-                scores["system_design"] = norm_score
-            elif "experience" in cat_lower or "seniority" in cat_lower:
-                scores["experience_seniority"] = norm_score
-            elif "leadership" in cat_lower or "communication" in cat_lower or "culture" in cat_lower or "impact" in cat_lower:
-                scores["leadership_culture"] = norm_score
-            elif "domain" in cat_lower or "industry" in cat_lower or "knowledge" in cat_lower:
-                scores["domain_expertise"] = norm_score
-        return CriteriaScoreMap(**scores)
-

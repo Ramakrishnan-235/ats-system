@@ -27,18 +27,16 @@ import {
   X,
   FileText,
   Clock,
-  Trash2,
-  Zap,
-  SlidersHorizontal,
-  ChevronDown,
-  ChevronUp,
+  Send,
+  UserCheck,
   UserPlus,
   UserMinus,
+  Trash2,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AddCandidateJobModal, NewCandidatePayload } from "@/components/jobs/add-candidate-job-modal";
-import { RubricWeightsPanel } from "@/components/jobs/rubric-weights-panel";
 import {
   Dialog,
   DialogContent,
@@ -61,11 +59,8 @@ import {
   addJobCandidate,
   removeJobCandidate,
   updateJobCandidateStage,
-  rerankJobCandidates,
-  updateJobCriteriaWeights,
-  DEFAULT_CRITERIA_WEIGHTS,
 } from "@/lib/api";
-import { JobRequisition, RankedCandidate, CriteriaWeights } from "@/types/ats";
+import { JobRequisition, RankedCandidate } from "@/types/ats";
 import { MOCK_JOBS } from "@/lib/mock-data";
 
 const INITIAL_RANKED_CANDIDATES: RankedCandidate[] = [
@@ -258,13 +253,6 @@ export default function JobPipelineDetailPage() {
     "AI Ranked List" | "Pipeline Board" | "Job Details" | "Activity"
   >("AI Ranked List");
 
-  // Rubric weights state
-  const [rubricWeights, setRubricWeights] = useState<CriteriaWeights>(
-    DEFAULT_CRITERIA_WEIGHTS
-  );
-  const [isWeightsPanelOpen, setIsWeightsPanelOpen] = useState(false);
-  const [isSavingWeights, setIsSavingWeights] = useState(false);
-
   // Candidates list state
   const [candidates, setCandidates] = useState<RankedCandidate[]>(
     INITIAL_RANKED_CANDIDATES
@@ -302,9 +290,6 @@ export default function JobPipelineDetailPage() {
           setEditLocation(jobData.location);
           setEditDescription(jobData.job_description);
           setEditSkills(jobData.required_skills);
-          if (jobData.criteria_weights) {
-            setRubricWeights(jobData.criteria_weights);
-          }
         }
 
         const candidateData = await fetchJobCandidates(rawId, jobData || undefined);
@@ -318,25 +303,6 @@ export default function JobPipelineDetailPage() {
     }
     loadJobAndCandidates();
   }, [rawId]);
-
-  const handleWeightsChange = async (newWeights: CriteriaWeights) => {
-    setRubricWeights(newWeights);
-    // Instant re-ranking (< 5ms)
-    const reranked = await rerankJobCandidates(rawId, newWeights, false);
-    setCandidates(reranked);
-  };
-
-  const handleSaveWeightsAsDefault = async (weightsToSave: CriteriaWeights) => {
-    setIsSavingWeights(true);
-    try {
-      await updateJobCriteriaWeights(rawId, weightsToSave);
-      await rerankJobCandidates(rawId, weightsToSave, true);
-      setReRunMessage("✓ Criteria weights saved as default for this job requisition!");
-      setTimeout(() => setReRunMessage(null), 4000);
-    } finally {
-      setIsSavingWeights(false);
-    }
-  };
 
   const handleReRunMatch = async () => {
     setIsReRunning(true);
@@ -628,149 +594,83 @@ export default function JobPipelineDetailPage() {
           </div>
 
           {/* ============================================================ */}
-          {/* TAB 1: AI RANKED LIST VIEW (Exact layout with Dynamic Weights) */}
+          {/* TAB 1: AI RANKED LIST VIEW (Exact layout as requested) */}
           {/* ============================================================ */}
           {activeTab === "AI Ranked List" && (
-            <div className="space-y-4 animate-in fade-in-50 duration-150">
-              {/* Dynamic Rubric Weights Tuning Card */}
-              {isWeightsPanelOpen ? (
-                <div className="space-y-2">
-                  <div className="flex justify-end">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setIsWeightsPanelOpen(false)}
-                      className="text-xs text-zinc-500 hover:text-zinc-900 h-7 px-2"
-                    >
-                      <ChevronUp className="w-3.5 h-3.5 mr-1" />
-                      Hide Calibration Controls
-                    </Button>
-                  </div>
-                  <RubricWeightsPanel
-                    initialWeights={rubricWeights}
-                    onWeightsChange={handleWeightsChange}
-                    onSaveAsDefault={handleSaveWeightsAsDefault}
-                    candidateCount={candidates.length}
-                  />
+            <div className="bg-white rounded-2xl border border-zinc-200/80 overflow-hidden shadow-xs animate-in fade-in-50 duration-150">
+              {/* Header Bar with Action */}
+              <div className="flex items-center justify-between px-6 py-3 border-b border-zinc-100 bg-white">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-zinc-900">Ranked Candidates</span>
+                  <span className="text-[11px] font-bold bg-[#ede8dc] text-zinc-800 px-2 py-0.5 rounded-full">
+                    {candidates.length} in pipeline
+                  </span>
                 </div>
-              ) : null}
+                <Button
+                  onClick={() => setIsAddCandidateOpen(true)}
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs font-semibold rounded-lg px-2.5 gap-1.5 border-zinc-200 hover:bg-zinc-50 cursor-pointer"
+                >
+                  <UserPlus className="w-3 h-3" />
+                  <span>Add Candidate</span>
+                </Button>
+              </div>
 
-              <div className="bg-white rounded-2xl border border-zinc-200/80 overflow-hidden shadow-xs">
-                {/* Header Bar with Action & Rubric Calibration Toggle */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between px-6 py-3.5 border-b border-zinc-100 bg-white gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-zinc-900">Ranked Candidates</span>
-                    <span className="text-[11px] font-bold bg-[#ede8dc] text-zinc-800 px-2 py-0.5 rounded-full">
-                      {candidates.length} in pipeline
-                    </span>
-                    <Badge variant="outline" className="text-[10px] font-mono text-zinc-600 bg-zinc-50 border-zinc-200 hidden md:inline-flex">
-                      Tech {rubricWeights.technical_depth}% • Sys {rubricWeights.system_design}% • Exp {rubricWeights.experience_seniority}% • Lead {rubricWeights.leadership_culture}% • Dom {rubricWeights.domain_expertise}%
-                    </Badge>
-                  </div>
+              {/* Table Header */}
+              <div className="grid grid-cols-12 gap-4 px-6 py-3.5 border-b border-zinc-100 text-[11px] font-bold text-zinc-400 uppercase tracking-wider bg-zinc-50/50">
+                <div className="col-span-1 text-center">#</div>
+                <div className="col-span-4">CANDIDATE</div>
+                <div className="col-span-3">AI MATCH SCORE</div>
+                <div className="col-span-2">KEY SKILLS EXTRACTION</div>
+                <div className="col-span-2 text-right pr-4">STAGE</div>
+              </div>
 
-                  <div className="flex items-center gap-2">
-                    <Button
-                      onClick={() => setIsWeightsPanelOpen(!isWeightsPanelOpen)}
-                      size="sm"
-                      variant={isWeightsPanelOpen ? "default" : "outline"}
-                      className={`h-7.5 text-xs font-semibold rounded-lg px-2.5 gap-1.5 cursor-pointer transition-all ${
-                        isWeightsPanelOpen
-                          ? "bg-zinc-900 text-white hover:bg-black"
-                          : "border-zinc-200 hover:bg-zinc-50 text-zinc-700"
-                      }`}
-                    >
-                      <SlidersHorizontal className="w-3.5 h-3.5" />
-                      <span>Calibrate Weights</span>
-                      {isWeightsPanelOpen ? (
-                        <ChevronUp className="w-3 h-3 ml-0.5" />
-                      ) : (
-                        <ChevronDown className="w-3 h-3 ml-0.5" />
-                      )}
-                    </Button>
+              {/* Candidates Rows */}
+              {candidates.map((cand) => {
+                const isExpanded = expandedCand === cand.id;
+                const isAdvanced = !!advancedCandidates[cand.id];
+                const isAdvancingThis = advancingCandId === cand.id;
 
-                    <Button
-                      onClick={() => setIsAddCandidateOpen(true)}
-                      size="sm"
-                      variant="outline"
-                      className="h-7.5 text-xs font-semibold rounded-lg px-2.5 gap-1.5 border-zinc-200 hover:bg-zinc-50 cursor-pointer"
-                    >
-                      <UserPlus className="w-3 h-3" />
-                      <span>Add Candidate</span>
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Table Header */}
-                <div className="grid grid-cols-12 gap-4 px-6 py-3.5 border-b border-zinc-100 text-[11px] font-bold text-zinc-400 uppercase tracking-wider bg-zinc-50/50">
-                  <div className="col-span-1 text-center flex items-center justify-center gap-1">
-                    <span>#</span>
-                    <span className="text-[9px] text-zinc-400 font-normal lowercase">(Δ)</span>
-                  </div>
-                  <div className="col-span-4">CANDIDATE</div>
-                  <div className="col-span-3">AI COMPOSITE MATCH SCORE</div>
-                  <div className="col-span-2">KEY SKILLS EXTRACTION</div>
-                  <div className="col-span-2 text-right pr-4">STAGE</div>
-                </div>
-
-                {/* Candidates Rows */}
-                {candidates.map((cand) => {
-                  const isExpanded = expandedCand === cand.id;
-                  const isAdvanced = !!advancedCandidates[cand.id];
-                  const isAdvancingThis = advancingCandId === cand.id;
-                  const delta = cand.rankDelta || 0;
-
-                  return (
+                return (
+                  <div
+                    key={cand.id}
+                    className="border-b border-zinc-100 last:border-0"
+                  >
+                    {/* Summary Row */}
                     <div
-                      key={cand.id}
-                      className="border-b border-zinc-100 last:border-0"
+                      onClick={() =>
+                        setExpandedCand(isExpanded ? null : cand.id)
+                      }
+                      className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-zinc-50/70 transition-colors cursor-pointer"
                     >
-                      {/* Summary Row */}
-                      <div
-                        onClick={() =>
-                          setExpandedCand(isExpanded ? null : cand.id)
-                        }
-                        className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-zinc-50/70 transition-colors cursor-pointer"
-                      >
-                        {/* Rank Number + Delta Indicator */}
-                        <div className="col-span-1 flex flex-col items-center justify-center gap-0.5">
-                          <span className="text-base font-bold text-zinc-950">
-                            {cand.rank}
-                          </span>
-                          {delta > 0 ? (
-                            <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-1 py-0.2 rounded font-mono">
-                              ↑+{delta}
-                            </span>
-                          ) : delta < 0 ? (
-                            <span className="text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200/60 px-1 py-0.2 rounded font-mono">
-                              ↓{delta}
-                            </span>
-                          ) : (
-                            <span className="text-[9px] text-zinc-300 font-mono">-</span>
-                          )}
-                        </div>
+                      {/* Rank Number */}
+                      <div className="col-span-1 text-base font-bold text-zinc-950 text-center">
+                        {cand.rank}
+                      </div>
 
-                        {/* Candidate Avatar & Info */}
-                        <div className="col-span-4 flex items-center gap-3">
-                          {cand.isImageAvatar ? (
-                            <img
-                              src={cand.avatar}
-                              alt={cand.name}
-                              className="w-10 h-10 rounded-full object-cover border border-zinc-200 shrink-0"
-                            />
-                          ) : (
-                            <div className="w-10 h-10 rounded-full bg-[#eae7df] text-zinc-900 font-bold text-xs flex items-center justify-center shrink-0">
-                              {cand.avatar}
-                            </div>
-                          )}
-                          <div>
-                            <h4 className="font-bold text-sm text-zinc-950 hover:underline">
-                              {cand.name}
-                            </h4>
-                            <p className="text-xs text-zinc-500 font-medium">
-                              {cand.headline}
-                            </p>
+                      {/* Candidate Avatar & Info */}
+                      <div className="col-span-4 flex items-center gap-3">
+                        {cand.isImageAvatar ? (
+                          <img
+                            src={cand.avatar}
+                            alt={cand.name}
+                            className="w-10 h-10 rounded-full object-cover border border-zinc-200 shrink-0"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-[#eae7df] text-zinc-900 font-bold text-xs flex items-center justify-center shrink-0">
+                            {cand.avatar}
                           </div>
+                        )}
+                        <div>
+                          <h4 className="font-bold text-sm text-zinc-950 hover:underline">
+                            {cand.name}
+                          </h4>
+                          <p className="text-xs text-zinc-500 font-medium">
+                            {cand.headline}
+                          </p>
                         </div>
+                      </div>
 
                       {/* AI Match Score + Bar */}
                       <div className="col-span-3 space-y-1.5 pr-6">
@@ -871,135 +771,25 @@ export default function JobPipelineDetailPage() {
                               <span>AI REASONING</span>
                             </div>
 
-                            {/* 5-Factor Weighted Criteria Scores Breakdown */}
-                            <div className="space-y-3 p-3.5 bg-white rounded-xl border border-zinc-200/90 shadow-2xs">
-                              <div className="flex items-center justify-between text-xs border-b border-zinc-100 pb-2">
-                                <span className="font-bold text-zinc-900">Multi-Factor Criteria Breakdown</span>
-                                <span className="text-[11px] text-zinc-500 font-mono">
-                                  Composite: <strong className="text-zinc-950">{cand.matchScore}/100</strong>
-                                </span>
-                              </div>
-
-                              {/* 1. Technical Depth */}
-                              <div className="space-y-1">
-                                <div className="flex justify-between text-xs font-medium text-zinc-700">
-                                  <span className="flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-blue-500" />
-                                    Technical Depth
-                                    <span className="text-[10px] text-zinc-400 font-mono font-normal">
-                                      (weight: {rubricWeights.technical_depth}%)
-                                    </span>
-                                  </span>
-                                  <span className="font-mono font-bold text-zinc-900">
-                                    {cand.criteriaScores?.technical_depth ?? (cand.technicalDepthScore ? cand.technicalDepthScore * 10 : 85)}/100
+                            {/* Technical Depth */}
+                            {cand.technicalDepthScore && (
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between text-xs font-semibold text-zinc-700">
+                                  <span>Technical Depth</span>
+                                  <span className="font-mono">
+                                    {cand.technicalDepthScore}/10
                                   </span>
                                 </div>
-                                <div className="w-full bg-zinc-100 h-1.5 rounded-full overflow-hidden">
+                                <div className="w-full bg-zinc-200 h-1.5 rounded-full overflow-hidden">
                                   <div
                                     style={{
-                                      width: `${cand.criteriaScores?.technical_depth ?? (cand.technicalDepthScore ? cand.technicalDepthScore * 10 : 85)}%`,
+                                      width: `${cand.technicalDepthScore * 10}%`,
                                     }}
-                                    className="bg-blue-500 h-full rounded-full"
+                                    className="bg-black h-full rounded-full"
                                   />
                                 </div>
                               </div>
-
-                              {/* 2. System Design */}
-                              <div className="space-y-1">
-                                <div className="flex justify-between text-xs font-medium text-zinc-700">
-                                  <span className="flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-purple-500" />
-                                    System Design & Architecture
-                                    <span className="text-[10px] text-zinc-400 font-mono font-normal">
-                                      (weight: {rubricWeights.system_design}%)
-                                    </span>
-                                  </span>
-                                  <span className="font-mono font-bold text-zinc-900">
-                                    {cand.criteriaScores?.system_design ?? (cand.systemDesignScore ? cand.systemDesignScore * 10 : 80)}/100
-                                  </span>
-                                </div>
-                                <div className="w-full bg-zinc-100 h-1.5 rounded-full overflow-hidden">
-                                  <div
-                                    style={{
-                                      width: `${cand.criteriaScores?.system_design ?? (cand.systemDesignScore ? cand.systemDesignScore * 10 : 80)}%`,
-                                    }}
-                                    className="bg-purple-500 h-full rounded-full"
-                                  />
-                                </div>
-                              </div>
-
-                              {/* 3. Experience & Seniority */}
-                              <div className="space-y-1">
-                                <div className="flex justify-between text-xs font-medium text-zinc-700">
-                                  <span className="flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                                    Experience & Seniority
-                                    <span className="text-[10px] text-zinc-400 font-mono font-normal">
-                                      (weight: {rubricWeights.experience_seniority}%)
-                                    </span>
-                                  </span>
-                                  <span className="font-mono font-bold text-zinc-900">
-                                    {cand.criteriaScores?.experience_seniority ?? 85}/100
-                                  </span>
-                                </div>
-                                <div className="w-full bg-zinc-100 h-1.5 rounded-full overflow-hidden">
-                                  <div
-                                    style={{
-                                      width: `${cand.criteriaScores?.experience_seniority ?? 85}%`,
-                                    }}
-                                    className="bg-emerald-500 h-full rounded-full"
-                                  />
-                                </div>
-                              </div>
-
-                              {/* 4. Leadership & Culture */}
-                              <div className="space-y-1">
-                                <div className="flex justify-between text-xs font-medium text-zinc-700">
-                                  <span className="flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-amber-500" />
-                                    Leadership & Communication
-                                    <span className="text-[10px] text-zinc-400 font-mono font-normal">
-                                      (weight: {rubricWeights.leadership_culture}%)
-                                    </span>
-                                  </span>
-                                  <span className="font-mono font-bold text-zinc-900">
-                                    {cand.criteriaScores?.leadership_culture ?? 80}/100
-                                  </span>
-                                </div>
-                                <div className="w-full bg-zinc-100 h-1.5 rounded-full overflow-hidden">
-                                  <div
-                                    style={{
-                                      width: `${cand.criteriaScores?.leadership_culture ?? 80}%`,
-                                    }}
-                                    className="bg-amber-500 h-full rounded-full"
-                                  />
-                                </div>
-                              </div>
-
-                              {/* 5. Domain Expertise */}
-                              <div className="space-y-1">
-                                <div className="flex justify-between text-xs font-medium text-zinc-700">
-                                  <span className="flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-rose-500" />
-                                    Domain & Industry Knowledge
-                                    <span className="text-[10px] text-zinc-400 font-mono font-normal">
-                                      (weight: {rubricWeights.domain_expertise}%)
-                                    </span>
-                                  </span>
-                                  <span className="font-mono font-bold text-zinc-900">
-                                    {cand.criteriaScores?.domain_expertise ?? 82}/100
-                                  </span>
-                                </div>
-                                <div className="w-full bg-zinc-100 h-1.5 rounded-full overflow-hidden">
-                                  <div
-                                    style={{
-                                      width: `${cand.criteriaScores?.domain_expertise ?? 82}%`,
-                                    }}
-                                    className="bg-rose-500 h-full rounded-full"
-                                  />
-                                </div>
-                              </div>
-                            </div>
+                            )}
 
                             {/* Verbatim Quote Box */}
                             {cand.quote && (
@@ -1013,6 +803,26 @@ export default function JobPipelineDetailPage() {
                                     <span>↗ Source Resume</span>
                                   </Link>
                                 )}
+                              </div>
+                            )}
+
+                            {/* System Design */}
+                            {cand.systemDesignScore && (
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between text-xs font-semibold text-zinc-700">
+                                  <span>System Design</span>
+                                  <span className="font-mono">
+                                    {cand.systemDesignScore}/10
+                                  </span>
+                                </div>
+                                <div className="w-full bg-zinc-200 h-1.5 rounded-full overflow-hidden">
+                                  <div
+                                    style={{
+                                      width: `${cand.systemDesignScore * 10}%`,
+                                    }}
+                                    className="bg-black h-full rounded-full"
+                                  />
+                                </div>
                               </div>
                             )}
 
@@ -1112,9 +922,7 @@ export default function JobPipelineDetailPage() {
                 );
               })}
             </div>
-          </div>
-        )}
-
+          )}
 
           {/* ============================================================ */}
           {/* TAB 2: PIPELINE BOARD (Kanban Board for this job) */}

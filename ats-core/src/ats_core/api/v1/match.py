@@ -1,7 +1,6 @@
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-from ats_core.schema.evaluation import CriteriaWeights
 
 router = APIRouter(prefix="/match", tags=["Candidate Matching"])
 
@@ -30,7 +29,6 @@ class MatchRequest(BaseModel):
     job_description: str
     stage1_retrieve_limit: int = Field(default=100, description="Number of candidates from hybrid search")
     stage2_rerank_limit: int = Field(default=20, description="Candidates sent to deep LLM evaluation")
-    weights: Optional[CriteriaWeights] = Field(default=None, description="Custom criteria weights for scoring")
 
 
 class MatchResponse(BaseModel):

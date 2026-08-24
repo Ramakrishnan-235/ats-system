@@ -34,22 +34,6 @@ export interface PipelineCandidateItem {
   applied_time: string;
 }
 
-export interface CriteriaWeights {
-  technical_depth: number;
-  system_design: number;
-  experience_seniority: number;
-  leadership_culture: number;
-  domain_expertise: number;
-}
-
-export interface CriteriaScoreMap {
-  technical_depth: number;
-  system_design: number;
-  experience_seniority: number;
-  leadership_culture: number;
-  domain_expertise: number;
-}
-
 export interface JobRequisition {
   id: string;
   title: string;
@@ -80,7 +64,6 @@ export interface JobRequisition {
   min_years_experience: number;
   required_skills: string[];
   structured_criteria?: Record<string, number>;
-  criteria_weights?: CriteriaWeights;
   created_at?: string;
   updated_at?: string;
 }
@@ -128,14 +111,12 @@ export interface CandidateDetail {
   years_of_experience: number;
   highest_education: string;
   core_skills: string[];
-  criteriaScores?: CriteriaScoreMap;
   experience: ExperienceItem[];
   scorecard: {
     overall_match_score: number;
     match_tier: string;
     model_version: string;
     evaluated_at: string;
-    criteria_scores?: CriteriaScoreMap;
     categories: ScorecardCategory[];
     risk_flags: string[];
     suggested_improvements?: string[];
@@ -148,21 +129,17 @@ export interface CandidateDetail {
 export interface RankedCandidate {
   id: string;
   rank: number;
-  previousRank?: number;
-  rankDelta?: number;
   name: string;
   headline: string;
   avatar: string;
   isImageAvatar: boolean;
   matchScore: number;
-  matchScoreExact?: number;
   matchLabel?: string;
   skills: string[];
   stage: string;
   stageBadgeStyle?: string;
   technicalDepthScore?: number;
   systemDesignScore?: number;
-  criteriaScores?: CriteriaScoreMap;
   quote?: string;
   sourceResumeLink?: string;
   potentialGap?: string;
@@ -170,7 +147,6 @@ export interface RankedCandidate {
   suggestedQuestions?: string[];
   jobId?: string;
 }
-
 
 export interface ActiveUpload {
   id: string;
