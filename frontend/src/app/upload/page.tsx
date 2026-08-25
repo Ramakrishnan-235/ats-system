@@ -137,7 +137,7 @@ export default function UploadResumesPage() {
               Upload Resumes
             </h1>
             <p className="text-xs text-zinc-500 font-medium mt-1">
-              Multi-format ingestion (PDF, Word DOCX, Image OCR) processed asynchronously — PII is redacted before AI analysis.
+              High-accuracy PDF resume ingestion processed asynchronously — PII is redacted before AI analysis.
             </p>
           </div>
 

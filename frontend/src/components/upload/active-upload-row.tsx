@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { FileText, FileCode, Image as ImageIcon, X, Check, Circle, Disc } from "lucide-react";
+import { FileText, X, Check, Circle, Disc } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { ActiveUpload } from "@/types/ats";
 
@@ -13,9 +13,6 @@ interface ActiveUploadRowProps {
 const STEPS = ["Parsing", "PII Scrub", "LLM Extract", "Indexing", "Done"] as const;
 
 export function ActiveUploadRow({ upload, onCancel }: ActiveUploadRowProps) {
-  const isImage = /\.(png|jpe?g|webp|tiff|bmp)$/i.test(upload.filename);
-  const isDocx = /\.(docx|doc)$/i.test(upload.filename);
-
   const currentStepClean = upload.currentStep.replace("Image OCR", "Parsing").replace("Docx Parse", "Parsing");
   const currentStepIdx = STEPS.indexOf(
     currentStepClean as (typeof STEPS)[number]
@@ -26,20 +23,8 @@ export function ActiveUploadRow({ upload, onCancel }: ActiveUploadRowProps) {
       {/* Top Row: File info + Status + Cancel */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-            isImage 
-              ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80"
-              : isDocx
-              ? "bg-blue-50 text-blue-700 border border-blue-200/80"
-              : "bg-zinc-100 text-zinc-700 border border-zinc-200/80"
-          }`}>
-            {isImage ? (
-              <ImageIcon className="w-4 h-4" />
-            ) : isDocx ? (
-              <FileCode className="w-4 h-4" />
-            ) : (
-              <FileText className="w-4 h-4" />
-            )}
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-red-50 text-red-700 border border-red-200/80">
+            <FileText className="w-4 h-4" />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -49,16 +34,9 @@ export function ActiveUploadRow({ upload, onCancel }: ActiveUploadRowProps) {
               <span className="bg-zinc-100 text-zinc-600 text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md border border-zinc-200">
                 {upload.taskId}
               </span>
-              {isImage && (
-                <span className="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-1.5 py-0.5 rounded">
-                  OCR Image
-                </span>
-              )}
-              {isDocx && (
-                <span className="bg-blue-100 text-blue-800 text-[9px] font-bold px-1.5 py-0.5 rounded">
-                  Word DOCX
-                </span>
-              )}
+              <span className="bg-red-50 text-red-700 border border-red-200/60 text-[9px] font-bold px-1.5 py-0.5 rounded">
+                PDF
+              </span>
             </div>
             <span className="text-[11px] font-bold text-zinc-500 tracking-wide uppercase">
               {upload.statusLabel}
@@ -88,7 +66,7 @@ export function ActiveUploadRow({ upload, onCancel }: ActiveUploadRowProps) {
         {STEPS.map((step, idx) => {
           const isCompleted = currentStepIdx > idx || upload.progress >= (idx + 1) * 20;
           const isCurrent = currentStepIdx === idx && upload.progress < 100;
-          const displayStepName = idx === 0 ? (isImage ? "Image OCR" : isDocx ? "Docx Parse" : "PDF Parse") : step;
+          const displayStepName = idx === 0 ? "PDF Parse" : step;
 
           return (
             <div

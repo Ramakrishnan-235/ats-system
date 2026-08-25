@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useRef, useState } from "react";
-import { UploadCloud, FileText, Image as ImageIcon, FileCode } from "lucide-react";
+import { UploadCloud, FileText } from "lucide-react";
 
 interface ResumeDropzoneProps {
   onFilesSelected: (files: File[]) => void;
 }
 
-const ALLOWED_EXTENSIONS = [".pdf", ".docx", ".doc", ".png", ".jpg", ".jpeg", ".webp", ".tiff", ".bmp"];
+const ALLOWED_EXTENSIONS = [".pdf"];
 
 export function ResumeDropzone({ onFilesSelected }: ResumeDropzoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -29,9 +29,7 @@ export function ResumeDropzone({ onFilesSelected }: ResumeDropzoneProps) {
       const name = f.name.toLowerCase();
       return (
         ALLOWED_EXTENSIONS.some((ext) => name.endsWith(ext)) ||
-        f.type.startsWith("image/") ||
-        f.type === "application/pdf" ||
-        f.type.includes("word")
+        f.type === "application/pdf"
       );
     });
     if (files.length > 0) {
@@ -41,8 +39,13 @@ export function ResumeDropzone({ onFilesSelected }: ResumeDropzoneProps) {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const files = Array.from(e.target.files);
-      onFilesSelected(files);
+      const files = Array.from(e.target.files).filter((f) => {
+        const name = f.name.toLowerCase();
+        return name.endsWith(".pdf") || f.type === "application/pdf";
+      });
+      if (files.length > 0) {
+        onFilesSelected(files);
+      }
     }
   };
 
@@ -62,7 +65,7 @@ export function ResumeDropzone({ onFilesSelected }: ResumeDropzoneProps) {
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.webp,.tiff,.bmp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,image/*"
+        accept=".pdf,application/pdf"
         className="hidden"
         onChange={handleFileChange}
       />
@@ -72,7 +75,7 @@ export function ResumeDropzone({ onFilesSelected }: ResumeDropzoneProps) {
       </div>
 
       <h3 className="text-sm font-bold text-zinc-950">
-        Drag & drop Resumes (PDF, Word DOCX, PNG/JPG Images)
+        Drag & drop PDF Resumes
       </h3>
       <p className="text-xs text-zinc-500 mt-1">
         <span className="font-semibold underline decoration-zinc-400 underline-offset-2">
@@ -81,19 +84,11 @@ export function ResumeDropzone({ onFilesSelected }: ResumeDropzoneProps) {
         • Supports multi-file background batch ingestion
       </p>
 
-      {/* Format Supported Badges */}
+      {/* Format Supported Badge */}
       <div className="flex items-center gap-2 mt-4 pt-3 border-t border-zinc-100 flex-wrap justify-center">
-        <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 border border-red-200/60 text-[10px] font-bold px-2 py-0.5 rounded-md">
+        <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 border border-red-200/60 text-[10px] font-bold px-2.5 py-0.5 rounded-md">
           <FileText className="w-3 h-3" />
-          <span>PDF Documents</span>
-        </span>
-        <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200/60 text-[10px] font-bold px-2 py-0.5 rounded-md">
-          <FileCode className="w-3 h-3" />
-          <span>Word DOCX</span>
-        </span>
-        <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200/60 text-[10px] font-bold px-2 py-0.5 rounded-md">
-          <ImageIcon className="w-3 h-3" />
-          <span>Image OCR (PNG / JPG)</span>
+          <span>PDF Documents (Layout & Table Parsing + Presidio PII Masking)</span>
         </span>
       </div>
     </div>

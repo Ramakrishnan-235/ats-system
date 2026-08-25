@@ -276,17 +276,7 @@ export function AddCandidateJobModal({
     setUploadedFile(file);
     setIsUploading(true);
     setUploadProgress(15);
-    const fileNameLower = file.name.toLowerCase();
-    const isImage = /\.(png|jpe?g|webp|tiff|bmp)$/i.test(fileNameLower);
-    const isDocx = /\.(docx|doc)$/i.test(fileNameLower);
-
-    const initialStep = isImage
-      ? "Scanning Image via OCR (PyMuPDF / Docling Vision)..."
-      : isDocx
-      ? "Parsing Word DOCX Layout & Experience Tables..."
-      : "Parsing PDF layout & extracting structured sections...";
-
-    setUploadStep(initialStep);
+    setUploadStep("Parsing PDF layout & extracting structured sections...");
 
     uploadResumeFile(file, jobId).then((res) => {
       // Step 1: PII Redaction
@@ -647,7 +637,7 @@ export function AddCandidateJobModal({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.webp,.tiff,.bmp,image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
+              accept=".pdf,application/pdf"
               className="hidden"
               onChange={(e) => {
                 if (e.target.files && e.target.files[0]) {
@@ -668,19 +658,13 @@ export function AddCandidateJobModal({
                   Select or drop a candidate resume
                 </h3>
                 <p className="text-xs text-zinc-500 mt-1">
-                  Supports PDF Layout Parsing, Word DOCX, and Image OCR extraction + Presidio PII scrubbing
+                  Supports PDF Layout Parsing + Presidio PII scrubbing
                 </p>
 
                 {/* Badges */}
                 <div className="flex items-center gap-1.5 mt-3 flex-wrap justify-center">
                   <span className="bg-red-50 text-red-700 border border-red-200/60 text-[10px] font-bold px-2 py-0.5 rounded-md">
-                    PDF
-                  </span>
-                  <span className="bg-blue-50 text-blue-700 border border-blue-200/60 text-[10px] font-bold px-2 py-0.5 rounded-md">
-                    Word DOCX
-                  </span>
-                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200/60 text-[10px] font-bold px-2 py-0.5 rounded-md">
-                    Image OCR (PNG/JPG)
+                    PDF Documents
                   </span>
                 </div>
 
@@ -719,7 +703,7 @@ export function AddCandidateJobModal({
               </div>
             )}
 
-            {/* Sample Multi-Format Resumes to Test With One Click */}
+            {/* Sample PDF Resumes to Test With One Click */}
             <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-200/80 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
@@ -738,19 +722,19 @@ export function AddCandidateJobModal({
                     content: `Alex Rivera\nStaff Backend Engineer\nalex.rivera@example.com | (555) 349-2180 | Austin, TX\n\nEXPERIENCE\nStaff Backend Engineer — Stripe (2021 - Present)\n- Engineered distributed microservices in Go and Python processing 200k RPS with sub-millisecond p99 latency.\n- Managed AWS, Kubernetes, Terraform, Docker, PostgreSQL, Redis, Kafka.\n\nSKILLS\nPython, Go, Kubernetes, AWS, Terraform, Docker, PostgreSQL, Redis, Kafka, Microservices, System Design, REST APIs, CI/CD`,
                   },
                   {
-                    name: "David_Chen_Platform_Dev.docx",
+                    name: "David_Chen_Platform_Dev.pdf",
                     role: "Senior Platform Architect",
-                    badge: "DOCX",
-                    badgeClass: "bg-blue-50 text-blue-700 border-blue-200/60",
-                    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    badge: "PDF",
+                    badgeClass: "bg-red-50 text-red-700 border-red-200/60",
+                    type: "application/pdf",
                     content: `David Chen\nSenior Platform Architect\ndavid.chen@example.com | (555) 782-9012 | Seattle, WA\n\nEXPERIENCE\nLead Platform Engineer — Cloudflare (2020 - Present)\n- Designed multi-region cloud architecture across AWS, Azure, GCP with Terraform infrastructure as code.\n- Implemented gRPC, Cassandra, Redis caching, and zero-downtime database migrations.\n\nSKILLS\nAWS, Azure, GCP, Cloud Architecture, Terraform, Kubernetes, Docker, Go, Python, Microservices, System Design, gRPC, Redis`,
                   },
                   {
-                    name: "Sarah_Jenkins_Frontend.png",
+                    name: "Sarah_Jenkins_Frontend.pdf",
                     role: "Staff UI/UX Systems Dev",
-                    badge: "OCR PNG",
-                    badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200/60",
-                    type: "image/png",
+                    badge: "PDF",
+                    badgeClass: "bg-red-50 text-red-700 border-red-200/60",
+                    type: "application/pdf",
                     content: `Sarah Jenkins\nStaff UI/UX Systems Developer\nsarah.j@example.com | (555) 890-1234 | San Francisco, CA\n\nEXPERIENCE\nStaff Frontend Engineer — Airbnb (2019 - Present)\n- Built design system components using React, TypeScript, Next.js, and Tailwind CSS.\n- Led user research and Figma prototyping.\n\nSKILLS\nReact, TypeScript, Next.js, Tailwind CSS, JavaScript, HTML, CSS, Figma, UI/UX, User Research, GraphQL, Git`,
                   },
                 ].map((sample) => (

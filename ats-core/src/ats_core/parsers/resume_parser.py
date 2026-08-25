@@ -1,13 +1,13 @@
 import re
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
-from ats_core.parsers.unified_parser import UnifiedDocumentParser
+from ats_core.parsers.pdf_parser import HybridPDFParser
 
-_unified_parser = UnifiedDocumentParser()
+_pdf_parser = HybridPDFParser()
 
 def extract_text_from_pdf(pdf_bytes: bytes, filename: str = "resume.pdf") -> str:
     """Extracts clean formatted text from PDF bytes."""
-    text, _, _ = _unified_parser.parse(pdf_bytes, filename=filename)
+    text, _ = _pdf_parser.parse_pdf(pdf_bytes, filename=filename)
     return text
 
 TECH_SKILLS_CATALOG = [
@@ -26,8 +26,9 @@ TECH_SKILLS_CATALOG = [
 ]
 
 def extract_text_from_document(file_bytes: bytes, filename: str = "resume.pdf") -> Tuple[str, str, str]:
-    """Extracts clean formatted text from PDF, Word DOCX, or Image OCR."""
-    return _unified_parser.parse(file_bytes, filename=filename)
+    """Extracts clean formatted text from PDF documents using HybridPDFParser."""
+    raw_text, engine = _pdf_parser.parse_pdf(file_bytes, filename=filename)
+    return raw_text, engine, "pdf"
 
 def extract_candidate_name(lines: List[str], filename: str = "", email: str = "") -> str:
     """
@@ -71,7 +72,7 @@ def extract_candidate_name(lines: List[str], filename: str = "", email: str = ""
         clean_fname = re.sub(r"(?i)[-_]?(?:resume|cv|profile|updated|final|latest|20\d{2}|v\d+)[-_]?", " ", clean_fname)
         clean_fname = re.sub(r"[-_]+", " ", clean_fname).strip()
         noise_words = {
-            "resume", "cv", "pdf", "docx", "doc", "ml", "ai", "swe", "frontend", "backend",
+            "resume", "cv", "pdf", "ml", "ai", "swe", "frontend", "backend",
             "fullstack", "dev", "engineer", "developer", "architect", "lead", "senior", "staff", "intern"
         }
         fname_words = [w for w in clean_fname.split() if w.lower() not in noise_words]
@@ -93,7 +94,7 @@ def parse_resume_to_candidate(
     target_job: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
-    Parses a PDF, Word DOCX, or Image (OCR) resume and extracts complete profile data,
+    Parses a PDF resume and extracts complete profile data,
     work experience, education, skills, and AI evaluation scorecard.
     """
     raw_text, engine_used, doc_format = extract_text_from_document(file_bytes, filename=filename)

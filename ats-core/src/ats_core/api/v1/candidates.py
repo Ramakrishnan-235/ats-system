@@ -545,32 +545,27 @@ async def update_candidate_stage(candidate_id: str, new_stage: str = Query(...))
 @router.post(
     "/upload-async",
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Upload PDF, Word DOCX, or Image resume for asynchronous processing and live profile extraction"
+    summary="Upload PDF resume for asynchronous processing and live profile extraction"
 )
 async def upload_resume_async(
     file: UploadFile = File(...),
     job_id: Optional[str] = Form(None),
 ):
-    # Validate supported media types and file extensions (PDF, Word DOCX, Image OCR)
-    allowed_extensions = (".pdf", ".docx", ".doc", ".png", ".jpg", ".jpeg", ".webp", ".tiff", ".bmp")
+    # Validate supported media types and file extensions (PDF only)
+    allowed_extensions = (".pdf",)
     filename_lower = (file.filename or "").lower()
     
     is_valid_ext = any(filename_lower.endswith(ext) for ext in allowed_extensions)
     is_valid_mime = (
         file.content_type in (
-            "application/pdf", "application/x-pdf",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/msword",
-            "image/png", "image/jpeg", "image/jpg", "image/webp", "image/tiff", "image/bmp",
-            "application/octet-stream"
+            "application/pdf", "application/x-pdf", "application/octet-stream"
         )
-        or (file.content_type and file.content_type.startswith("image/"))
     )
 
     if not (is_valid_ext or is_valid_mime):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=f"Unsupported file format. Please upload PDF, Word (.docx), or Image (.png, .jpg) resumes."
+            detail="Unsupported file format. Please upload PDF (.pdf) resumes."
         )
 
     candidate_id = f"cand-{uuid.uuid4().hex[:6]}"
@@ -597,7 +592,7 @@ async def upload_resume_async(
         except Exception as e:
             logger.warning(f"Could not fetch JOBS_STORE: {e}")
 
-    # Extract real profile data from the uploaded document (PDF, Word DOCX, Image OCR)
+    # Extract real profile data from the uploaded PDF document
     try:
         from ats_core.parsers.resume_parser import parse_resume_to_candidate
         parsed_candidate = parse_resume_to_candidate(
