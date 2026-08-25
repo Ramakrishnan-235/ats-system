@@ -75,12 +75,28 @@ export interface ExperienceItem {
   description: string;
 }
 
+export interface CitationBoundingBox {
+  x: number;      // 0-100% of page width
+  y: number;      // 0-100% of page height
+  width: number;  // 0-100% of page width
+  height: number; // 0-100% of page height
+}
+
+export interface CitationLocation {
+  page: number;
+  section?: string;
+  text_snippet: string;
+  bbox?: CitationBoundingBox;
+  category_name?: string;
+}
+
 export interface ScorecardCategory {
   name: string;
   score: number;
   max_score: number;
   quote?: string;
   source_ref?: string;
+  citation_location?: CitationLocation;
 }
 
 export interface TeamNote {
@@ -124,6 +140,9 @@ export interface CandidateDetail {
     team_notes: TeamNote[];
   };
   raw_text?: string;
+  pdf_url?: string;
+  pdf_blob_url?: string;
+  is_real_pdf?: boolean;
 }
 
 export interface RankedCandidate {
@@ -146,6 +165,10 @@ export interface RankedCandidate {
   suggestedImprovements?: string[];
   suggestedQuestions?: string[];
   jobId?: string;
+  raw_text?: string;
+  pdf_url?: string;
+  pdf_blob_url?: string;
+  experience?: ExperienceItem[];
 }
 
 export interface ActiveUpload {

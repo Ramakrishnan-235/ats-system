@@ -1,6 +1,6 @@
 import io
 import logging
-from typing import Tuple, List, Dict, Any
+from typing import Tuple, List, Dict, Any, Optional
 import fitz  # PyMuPDF
 from docling.document_converter import DocumentConverter
 from docling.datamodel.base_models import DocumentStream
@@ -139,3 +139,64 @@ class HybridPDFParser:
                     return extracted_text, "pymupdf"
 
             return extracted_text, "pymupdf"
+
+    def locate_citation_in_pdf(self, file_bytes: bytes, search_phrase: str) -> Optional[Dict[str, Any]]:
+        """
+        Searches for a verbatim citation phrase in a PDF document and returns
+        the 1-indexed page number and normalized bounding box coordinates (0-100%).
+        """
+        if not file_bytes or not search_phrase or len(search_phrase.strip()) < 3:
+            return None
+
+        clean_phrase = search_phrase.strip().strip('"').strip("'").strip()
+        clean_phrase = clean_phrase.replace("...", "").replace("…", "").strip()
+        if not clean_phrase:
+            return None
+
+        try:
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+        except Exception as e:
+            logger.warning(f"Could not open PDF for citation grounding: {e}")
+            return None
+
+        for page_idx in range(len(doc)):
+            page = doc[page_idx]
+            page_rect = page.rect
+            width = max(1.0, float(page_rect.width))
+            height = max(1.0, float(page_rect.height))
+
+            rects = page.search_for(clean_phrase)
+            if not rects and len(clean_phrase) > 30:
+                # Try search with first 6-8 words
+                sub_phrase = " ".join(clean_phrase.split()[:8])
+                rects = page.search_for(sub_phrase)
+
+            if not rects and len(clean_phrase.split()) > 4:
+                # Try search with first 4 words
+                sub_phrase = " ".join(clean_phrase.split()[:4])
+                rects = page.search_for(sub_phrase)
+
+            if rects:
+                x0 = min(r.x0 for r in rects)
+                y0 = min(r.y0 for r in rects)
+                x1 = max(r.x1 for r in rects)
+                y1 = max(r.y1 for r in rects)
+
+                norm_x = round((x0 / width) * 100.0, 2)
+                norm_y = round((y0 / height) * 100.0, 2)
+                norm_w = round(((x1 - x0) / width) * 100.0, 2)
+                norm_h = round(((y1 - y0) / height) * 100.0, 2)
+
+                return {
+                    "page": page_idx + 1,
+                    "text_snippet": clean_phrase,
+                    "bbox": {
+                        "x": norm_x,
+                        "y": norm_y,
+                        "width": norm_w,
+                        "height": norm_h,
+                    },
+                    "raw_rect": [round(x0, 2), round(y0, 2), round(x1, 2), round(y1, 2)],
+                }
+
+        return None

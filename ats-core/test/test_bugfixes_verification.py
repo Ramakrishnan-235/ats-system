@@ -12,6 +12,7 @@ root_dir = str(Path(__file__).resolve().parent.parent)
 if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
+import pytest
 from ats_core.search.reranker import CandidateReranker
 from ats_core.search.bm25_indexer import BM25LexicalIndex
 from ats_core.evaluator.llm_evaluator import _sanitize_untrusted_prompt_input
@@ -65,6 +66,7 @@ def test_prompt_injection():
     print("  ✓ Prompt injection directives neutralized.")
 
 
+@pytest.mark.asyncio
 async def test_auth():
     print("[4/4] Testing API Key verification...")
     # Test dev mode fallback

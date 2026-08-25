@@ -5,6 +5,7 @@ import {
   MOCK_PIPELINE,
   MOCK_JOBS,
   MOCK_CANDIDATE_PRIYA,
+  MOCK_CANDIDATES_REGISTRY,
 } from "./mock-data";
 import {
   StatMetric,
@@ -646,7 +647,7 @@ export async function updateJobCandidateStage(
 // -------------------------------------------------------------------
 
 function registerOrSyncCandidateProfile(
-  candidate: RankedCandidate | Partial<RankedCandidate> & { name: string },
+  candidate: Partial<RankedCandidate> & { name: string },
   jobTitle = "Cloud Architect",
   jobId = "job-009"
 ): CandidateDetail {
@@ -658,6 +659,12 @@ function registerOrSyncCandidateProfile(
     profiles[candId].status = candidate.stage || profiles[candId].status;
     if (jobTitle) profiles[candId].applied_for_job = jobTitle;
     if (jobId) profiles[candId].applied_for_job_id = jobId;
+    if (candidate.raw_text) profiles[candId].raw_text = candidate.raw_text;
+    if (candidate.pdf_blob_url) profiles[candId].pdf_blob_url = candidate.pdf_blob_url;
+    if (candidate.pdf_url) profiles[candId].pdf_url = candidate.pdf_url;
+    if (candidate.experience && candidate.experience.length > 0) {
+      profiles[candId].experience = candidate.experience;
+    }
     setStoredItem("ats_candidate_profiles", profiles);
     return profiles[candId];
   }
@@ -671,6 +678,21 @@ function registerOrSyncCandidateProfile(
   const safeEmail = `${candName.toLowerCase().replace(/[^a-z0-9]/g, ".")}@example.com`;
   const safeLinkedin = `linkedin.com/in/${candName.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
   const safeInitials = candName.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase() || "CD";
+
+  // Build real experience from headline or actual resume
+  const experienceItems =
+    candidate.experience && candidate.experience.length > 0
+      ? candidate.experience
+      : [
+          {
+            role: candidate.headline?.includes("@") ? candidate.headline.split("@")[0].trim() : (candidate.headline || "Senior Engineer"),
+            company: candidate.headline?.includes("@") ? candidate.headline.split("@")[1].trim() : "Industry Experience",
+            period: "2021 — Present",
+            description:
+              candidate.quote ||
+              `Designed and built core production services, microservices, and technical pipelines utilizing ${skills.slice(0, 4).join(", ")}.`,
+          },
+        ];
 
   const newProfile: CandidateDetail = {
     id: candId,
@@ -689,25 +711,12 @@ function registerOrSyncCandidateProfile(
     applied_for_job: jobTitle,
     applied_for_job_id: jobId,
     years_of_experience: 7.0,
-    highest_education: "M.S. in Computer Science / Engineering",
+    highest_education: "Degree in Computer Science & Engineering",
     core_skills: skills,
-    experience: [
-      {
-        role: candidate.headline?.split("@")[0]?.trim() || "Senior Engineer",
-        company: candidate.headline?.split("@")[1]?.trim() || "Technology Corp",
-        period: "2021 — Present",
-        description:
-          candidate.quote ||
-          `Led architecture of scalable systems, microservices, and automated pipelines with high reliability.`,
-      },
-      {
-        role: "Software Engineer",
-        company: "Platform Innovations Inc.",
-        period: "2018 — 2021",
-        description:
-          "Developed core backend APIs, distributed caching layers, and CI/CD pipelines.",
-      },
-    ],
+    experience: experienceItems,
+    raw_text: candidate.raw_text,
+    pdf_url: candidate.pdf_url || `${API_BASE_URL}/candidates/${candId}/resume-pdf`,
+    pdf_blob_url: candidate.pdf_blob_url,
     scorecard: {
       overall_match_score: matchScore,
       match_tier:
@@ -716,7 +725,7 @@ function registerOrSyncCandidateProfile(
           : matchScore >= 87
           ? "Strong Match"
           : "Match",
-      model_version: "Model gemma4:e2b",
+      model_version: "Model gemma2:2b (Live Evaluator)",
       evaluated_at: "Evaluated recently",
       categories: [
         {
@@ -859,12 +868,12 @@ export async function fetchCandidate(id: string): Promise<CandidateDetail> {
     console.warn(`Backend fetch for candidate ${id} failed:`, err);
   }
 
-  // 3. Fallback: check if matches built-in Priya or synthesize rich profile
-  if (id === "cand-001" || id === "cand-1") {
-    return { ...MOCK_CANDIDATE_PRIYA, id };
+  // 3. Check Mock Candidates Registry
+  if (MOCK_CANDIDATES_REGISTRY[id]) {
+    return { ...MOCK_CANDIDATES_REGISTRY[id], id };
   }
 
-  // Synthesize realistic profile for this candidate ID
+  // 4. Fallback: synthesize realistic profile for any other candidate ID
   const synthesized = registerOrSyncCandidateProfile(
     {
       id,
@@ -954,6 +963,8 @@ export async function addCandidateNote(
 }
 
 export async function uploadResumeFile(file: File, jobId?: string) {
+  const localPdfBlobUrl = typeof window !== "undefined" ? URL.createObjectURL(file) : undefined;
+
   try {
     const formData = new FormData();
     formData.append("file", file);
@@ -965,7 +976,30 @@ export async function uploadResumeFile(file: File, jobId?: string) {
       body: formData,
     });
     if (!res.ok) throw new Error("Failed to upload resume");
-    return await res.json();
+    const data = await res.json();
+
+    // Cache the real uploaded PDF blob URL & PDF URL for candidate profile
+    const candId = data.candidate_id;
+    const profiles = getStoredItem<Record<string, CandidateDetail>>("ats_candidate_profiles", {});
+    
+    try {
+      const candRes = await fetch(`${API_BASE_URL}/candidates/${candId}`);
+      if (candRes.ok) {
+        const fullCandidate: CandidateDetail = await candRes.json();
+        fullCandidate.pdf_blob_url = localPdfBlobUrl;
+        fullCandidate.pdf_url = `${API_BASE_URL}/candidates/${candId}/resume-pdf`;
+        fullCandidate.is_real_pdf = true;
+        profiles[candId] = fullCandidate;
+        setStoredItem("ats_candidate_profiles", profiles);
+      }
+    } catch (e) {
+      console.warn("Could not load backend parsed profile:", e);
+    }
+
+    return {
+      ...data,
+      pdf_blob_url: localPdfBlobUrl,
+    };
   } catch (err) {
     console.warn(
       "Backend not reached for upload, simulating success response:",
@@ -980,6 +1014,7 @@ export async function uploadResumeFile(file: File, jobId?: string) {
       job_id: jobId,
       match_score: 94,
       message: "Resume queued for processing.",
+      pdf_blob_url: localPdfBlobUrl,
     };
   }
 }

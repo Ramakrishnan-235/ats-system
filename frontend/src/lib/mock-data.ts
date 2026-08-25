@@ -942,7 +942,7 @@ export const MOCK_CANDIDATE_PRIYA: CandidateDetail = {
   scorecard: {
     overall_match_score: 95,
     match_tier: "Exceptional Match",
-    model_version: "Model gemma2:2b",
+    model_version: "Model gemma2:2b (Live Deep Evaluator)",
     evaluated_at: "Evaluated 2h ago",
     categories: [
       {
@@ -950,24 +950,60 @@ export const MOCK_CANDIDATE_PRIYA: CandidateDetail = {
         score: 9.2,
         max_score: 10.0,
         quote:
-          "Led migration of monolith to FastAPI microservices, reducing p99 latency by 40%. Implemented robust idempotency keys for distributed payments...",
-        source_ref: "View source ¶12",
+          "Led migration of monolith to FastAPI microservices, reducing p99 latency by 40%. Implemented robust idempotency keys for distributed payments.",
+        source_ref: "Page 1 • Stripe",
+        citation_location: {
+          page: 1,
+          section: "Professional Experience — Stripe",
+          text_snippet: "Led migration of monolith to FastAPI microservices, reducing p99 latency by 40%. Implemented robust idempotency keys for distributed payments.",
+          category_name: "Technical Depth",
+          bbox: {
+            x: 8.0,
+            y: 31.5,
+            width: 84.0,
+            height: 6.0,
+          },
+        },
       },
       {
         name: "System Design",
         score: 8.5,
         max_score: 10.0,
         quote:
-          "Strong evidence of distributed systems design, specifically regarding eventual consistency and partitioned PostgreSQL shards.",
-        source_ref: "View source ¶8",
+          "Designed real-time geospatial driver dispatch ingestion microservices with Go and Kafka handling 150k events/sec.",
+        source_ref: "Page 1 • Uber",
+        citation_location: {
+          page: 1,
+          section: "Professional Experience — Uber",
+          text_snippet: "Designed real-time geospatial driver dispatch ingestion microservices with Go and Kafka handling 150k events/sec.",
+          category_name: "System Design",
+          bbox: {
+            x: 8.0,
+            y: 53.0,
+            width: 84.0,
+            height: 5.5,
+          },
+        },
       },
       {
         name: "Leadership",
         score: 7.0,
         max_score: 10.0,
         quote:
-          "Mentored 3 junior engineers. Solid team contributor, but less evidence of cross-functional strategic planning.",
-        source_ref: "View source ¶19",
+          "Mentored 3 junior engineers, established architectural design review guidelines, and ran weekly engineering brown-bags.",
+        source_ref: "Page 1 • Stripe",
+        citation_location: {
+          page: 1,
+          section: "Professional Experience — Stripe",
+          text_snippet: "Mentored 3 junior engineers, established architectural design review guidelines, and ran weekly engineering brown-bags.",
+          category_name: "Leadership",
+          bbox: {
+            x: 8.0,
+            y: 41.5,
+            width: 84.0,
+            height: 5.0,
+          },
+        },
       },
     ],
     risk_flags: [
@@ -993,6 +1029,306 @@ export const MOCK_CANDIDATE_PRIYA: CandidateDetail = {
       },
     ],
   },
+};
+
+export const MOCK_CANDIDATE_ELENA: CandidateDetail = {
+  id: "cand-002",
+  name: "Elena Rostova",
+  anonymized_name: "Candidate #8841",
+  avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&auto=format&fit=crop&q=80",
+  target_headline: "Lead Data & Distributed Systems Engineer",
+  role: "Lead Data Engineer",
+  location: "New York, NY",
+  email: "elena.rostova@example.com",
+  phone: "(212) 555-0144",
+  linkedin: "linkedin.com/in/elenarostova",
+  status: "Screening",
+  stage: "Screening",
+  applied_date: "1 day ago",
+  applied_for_job: "AI/ML Engineer",
+  years_of_experience: 7.5,
+  highest_education: "M.S. in Data Science & Distributed Computing, MIT",
+  core_skills: ["Python", "Apache Spark", "Kubernetes", "Delta Lake", "Kafka", "Airflow", "Docker", "SQL"],
+  experience: [
+    {
+      role: "Lead Data Architect",
+      company: "Snowflake",
+      period: "2020 — Present",
+      description:
+        "Built multi-tenant streaming ETL pipelines in Apache Spark and PySpark handling 12TB daily log ingestion. Orchestrated Airflow DAGs across 40+ Kubernetes worker nodes.",
+    },
+    {
+      role: "Senior Data Engineer",
+      company: "Databricks",
+      period: "2017 — 2020",
+      description:
+        "Optimized Delta Lake write-ahead tables, reducing analytical query execution times by 55%. Engineered automated schema evolution enforcement.",
+    },
+  ],
+  scorecard: {
+    overall_match_score: 93,
+    match_tier: "Exceptional Match",
+    model_version: "Model gemma2:2b (Live Deep Evaluator)",
+    evaluated_at: "Evaluated 4h ago",
+    categories: [
+      {
+        name: "Technical Depth",
+        score: 9.5,
+        max_score: 10.0,
+        quote:
+          "Built multi-tenant streaming ETL pipelines in Apache Spark and PySpark handling 12TB daily log ingestion.",
+        source_ref: "Page 1 • Snowflake",
+        citation_location: {
+          page: 1,
+          section: "Professional Experience — Snowflake",
+          text_snippet: "Built multi-tenant streaming ETL pipelines in Apache Spark and PySpark handling 12TB daily log ingestion.",
+          category_name: "Technical Depth",
+          bbox: { x: 8.0, y: 31.5, width: 84.0, height: 6.0 },
+        },
+      },
+      {
+        name: "System Design",
+        score: 9.0,
+        max_score: 10.0,
+        quote:
+          "Optimized Delta Lake write-ahead tables, reducing analytical query execution times by 55%.",
+        source_ref: "Page 1 • Databricks",
+        citation_location: {
+          page: 1,
+          section: "Professional Experience — Databricks",
+          text_snippet: "Optimized Delta Lake write-ahead tables, reducing analytical query execution times by 55%.",
+          category_name: "System Design",
+          bbox: { x: 8.0, y: 53.0, width: 84.0, height: 5.5 },
+        },
+      },
+      {
+        name: "Leadership",
+        score: 8.0,
+        max_score: 10.0,
+        quote:
+          "Orchestrated Airflow DAGs across 40+ Kubernetes worker nodes and led data engineering best practices.",
+        source_ref: "Page 1 • Snowflake",
+        citation_location: {
+          page: 1,
+          section: "Professional Experience — Snowflake",
+          text_snippet: "Orchestrated Airflow DAGs across 40+ Kubernetes worker nodes.",
+          category_name: "Leadership",
+          bbox: { x: 8.0, y: 41.5, width: 84.0, height: 5.0 },
+        },
+      },
+    ],
+    risk_flags: [
+      "Limited direct experience with real-time web application full-stack frameworks (focused primarily on big data infra).",
+    ],
+    suggested_improvements: [
+      "1. Expand Cloud Infrastructure Orchestration: Document multi-region Terraform deployments for data lakes.",
+    ],
+    suggested_questions: [
+      "How do you handle schema drifts across high-throughput Kafka streaming topics?",
+    ],
+    team_notes: [],
+  },
+};
+
+export const MOCK_CANDIDATE_MARCUS: CandidateDetail = {
+  id: "cand-003",
+  name: "Dr. Marcus Vance",
+  anonymized_name: "Candidate #9021",
+  avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80",
+  target_headline: "Principal Cloud & Systems Architect",
+  role: "Principal Cloud Architect",
+  location: "San Francisco, CA",
+  email: "marcus.vance@example.com",
+  phone: "(415) 555-0139",
+  linkedin: "linkedin.com/in/marcusvance",
+  status: "Interviewing",
+  stage: "Interviewing",
+  applied_date: "3 days ago",
+  applied_for_job: "Cloud Architect",
+  years_of_experience: 11.0,
+  highest_education: "Ph.D. in Distributed Systems, UC Berkeley",
+  core_skills: ["AWS", "Terraform", "Kubernetes", "Cloud Architecture", "Go", "Rust", "gRPC", "Docker"],
+  experience: [
+    {
+      role: "Principal Systems Architect",
+      company: "Amazon Web Services",
+      period: "2019 — Present",
+      description:
+        "Designed global multi-region VPC peering topologies and transit gateways handling 100Gbps network throughput. Standardized IaC blueprints with Terraform and AWS CDK.",
+    },
+    {
+      role: "Staff Infrastructure Engineer",
+      company: "Meta",
+      period: "2015 — 2019",
+      description:
+        "Engineered bare-metal Kubernetes container deployment pipelines and optimized Linux kernel network stack parameters.",
+    },
+  ],
+  scorecard: {
+    overall_match_score: 97,
+    match_tier: "Exceptional Match",
+    model_version: "Model gemma2:2b (Live Deep Evaluator)",
+    evaluated_at: "Evaluated 1h ago",
+    categories: [
+      {
+        name: "Technical Depth",
+        score: 9.8,
+        max_score: 10.0,
+        quote:
+          "Designed global multi-region VPC peering topologies and transit gateways handling 100Gbps network throughput.",
+        source_ref: "Page 1 • AWS",
+        citation_location: {
+          page: 1,
+          section: "Professional Experience — AWS",
+          text_snippet: "Designed global multi-region VPC peering topologies and transit gateways handling 100Gbps network throughput.",
+          category_name: "Technical Depth",
+          bbox: { x: 8.0, y: 31.5, width: 84.0, height: 6.0 },
+        },
+      },
+      {
+        name: "System Design",
+        score: 9.8,
+        max_score: 10.0,
+        quote:
+          "Engineered bare-metal Kubernetes container deployment pipelines and optimized Linux kernel network stack parameters.",
+        source_ref: "Page 1 • Meta",
+        citation_location: {
+          page: 1,
+          section: "Professional Experience — Meta",
+          text_snippet: "Engineered bare-metal Kubernetes container deployment pipelines and optimized Linux kernel network stack parameters.",
+          category_name: "System Design",
+          bbox: { x: 8.0, y: 53.0, width: 84.0, height: 5.5 },
+        },
+      },
+      {
+        name: "Leadership",
+        score: 9.2,
+        max_score: 10.0,
+        quote:
+          "Standardized IaC blueprints with Terraform and AWS CDK across 80+ engineering squads.",
+        source_ref: "Page 1 • AWS",
+        citation_location: {
+          page: 1,
+          section: "Professional Experience — AWS",
+          text_snippet: "Standardized IaC blueprints with Terraform and AWS CDK.",
+          category_name: "Leadership",
+          bbox: { x: 8.0, y: 41.5, width: 84.0, height: 5.0 },
+        },
+      },
+    ],
+    risk_flags: [],
+    suggested_improvements: [],
+    suggested_questions: [
+      "Can you explain your approach to zero-trust microsegmentation in large multi-cluster Kubernetes deployments?",
+    ],
+    team_notes: [],
+  },
+};
+
+export const MOCK_CANDIDATE_DAVID: CandidateDetail = {
+  id: "cand-004",
+  name: "David Ross",
+  anonymized_name: "Candidate #5532",
+  avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&auto=format&fit=crop&q=80",
+  target_headline: "High-Throughput Backend Developer",
+  role: "Backend Developer",
+  location: "Austin, TX",
+  email: "david.ross@example.com",
+  phone: "(512) 555-0177",
+  linkedin: "linkedin.com/in/davidross",
+  status: "Technical Assessment",
+  stage: "Technical Assessment",
+  applied_date: "4 days ago",
+  applied_for_job: "Generative AI Developer",
+  years_of_experience: 5.0,
+  highest_education: "B.S. in Computer Engineering, University of Texas at Austin",
+  core_skills: ["Go", "GCP", "Kubernetes", "WebSockets", "Pub/Sub", "Docker", "PostgreSQL", "Prometheus"],
+  experience: [
+    {
+      role: "Backend Systems Engineer",
+      company: "Twitch",
+      period: "2021 — Present",
+      description:
+        "Implemented real-time chat ingest workers in Go, handling 250k concurrent websocket connections. Engineered GCP Pub/Sub message dispatching with zero-packet loss during peak broadcasts.",
+    },
+    {
+      role: "Cloud Engineer",
+      company: "Dell",
+      period: "2019 — 2021",
+      description:
+        "Containerized enterprise microservices and migrated monoliths to Google Kubernetes Engine (GKE).",
+    },
+  ],
+  scorecard: {
+    overall_match_score: 89,
+    match_tier: "Strong Match",
+    model_version: "Model gemma2:2b (Live Deep Evaluator)",
+    evaluated_at: "Evaluated 1d ago",
+    categories: [
+      {
+        name: "Technical Depth",
+        score: 9.0,
+        max_score: 10.0,
+        quote:
+          "Implemented real-time chat ingest workers in Go, handling 250k concurrent websocket connections.",
+        source_ref: "Page 1 • Twitch",
+        citation_location: {
+          page: 1,
+          section: "Professional Experience — Twitch",
+          text_snippet: "Implemented real-time chat ingest workers in Go, handling 250k concurrent websocket connections.",
+          category_name: "Technical Depth",
+          bbox: { x: 8.0, y: 31.5, width: 84.0, height: 6.0 },
+        },
+      },
+      {
+        name: "System Design",
+        score: 8.4,
+        max_score: 10.0,
+        quote:
+          "Engineered GCP Pub/Sub message dispatching with zero-packet loss during peak broadcasts.",
+        source_ref: "Page 1 • Twitch",
+        citation_location: {
+          page: 1,
+          section: "Professional Experience — Twitch",
+          text_snippet: "Engineered GCP Pub/Sub message dispatching with zero-packet loss during peak broadcasts.",
+          category_name: "System Design",
+          bbox: { x: 8.0, y: 53.0, width: 84.0, height: 5.5 },
+        },
+      },
+      {
+        name: "Leadership",
+        score: 7.2,
+        max_score: 10.0,
+        quote:
+          "Containerized enterprise microservices and led team migration to Google Kubernetes Engine (GKE).",
+        source_ref: "Page 1 • Dell",
+        citation_location: {
+          page: 1,
+          section: "Professional Experience — Dell",
+          text_snippet: "Containerized enterprise microservices and migrated monoliths to Google Kubernetes Engine (GKE).",
+          category_name: "Leadership",
+          bbox: { x: 8.0, y: 41.5, width: 84.0, height: 5.0 },
+        },
+      },
+    ],
+    risk_flags: [],
+    suggested_improvements: [],
+    suggested_questions: [],
+    team_notes: [],
+  },
+};
+
+export const MOCK_CANDIDATES_REGISTRY: Record<string, CandidateDetail> = {
+  "cand-001": MOCK_CANDIDATE_PRIYA,
+  "cand-priya": MOCK_CANDIDATE_PRIYA,
+  "cand-1": MOCK_CANDIDATE_PRIYA,
+  "cand-002": MOCK_CANDIDATE_ELENA,
+  "cand-2": MOCK_CANDIDATE_ELENA,
+  "cand-003": MOCK_CANDIDATE_MARCUS,
+  "cand-3": MOCK_CANDIDATE_MARCUS,
+  "cand-pool-001": MOCK_CANDIDATE_MARCUS,
+  "cand-004": MOCK_CANDIDATE_DAVID,
+  "cand-4": MOCK_CANDIDATE_DAVID,
 };
 
 export const MOCK_ACTIVE_UPLOADS: ActiveUpload[] = [

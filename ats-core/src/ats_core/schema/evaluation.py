@@ -17,6 +17,24 @@ class CriterionCategory(str, Enum):
     DOMAIN_EXPERTISE = "Domain / Industry Knowledge"
 
 
+class CitationBoundingBox(BaseModel):
+    x: float = Field(default=0.0, description="Relative horizontal start position (0-100% of page width).")
+    y: float = Field(default=0.0, description="Relative vertical start position (0-100% of page height).")
+    width: float = Field(default=100.0, description="Relative width (0-100% of page width).")
+    height: float = Field(default=5.0, description="Relative height (0-100% of page height).")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class CitationLocation(BaseModel):
+    page: int = Field(default=1, ge=1, description="1-indexed PDF page number containing the citation.")
+    section: Optional[str] = Field(default=None, description="Document section header (e.g., 'Professional Experience').")
+    text_snippet: str = Field(default="", description="Exact or normalized sentence/phrase located on page.")
+    bbox: Optional[CitationBoundingBox] = Field(default=None, description="Bounding box coordinates normalized to page dimensions.")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class CriterionScore(BaseModel):
     category: CriterionCategory = Field(
         default=CriterionCategory.TECH_STACK_ALIGNMENT,
@@ -38,6 +56,10 @@ class CriterionScore(BaseModel):
     verbatim_citation: Optional[str] = Field(
         default=None,
         description="Exact quote or phrase from the resume proving this assessment."
+    )
+    citation_location: Optional[CitationLocation] = Field(
+        default=None,
+        description="Ground-truth PDF bounding box and page location for interactive UI highlighting."
     )
 
     model_config = ConfigDict(use_enum_values=True, populate_by_name=True)

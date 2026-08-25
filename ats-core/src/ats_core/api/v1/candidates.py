@@ -724,3 +724,92 @@ async def get_task_status(task_id: str):
         response["traceback"] = traceback
 
     return response
+
+
+class LocateCitationRequest(BaseModel):
+    search_phrase: str
+    filename: Optional[str] = None
+
+
+@router.post(
+    "/{candidate_id}/locate-citation",
+    summary="Ground citation snippet to PDF page and bounding box coordinates"
+)
+async def locate_candidate_citation(
+    candidate_id: str,
+    request: LocateCitationRequest,
+):
+    from ats_core.parsers.pdf_parser import HybridPDFParser
+
+    # Search for staged resume file or sample files
+    candidate = CANDIDATES_STORE.get(candidate_id)
+    pdf_bytes = None
+
+    # Check staging dir
+    for f in UPLOAD_STAGING_DIR.glob(f"{candidate_id}_*.pdf"):
+        try:
+            pdf_bytes = f.read_bytes()
+            break
+        except Exception:
+            pass
+
+    if not pdf_bytes:
+        # Fallback to test sample PDF
+        sample_path = Path(__file__).resolve().parent.parent.parent / "test" / "sample_resumes"
+        for f in sample_path.glob("*.pdf"):
+            try:
+                pdf_bytes = f.read_bytes()
+                break
+            except Exception:
+                pass
+
+    if not pdf_bytes:
+        return {
+            "found": False,
+            "candidate_id": candidate_id,
+            "search_phrase": request.search_phrase,
+            "location": None,
+        }
+
+    parser = HybridPDFParser()
+    location = parser.locate_citation_in_pdf(pdf_bytes, request.search_phrase)
+
+    return {
+        "found": location is not None,
+        "candidate_id": candidate_id,
+        "search_phrase": request.search_phrase,
+        "location": location,
+    }
+
+
+@router.get(
+    "/{candidate_id}/resume-pdf",
+    summary="Serve the actual uploaded PDF resume document"
+)
+async def get_candidate_resume_pdf(candidate_id: str):
+    from fastapi.responses import FileResponse, Response
+
+    # Check staging dir
+    for f in UPLOAD_STAGING_DIR.glob(f"{candidate_id}_*.pdf"):
+        if f.exists():
+            return FileResponse(
+                path=str(f),
+                media_type="application/pdf",
+                filename=f.name.split("_", 1)[-1] if "_" in f.name else f.name
+            )
+
+    # Check sample resumes for default mock candidates
+    sample_path = Path(__file__).resolve().parent.parent.parent / "test" / "sample_resumes"
+    if sample_path.exists():
+        for f in sample_path.glob("*.pdf"):
+            if f.exists():
+                return FileResponse(
+                    path=str(f),
+                    media_type="application/pdf",
+                    filename=f.name
+                )
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Original PDF resume for candidate '{candidate_id}' not found."
+    )

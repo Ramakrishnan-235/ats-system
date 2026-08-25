@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { CandidateDetail, TeamNote } from "@/types/ats";
+import { CandidateDetail, TeamNote, CitationLocation } from "@/types/ats";
 import { addCandidateNote } from "@/lib/api";
 
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
@@ -27,9 +27,10 @@ const CATEGORY_ICONS: Record<string, React.ElementType> = {
 
 interface AIScorecardTabProps {
   candidate: CandidateDetail;
+  onSelectCitation?: (citation: CitationLocation) => void;
 }
 
-export function AIScorecardTab({ candidate }: AIScorecardTabProps) {
+export function AIScorecardTab({ candidate, onSelectCitation }: AIScorecardTabProps) {
   const { scorecard } = candidate;
   const [notes, setNotes] = useState<TeamNote[]>(scorecard.team_notes || []);
   const [newNoteText, setNewNoteText] = useState("");
@@ -47,6 +48,18 @@ export function AIScorecardTab({ candidate }: AIScorecardTabProps) {
     } finally {
       setIsSubmittingNote(false);
     }
+  };
+
+  const handleCitationClick = (cat: typeof scorecard.categories[0]) => {
+    if (!onSelectCitation) return;
+    const loc: CitationLocation = cat.citation_location || {
+      page: 1,
+      section: `Professional Experience`,
+      text_snippet: cat.quote || "",
+      category_name: cat.name,
+      bbox: { x: 8, y: 32, width: 84, height: 6 },
+    };
+    onSelectCitation(loc);
   };
 
   return (
@@ -118,7 +131,7 @@ export function AIScorecardTab({ candidate }: AIScorecardTabProps) {
           return (
             <div
               key={cat.name}
-              className="bg-white rounded-2xl border border-zinc-200/80 p-5 shadow-xs space-y-3"
+              className="bg-white rounded-2xl border border-zinc-200/80 p-5 shadow-xs space-y-3 hover:border-zinc-300 transition-colors"
             >
               {/* Category Header with Score & Progress Bar */}
               <div className="flex items-center justify-between gap-4">
@@ -137,18 +150,26 @@ export function AIScorecardTab({ candidate }: AIScorecardTabProps) {
                 </div>
               </div>
 
-              {/* Verbatim quote or description */}
+              {/* Verbatim quote or description with interactive highlighting */}
               {cat.quote && (
-                <div className="bg-zinc-50/70 rounded-xl p-3.5 border border-zinc-100/80 space-y-2">
-                  <p className="text-xs text-zinc-700 italic leading-relaxed">
+                <div className="bg-zinc-50/80 rounded-xl p-3.5 border border-zinc-200/80 space-y-2.5">
+                  <p className="text-xs text-zinc-700 italic leading-relaxed font-normal">
                     &ldquo;{cat.quote}&rdquo;
                   </p>
-                  {cat.source_ref && (
-                    <button className="flex items-center gap-1 text-[11px] font-semibold text-zinc-900 hover:underline">
-                      <span>{cat.source_ref}</span>
-                      <ArrowUpRight className="w-3 h-3" />
+                  <div className="flex items-center justify-between pt-1 border-t border-zinc-200/60">
+                    <button
+                      onClick={() => handleCitationClick(cat)}
+                      className="inline-flex items-center gap-1.5 text-[11px] font-bold text-amber-950 bg-amber-100/90 hover:bg-amber-200/90 border border-amber-300 px-2.5 py-1 rounded-lg transition-all shadow-2xs cursor-pointer group"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-700 group-hover:scale-110 transition-transform" />
+                      <span>Locate in Resume • {cat.source_ref || "Page 1"}</span>
+                      <ArrowUpRight className="w-3 h-3 text-amber-800" />
                     </button>
-                  )}
+
+                    <span className="text-[10px] text-zinc-400 font-mono">
+                      Grounded via PyMuPDF
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
