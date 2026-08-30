@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional, Any, Dict
 from sqlalchemy import (
-    String, Text, Numeric, Integer, DateTime, ForeignKey, 
+    String, Text, Numeric, Integer, Boolean, DateTime, ForeignKey, 
     UniqueConstraint, func
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
@@ -12,6 +12,7 @@ from pgvector.sqlalchemy import Vector
 
 class Base(DeclarativeBase):
     pass
+
 
 
 class Candidate(Base):
@@ -106,3 +107,19 @@ class ScoringAudit(Base):
     application: Mapped[Optional["Application"]] = relationship(back_populates="scoring_audits")
     candidate: Mapped["Candidate"] = relationship(back_populates="scoring_audits")
     job: Mapped["JobPosting"] = relationship(back_populates="scoring_audits")
+
+
+class SkillTaxonomy(Base):
+    __tablename__ = "skills_taxonomy"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    canonical_name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    category: Mapped[str] = mapped_column(String(50), nullable=False)  # language, framework, database, platform, tool, library, domain, soft_skill
+    aliases: Mapped[List[str]] = mapped_column(ARRAY(String), default=list, nullable=False)
+    is_ambiguous: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="approved", nullable=False)  # approved, pending, rejected
+    source: Mapped[Optional[str]] = mapped_column(String(50), default="manual", nullable=True)  # lightcast, esco, onet, stackoverflow, llm, resume_parser, manual
+    occurrence_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    taxonomy_version: Mapped[str] = mapped_column(String(50), default="2026.08.1", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

@@ -100,6 +100,10 @@ class SkillsTaxonomy(BaseModel):
         default_factory=list,
         description="Complete list of all detected skills with categorized metadata."
     )
+    taxonomy_version: str = Field(
+        default="2026.08.1",
+        description="Ontology version under which skills were normalized and extracted."
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 

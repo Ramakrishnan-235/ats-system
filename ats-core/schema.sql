@@ -148,3 +148,34 @@ CREATE INDEX IF NOT EXISTS idx_audits_job ON scoring_audits (job_id);
 CREATE INDEX IF NOT EXISTS idx_audits_tier ON scoring_audits (qualification_tier);
 CREATE INDEX IF NOT EXISTS idx_audits_evaluated_at ON scoring_audits (evaluated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audits_breakdown_gin ON scoring_audits USING GIN (criteria_breakdown jsonb_path_ops);
+
+-- =============================================================================
+-- 6. SKILLS TAXONOMY TABLE
+-- Core proprietary ontology table mapping canonical names, categories, aliases,
+-- ambiguity guards, and review flywheel states.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS skills_taxonomy (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    canonical_name TEXT UNIQUE NOT NULL,
+    category TEXT NOT NULL CHECK (category IN ('language', 'framework', 'database', 'platform', 'tool', 'library', 'domain', 'soft_skill')),
+    aliases TEXT[] NOT NULL DEFAULT '{}',
+    is_ambiguous BOOLEAN NOT NULL DEFAULT FALSE,
+    status TEXT NOT NULL DEFAULT 'approved' CHECK (status IN ('approved', 'pending', 'rejected')),
+    source TEXT DEFAULT 'manual' CHECK (source IN ('lightcast', 'esco', 'onet', 'stackoverflow', 'llm', 'resume_parser', 'manual')),
+    occurrence_count INT NOT NULL DEFAULT 1,
+    taxonomy_version TEXT NOT NULL DEFAULT '2026.08.1',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_taxonomy_canonical ON skills_taxonomy (canonical_name);
+CREATE INDEX IF NOT EXISTS idx_taxonomy_category ON skills_taxonomy (category);
+CREATE INDEX IF NOT EXISTS idx_taxonomy_status ON skills_taxonomy (status);
+CREATE INDEX IF NOT EXISTS idx_taxonomy_aliases_gin ON skills_taxonomy USING GIN (aliases);
+CREATE INDEX IF NOT EXISTS idx_taxonomy_version ON skills_taxonomy (taxonomy_version);
+
+DROP TRIGGER IF EXISTS trg_taxonomy_updated_at ON skills_taxonomy;
+CREATE TRIGGER trg_taxonomy_updated_at
+BEFORE UPDATE ON skills_taxonomy
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+

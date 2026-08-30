@@ -13,6 +13,7 @@ import {
   Settings,
   LogOut,
   User,
+  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { label: "Jobs", href: "/jobs", icon: ShoppingBag },
   { label: "Candidates", href: "/candidates", icon: Users },
   { label: "Upload Resumes", href: "/upload", icon: FileUp },
+  { label: "Skill Taxonomy", href: "/taxonomy", icon: Layers },
   { label: "Analytics", href: "/analytics", icon: BarChart2 },
   { label: "Audit Log", href: "/audit-log", icon: RotateCcw },
   { label: "Settings", href: "/settings", icon: Settings },

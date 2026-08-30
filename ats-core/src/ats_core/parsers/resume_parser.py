@@ -2,6 +2,15 @@ import re
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from ats_core.parsers.pdf_parser import HybridPDFParser
+from ats_core.taxonomy.seed_data import TAXONOMY_VERSION
+from ats_core.parsers.section_anchor import (
+    anchor_sections,
+    get_section_text,
+    get_section_lines,
+    extract_structured_experience_entries,
+    anchor_skill_mentions,
+    DATE_RANGE_RE,
+)
 from ats_core.parsers.normalizers import (
     normalize_date,
     normalize_date_range,
@@ -336,98 +345,72 @@ def extract_skills_from_text(raw_text: str) -> List[str]:
 
 def extract_experience_sections(raw_text: str, default_headline: str = "Software Engineer") -> List[Dict[str, str]]:
     """
-    Extracts structured experience and internships from the resume text.
-    Handles month-year date ranges (e.g. May-Aug 2025, Dec 2024–Jan 2025, Jun–Jul 2024, Sep–Oct 2023).
+    Extracts structured experience and internships from the resume text using
+    deterministic Section Anchoring and date-range boundary detection.
     """
     experience_items: List[Dict[str, str]] = []
-    
-    # Matches:
-    # 1. Dec 2024–Jan 2025 / Dec 2024 - Present
-    # 2. May-Aug 2025 / Jun–Jul 2024 / Sep–Oct 2023
-    # 3. 2021 — Present / 2020 - 2023
-    date_range_pattern = r"(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s*(?:20\d{2}|19\d{2})?\s*[-–—to/]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Present|Current|present|current)[a-z]*\.?\s*(?:20\d{2}|19\d{2})?|(?:20\d{2}|19\d{2})\s*[-–—to]\s*(?:20\d{2}|Present|Current|present|current))"
+    lines, anchors = anchor_sections(raw_text)
+    structured_entries = extract_structured_experience_entries(lines, anchors)
 
-    # 1. Isolate the EXPERIENCE section if header exists
-    exp_header = re.search(r"(?i)\n\s*(?:EXPERIENCE|WORK EXPERIENCE|EMPLOYMENT HISTORY|INTERNSHIPS)\s*(?:\n|$)", raw_text)
-    if exp_header:
-        rest = raw_text[exp_header.end():]
-        end_header = re.search(r"(?i)\n\s*(?:KEY PROJECTS|PROJECTS|ACHIEVEMENTS|CERTIFICATIONS|EDUCATION|TECHNICAL SKILLS|PUBLICATIONS)\s*(?:\n|$)", rest)
-        exp_text = rest[:end_header.start()] if end_header else rest
-    else:
-        exp_text = raw_text
+    for entry in structured_entries:
+        entry_lines = [l.strip() for l in entry["raw_text"].split("\n") if l.strip()]
+        if not entry_lines:
+            continue
 
-    lines = [l.strip() for l in exp_text.split("\n") if l.strip()]
-    
-    current_item: Optional[Dict[str, Any]] = None
+        period = entry["date_range"] or "Recent"
+        role = default_headline
+        company = "Industry Partner"
 
-    for line in lines:
-        date_match = re.search(date_range_pattern, line, re.I)
-        is_bullet = line.startswith("•") or line.startswith("-") or line.startswith("*")
+        # Deduce role and company from non-bullet header lines
+        header_lines = [
+            l for l in entry_lines
+            if not l.startswith("•") and not l.startswith("-") and not l.startswith("*") and len(l) < 90
+        ]
 
-        if date_match and not is_bullet:
-            if current_item:
-                bullets = current_item["bullets"]
-                desc = "\n• ".join(bullets) if bullets else f"Contributed to core development and project milestones during {current_item['period']}."
-                start_n, end_n, is_curr = normalize_date_range(current_item["period"])
-                experience_items.append({
-                    "role": current_item["role"],
-                    "company": current_item["company"],
-                    "period": current_item["period"],
-                    "start_date": start_n or "Unknown",
-                    "end_date": end_n or ("Present" if is_curr else "Unknown"),
-                    "is_current_role": is_curr,
-                    "description": desc
-                })
+        for hl in header_lines:
+            clean_hl = re.sub(DATE_RANGE_RE, "", hl).strip().strip("–—|-:, ")
+            if not clean_hl:
+                continue
+            if any(r in clean_hl.lower() for r in ["engineer", "developer", "intern", "lead", "architect", "manager", "specialist", "scientist", "analyst", "consultant"]):
+                role = clean_hl
+            elif len(clean_hl) > 2 and company == "Industry Partner" and not any(k in clean_hl.lower() for k in ["education", "cgpa", "skills", "projects"]):
+                company = clean_hl
 
-            period = date_match.group(0).strip()
-            line_without_date = re.sub(date_range_pattern, "", line, flags=re.I).strip()
-            line_without_date = re.sub(r"[-—|,\s]+$", "", line_without_date).strip()
+        bullets = entry["bullets"]
+        if bullets:
+            desc = "\n• " + "\n• ".join(bullets)
+        else:
+            desc = f"Contributed to core development and project milestones during {period}."
 
-            role = line_without_date if line_without_date else default_headline
-            current_item = {
-                "role": role,
-                "company": "Industry Partner",
-                "period": period,
-                "bullets": []
-            }
-        elif current_item:
-            if is_bullet or len(line) > 35:
-                clean_b = re.sub(r"^[•\-\*]\s*", "", line).strip()
-                if not any(k in clean_b.lower() for k in ["education", "certifications", "achievements", "cgpa"]):
-                    current_item["bullets"].append(clean_b)
-            elif current_item["company"] == "Industry Partner" and len(line) < 60 and not any(k in line.lower() for k in ["education", "certifications", "achievements", "cgpa"]):
-                current_item["company"] = line
-
-    if current_item:
-        bullets = current_item["bullets"]
-        desc = "\n• ".join(bullets) if bullets else f"Contributed to core development and project milestones during {current_item['period']}."
-        start_n, end_n, is_curr = normalize_date_range(current_item["period"])
+        start_n, end_n, is_curr = normalize_date_range(period)
         experience_items.append({
-            "role": current_item["role"],
-            "company": current_item["company"],
-            "period": current_item["period"],
+            "role": role,
+            "company": company,
+            "period": period,
             "start_date": start_n or "Unknown",
             "end_date": end_n or ("Present" if is_curr else "Unknown"),
             "is_current_role": is_curr,
             "description": desc
         })
 
-    # If experience is empty, extract from KEY PROJECTS
+    # If experience is empty, check anchored projects section
     if not experience_items:
-        projects_sec = re.search(r"(?i)\b(?:key projects|projects)\b", raw_text)
-        if projects_sec:
-            sub_text = raw_text[projects_sec.start():projects_sec.start() + 600]
-            p_lines = [l.strip() for l in sub_text.split("\n") if l.strip()]
-            for l in p_lines[1:5]:
-                if "–" in l or "-" in l or ":" in l:
-                    parts = re.split(r"[-–—:]", l, maxsplit=1)
-                    p_title = parts[0].strip()
+        project_lines = get_section_lines(lines, anchors, "projects")
+        if project_lines:
+            for l in project_lines[:5]:
+                clean_l = l.strip()
+                if "–" in clean_l or "-" in clean_l or ":" in clean_l:
+                    parts = re.split(r"[-–—:]", clean_l, maxsplit=1)
+                    p_title = parts[0].strip().strip("•-* ")
                     p_desc = parts[1].strip() if len(parts) > 1 else "Project implementation"
                     if 3 < len(p_title) < 40:
                         experience_items.append({
                             "role": f"Project Lead ({p_title})",
                             "company": "Technical Project",
                             "period": "Recent",
+                            "start_date": "Recent",
+                            "end_date": "Recent",
+                            "is_current_role": False,
                             "description": p_desc
                         })
 
@@ -437,9 +420,14 @@ def extract_experience_sections(raw_text: str, default_headline: str = "Software
                 "role": default_headline,
                 "company": "Technical Experience",
                 "period": "2023 — Present",
+                "start_date": "2023",
+                "end_date": "Present",
+                "is_current_role": True,
                 "description": "Led development of scalable web applications, data pipelines, and frontend features."
             }
         ]
+
+    return experience_items
 
     return experience_items
 
@@ -629,9 +617,11 @@ def parse_resume_to_candidate(
         "years_of_experience": years_of_experience,
         "highest_education": highest_education,
         "core_skills": found_skills,
+        "skill_anchors": anchor_skill_mentions(raw_text, found_skills),
         "experience": experience_items,
         "scorecard": scorecard,
         "raw_text": raw_text,
+        "taxonomy_version": TAXONOMY_VERSION,
     }
 
     return candidate_profile

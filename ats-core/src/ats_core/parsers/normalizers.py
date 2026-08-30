@@ -312,13 +312,20 @@ SKILL_ALIASES: Dict[str, str] = {
 }
 
 
-def normalize_skill(raw: str, fuzzy_cutoff: float = 88.0) -> str:
+def normalize_skill(
+    raw: str,
+    fuzzy_cutoff: float = 88.0,
+    register_flywheel: bool = True,
+    source: str = "resume_parser",
+    context: Optional[str] = None
+) -> str:
     """
-    Normalizes a skill name through:
+    Normalizes a skill name through the database-backed SkillTaxonomyService:
     1. Exact short-skill guard (prevents 'C', 'R', 'Go', 'JS' from fuzzy overmatching).
-    2. Direct alias lookup against taxonomy (~350+ skills).
-    3. High-precision fuzzy matching using rapidfuzz WRatio (catches typos like 'javascrpt' -> 'JavaScript').
-    4. Fallback: Preserves candidate's original clean wording without fabricating non-existent skills.
+    2. Direct alias lookup against taxonomy (~500+ skills).
+    3. High-precision fuzzy matching using rapidfuzz WRatio.
+    4. Flywheel registration: Unrecognized skills are registered into status='pending'.
+    5. Fallback: Preserves candidate's original clean wording without fabricating non-existent skills.
     """
     if not raw or not isinstance(raw, str):
         return ""
@@ -327,25 +334,27 @@ def normalize_skill(raw: str, fuzzy_cutoff: float = 88.0) -> str:
     if not cleaned:
         return ""
 
-    # Normalize key: lowercase, preserve valid technical punctuation ('+', '#', '.', '/', '-')
-    key = re.sub(r"[^\w\s+#./-]", "", cleaned.lower()).strip()
+    # Import taxonomy service
+    from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
+    taxonomy = SkillTaxonomyService.get_instance()
 
-    # Step 1: Exact Short Skill Protection (CRITICAL)
+    record = taxonomy.lookup_skill(cleaned, fuzzy_cutoff=fuzzy_cutoff)
+    if record and record.get("canonical_name"):
+        return record["canonical_name"]
+
+    # Fallback to local dictionary if taxonomy lookup yielded None
+    key = re.sub(r"[^\w\s+#./-]", "", cleaned.lower()).strip()
     if key in SHORT_EXACT_SKILLS or key in EXACT_SHORT_MAP:
         return EXACT_SHORT_MAP.get(key, key.upper() if len(key) <= 3 else key.capitalize())
 
-    # Step 2: Direct Alias Lookup
     if key in SKILL_ALIASES:
         return SKILL_ALIASES[key]
 
-    # Clean punctuation variant (e.g. "react.js" -> "react")
     alt_key = re.sub(r"[^\w\s]", "", key).strip()
     if alt_key in SKILL_ALIASES:
         return SKILL_ALIASES[alt_key]
 
-    # Step 3: Fuzzy Matching for Typos (Only for tokens with length >= 4)
     if len(key) >= 4:
-        # Match against dictionary keys
         match = process.extractOne(
             key,
             list(SKILL_ALIASES.keys()),
@@ -354,11 +363,14 @@ def normalize_skill(raw: str, fuzzy_cutoff: float = 88.0) -> str:
         )
         if match:
             matched_key = match[0]
-            # Ensure matched key is not a short acronym
             if matched_key not in SHORT_EXACT_SKILLS and len(matched_key) >= 4:
                 return SKILL_ALIASES[matched_key]
 
-    # Step 4: Fallback - preserve candidate's wording in standard title-case or uppercase
+    # Step 4: Unknown skill -> Register into Flywheel review queue
+    if register_flywheel and 2 <= len(cleaned) <= 50:
+        taxonomy.record_unknown_skill(cleaned, source=source, context=context)
+
+    # Step 5: Fallback - preserve candidate's wording in standard title-case or uppercase
     if cleaned.isupper() and len(cleaned) <= 5:
         return cleaned
     elif len(cleaned.split()) == 1 and cleaned[0].islower():
@@ -366,9 +378,15 @@ def normalize_skill(raw: str, fuzzy_cutoff: float = 88.0) -> str:
     return cleaned
 
 
-def normalize_skills_list(skills: List[str], fuzzy_cutoff: float = 88.0) -> List[str]:
+def normalize_skills_list(
+    skills: List[str],
+    fuzzy_cutoff: float = 88.0,
+    register_flywheel: bool = True,
+    source: str = "resume_parser"
+) -> List[str]:
     """
     Normalizes and deduplicates a list of extracted skills while preserving chronological insertion order.
+    Feeds unknown skills into the status='pending' Flywheel queue.
     """
     if not skills:
         return []
@@ -377,9 +395,15 @@ def normalize_skills_list(skills: List[str], fuzzy_cutoff: float = 88.0) -> List
     normalized: List[str] = []
 
     for s in skills:
-        norm = normalize_skill(s, fuzzy_cutoff=fuzzy_cutoff)
+        norm = normalize_skill(
+            s,
+            fuzzy_cutoff=fuzzy_cutoff,
+            register_flywheel=register_flywheel,
+            source=source
+        )
         if norm and norm.lower() not in seen:
             seen.add(norm.lower())
             normalized.append(norm)
 
     return normalized
+

@@ -9,6 +9,7 @@ from ats_core.api.v1.candidates import router as candidates_router
 from ats_core.api.v1.match import router as match_router
 from ats_core.api.v1.jobs import router as jobs_router
 from ats_core.api.v1.dashboard import router as dashboard_router
+from ats_core.api.v1.taxonomy import router as taxonomy_router
 
 app = FastAPI(
     title="AI-Powered ATS Core Engine",
@@ -30,6 +31,8 @@ app.include_router(dashboard_router, prefix="/api/v1", dependencies=[Depends(ver
 app.include_router(jobs_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 app.include_router(candidates_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 app.include_router(match_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(taxonomy_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+
 
 
 @app.get("/health", tags=["System"])

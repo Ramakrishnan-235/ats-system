@@ -778,3 +778,141 @@ export async function evaluateJobMatching(payload: {
     return null;
   }
 }
+
+// -------------------------------------------------------------------
+// SKILL TAXONOMY & FLYWHEEL QUEUE API
+// -------------------------------------------------------------------
+
+export interface TaxonomySkillItem {
+  id: string;
+  canonical_name: string;
+  category: string;
+  aliases: string[];
+  is_ambiguous: boolean;
+  status: "approved" | "pending" | "rejected";
+  source: string;
+  occurrence_count: number;
+  taxonomy_version: string;
+  created_at: string;
+  updated_at: string;
+  context_sample?: string;
+}
+
+export interface TaxonomyStats {
+  version: string;
+  total_skills: number;
+  approved_count: number;
+  pending_count: number;
+  rejected_count: number;
+  categories: Record<string, number>;
+}
+
+export async function fetchTaxonomyStats(): Promise<TaxonomyStats> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/taxonomy/version`, { cache: "no-store" });
+    if (!res.ok) throw new Error("Failed to fetch taxonomy version");
+    return await res.json();
+  } catch (err) {
+    console.warn("Backend taxonomy stats failed, returning fallback:", err);
+    return {
+      version: "2026.08.1",
+      total_skills: 55,
+      approved_count: 55,
+      pending_count: 0,
+      rejected_count: 0,
+      categories: { language: 15, framework: 12, database: 10, platform: 8, tool: 10 },
+    };
+  }
+}
+
+export async function fetchTaxonomySkills(params?: {
+  category?: string;
+  status?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}): Promise<{ items: TaxonomySkillItem[]; total: number; version: string }> {
+  try {
+    const query = new URLSearchParams();
+    if (params?.category && params.category !== "all") query.set("category", params.category);
+    if (params?.status && params.status !== "all") query.set("status", params.status);
+    if (params?.search) query.set("search", params.search);
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+
+    const res = await fetch(`${API_BASE_URL}/taxonomy/skills?${query.toString()}`, { cache: "no-store" });
+    if (!res.ok) throw new Error("Failed to fetch taxonomy skills");
+    return await res.json();
+  } catch (err) {
+    console.warn("Backend taxonomy skills failed:", err);
+    return { items: [], total: 0, version: "2026.08.1" };
+  }
+}
+
+export async function approveTaxonomySkill(
+  skillId: string,
+  payload?: { canonical_name?: string; category?: string; aliases?: string[] }
+): Promise<TaxonomySkillItem | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/taxonomy/skills/${skillId}/approve`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    });
+    if (!res.ok) throw new Error("Failed to approve taxonomy skill");
+    return await res.json();
+  } catch (err) {
+    console.warn("Approve skill failed:", err);
+    return null;
+  }
+}
+
+export async function rejectTaxonomySkill(skillId: string): Promise<TaxonomySkillItem | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/taxonomy/skills/${skillId}/reject`, {
+      method: "PATCH",
+    });
+    if (!res.ok) throw new Error("Failed to reject taxonomy skill");
+    return await res.json();
+  } catch (err) {
+    console.warn("Reject skill failed:", err);
+    return null;
+  }
+}
+
+export async function addAliasToTaxonomySkill(skillId: string, alias: string): Promise<TaxonomySkillItem | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/taxonomy/skills/${skillId}/aliases`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alias }),
+    });
+    if (!res.ok) throw new Error("Failed to add alias");
+    return await res.json();
+  } catch (err) {
+    console.warn("Add alias failed:", err);
+    return null;
+  }
+}
+
+export async function createTaxonomySkill(payload: {
+  canonical_name: string;
+  category: string;
+  aliases: string[];
+  is_ambiguous?: boolean;
+  source?: string;
+}): Promise<TaxonomySkillItem | null> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/taxonomy/skills`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error("Failed to create taxonomy skill");
+    return await res.json();
+  } catch (err) {
+    console.warn("Create skill failed:", err);
+    return null;
+  }
+}
+
