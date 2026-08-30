@@ -2,8 +2,10 @@ import pytest
 from ats_core.parsers.resume_parser import (
     parse_resume_to_candidate,
     extract_candidate_name,
+    extract_email_address,
     extract_phone_number,
     extract_location,
+    extract_linkedin,
     extract_education,
     extract_skills_from_text,
     extract_experience_sections,
@@ -68,7 +70,7 @@ def test_deva_kumar_name_extraction():
 
 def test_deva_kumar_phone_extraction():
     phone = extract_phone_number(DEVA_KUMAR_RESUME_TEXT)
-    assert phone == "+91-86676-60065"
+    assert phone == "+918667660065"
 
 
 def test_deva_kumar_location_extraction():
@@ -106,3 +108,27 @@ def test_deva_kumar_years_of_experience():
     years = calculate_candidate_experience_years(DEVA_KUMAR_RESUME_TEXT)
     # A 2022-26 student with 4 internships should have ~1.0-2.0 years experience, NOT 8 years!
     assert 0.5 <= years <= 2.5
+
+
+def test_email_with_numbers_extraction():
+    """Verify extraction of emails containing numbers and multiple subdomains."""
+    text1 = "Contact: ramakrishnan235@gmail.com | Phone: 9876543210"
+    assert extract_email_address(text1) == "ramakrishnan235@gmail.com"
+
+    text2 = "John Doe (developer) - dev.lead2026@sub.engineering-corp.co.uk"
+    assert extract_email_address(text2) == "dev.lead2026@sub.engineering-corp.co.uk"
+
+    text3 = "mailto:user_99.test@domain.org"
+    assert extract_email_address(text3) == "user_99.test@domain.org"
+
+
+def test_missing_fields_return_na():
+    """Verify that when contact/location/education info is absent, parser returns 'N/A' rather than fabricating fake data."""
+    empty_resume_text = "Experienced Senior Developer with deep expertise in Python, Docker, Kubernetes and microservices architecture."
+    
+    assert extract_email_address(empty_resume_text) == "N/A"
+    assert extract_phone_number(empty_resume_text) == "N/A"
+    assert extract_location(empty_resume_text) == "N/A"
+    assert extract_linkedin(empty_resume_text) == "N/A"
+    assert extract_education(empty_resume_text) == "N/A"
+

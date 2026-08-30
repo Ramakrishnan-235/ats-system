@@ -44,41 +44,53 @@ export function CandidateLeftPanel({ candidate }: CandidateLeftPanelProps) {
         <h2 className="font-bold text-lg text-zinc-950">{candidate.name}</h2>
         <div className="flex items-center gap-1.5 text-xs text-zinc-500 font-medium mt-1">
           <MapPin className="w-3.5 h-3.5 text-zinc-400" />
-          <span>{candidate.location}</span>
+          <span>{candidate.location && candidate.location !== "N/A" ? candidate.location : "N/A"}</span>
         </div>
 
         {/* Contact Links */}
         <div className="w-full mt-6 pt-6 border-t border-zinc-100 space-y-3 text-left">
           <div className="flex items-center gap-3 text-xs text-zinc-600 font-medium">
             <Mail className="w-4 h-4 text-zinc-400 shrink-0" />
-            <a
-              href={`mailto:${candidate.email}`}
-              className="hover:text-zinc-950 transition-colors truncate"
-            >
-              {candidate.email}
-            </a>
+            {candidate.email && candidate.email !== "N/A" ? (
+              <a
+                href={`mailto:${candidate.email}`}
+                className="hover:text-zinc-950 transition-colors truncate"
+              >
+                {candidate.email}
+              </a>
+            ) : (
+              <span className="text-zinc-400 font-normal">N/A</span>
+            )}
           </div>
 
           <div className="flex items-center gap-3 text-xs text-zinc-600 font-medium">
             <Phone className="w-4 h-4 text-zinc-400 shrink-0" />
-            <a
-              href={`tel:${candidate.phone}`}
-              className="hover:text-zinc-950 transition-colors"
-            >
-              {candidate.phone}
-            </a>
+            {candidate.phone && candidate.phone !== "N/A" ? (
+              <a
+                href={`tel:${candidate.phone}`}
+                className="hover:text-zinc-950 transition-colors"
+              >
+                {candidate.phone}
+              </a>
+            ) : (
+              <span className="text-zinc-400 font-normal">N/A</span>
+            )}
           </div>
 
           <div className="flex items-center gap-3 text-xs text-zinc-600 font-medium">
             <Link2 className="w-4 h-4 text-zinc-400 shrink-0" />
-            <a
-              href={`https://${candidate.linkedin}`}
-              target="_blank"
-              rel="noreferrer"
-              className="hover:text-zinc-950 transition-colors truncate"
-            >
-              {candidate.linkedin}
-            </a>
+            {candidate.linkedin && candidate.linkedin !== "N/A" ? (
+              <a
+                href={candidate.linkedin.startsWith("http") ? candidate.linkedin : `https://${candidate.linkedin}`}
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-zinc-950 transition-colors truncate"
+              >
+                {candidate.linkedin}
+              </a>
+            ) : (
+              <span className="text-zinc-400 font-normal">N/A</span>
+            )}
           </div>
         </div>
       </div>

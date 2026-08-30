@@ -312,7 +312,7 @@ SKILL_ALIASES: Dict[str, str] = {
 }
 
 
-def normalize_skill(raw: str, fuzzy_cutoff: float = 92.0) -> str:
+def normalize_skill(raw: str, fuzzy_cutoff: float = 88.0) -> str:
     """
     Normalizes a skill name through:
     1. Exact short-skill guard (prevents 'C', 'R', 'Go', 'JS' from fuzzy overmatching).
@@ -366,7 +366,7 @@ def normalize_skill(raw: str, fuzzy_cutoff: float = 92.0) -> str:
     return cleaned
 
 
-def normalize_skills_list(skills: List[str], fuzzy_cutoff: float = 92.0) -> List[str]:
+def normalize_skills_list(skills: List[str], fuzzy_cutoff: float = 88.0) -> List[str]:
     """
     Normalizes and deduplicates a list of extracted skills while preserving chronological insertion order.
     """

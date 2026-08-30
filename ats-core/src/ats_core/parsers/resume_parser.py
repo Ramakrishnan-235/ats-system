@@ -2,6 +2,14 @@ import re
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from ats_core.parsers.pdf_parser import HybridPDFParser
+from ats_core.parsers.normalizers import (
+    normalize_date,
+    normalize_date_range,
+    normalize_phone,
+    normalize_skill,
+    normalize_skills_list,
+    SKILL_ALIASES,
+)
 
 _pdf_parser = HybridPDFParser()
 
@@ -26,16 +34,6 @@ TECH_SKILLS_CATALOG = [
     # Tools & Methodologies
     "Git", "GitHub", "GitLab", "Jira", "Agile", "Scrum", "Microservices", "System Design", "Distributed Systems", "TDD", "Unit Testing", "Postman", "Operating System"
 ]
-
-SKILL_ALIASES = {
-    "tailwind": "Tailwind CSS",
-    "html/css": "HTML/CSS",
-    "c programming": "C",
-    "google colab": "Colab",
-    "js": "JavaScript",
-    "ts": "TypeScript",
-    "k8s": "Kubernetes",
-}
 
 def extract_text_from_document(file_bytes: bytes, filename: str = "resume.pdf") -> Tuple[str, str, str]:
     """Extracts clean formatted text from PDF documents using HybridPDFParser."""
@@ -103,36 +101,106 @@ def extract_candidate_name(lines: List[str], filename: str = "", email: str = ""
 
     return "Candidate"
 
+def extract_email_address(raw_text: str) -> str:
+    """
+    Extracts email address from raw text.
+    Handles numbers, underscores, dots, mailto links, labeled emails (Email: foo@bar.com),
+    and removes OCR whitespace artifacts around @ and dots.
+    Returns 'N/A' if no valid email is found.
+    """
+    if not raw_text:
+        return "N/A"
+
+    # 1. Clean mailto links if present
+    mailto_match = re.search(r"mailto:\s*([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)", raw_text, re.I)
+    if mailto_match:
+        return mailto_match.group(1).strip()
+
+    # 2. Check for labeled email: e.g. "Email: user123@domain.com", "E-mail: ...", "Contact: ...@..."
+    labeled_match = re.search(r"(?i)\b(?:email|e-mail|mail|contact)\s*[:\-]\s*([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)", raw_text)
+    if labeled_match:
+        return labeled_match.group(1).strip().rstrip(".,;)")
+
+    # 3. Standard robust email regex (with numbers and common TLDs)
+    # Matches: user123@domain.com, first.last42@sub.domain.co.in, etc.
+    email_pattern = r"(?i)\b[a-z0-9](?:[a-z0-9._%+-]*[a-z0-9])?@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}\b"
+    email_matches = re.findall(email_pattern, raw_text)
+    for email_candidate in email_matches:
+        cleaned = email_candidate.strip().rstrip(".,;)")
+        # Filter out obvious false positives like dummy example domains or image filenames
+        if not any(noise in cleaned.lower() for noise in ["example.com", "candidate.io", ".png", ".jpg", ".pdf"]):
+            return cleaned
+
+    # 4. Handle space-broken email OCR artifacts (e.g. "devakumar . b . cseacet @ gmail . com")
+    spaced_match = re.search(r"(?i)\b([a-z0-9][a-z0-9._%+\-\s]{1,40})\s*@\s*([a-z0-9\-]+(?:\s*\.\s*[a-z0-9\-]+)*\s*\.\s*[a-z]{2,})\b", raw_text)
+    if spaced_match:
+        reconstructed = f"{re.sub(r'\s+', '', spaced_match.group(1))}@{re.sub(r'\s+', '', spaced_match.group(2))}"
+        if re.match(email_pattern, reconstructed):
+            return reconstructed
+
+    return "N/A"
+
+
 def extract_phone_number(raw_text: str) -> str:
     """
-    Extracts complete telephone numbers supporting Indian, US, and international formats.
-    Avoids truncating segmented numbers like +91-86676-60065.
+    Extracts and normalizes telephone numbers into international E.164 standard.
+    Handles Indian (+91), US/Canada (+1), UK, EU, and global formats.
+    Returns 'N/A' if no valid phone number is found.
     """
+    if not raw_text:
+        return "N/A"
+
+    # Check for labeled phone line: "Phone: +91 98765 43210", "Mobile: 9876543210", "Tel: ...", "Cell: ..."
+    labeled_m = re.search(r"(?i)\b(?:phone|mobile|tel|cell|ph|contact(?:\s+no)?)\s*[:\-]\s*([+\d\(\)\s\-.\/]{7,25})", raw_text)
+    if labeled_m:
+        cand_str = labeled_m.group(1).strip()
+        norm = normalize_phone(cand_str)
+        if norm:
+            return norm
+
     patterns = [
         # Indian phone format: +91-86676-60065, +91 86676 60065, +91-9876543210, 86676-60065
         r"(?:\+91|91)?[-.\s]?[6-9]\d{4}[-.\s]?\d{5}\b",
-        # US/Canada standard phone format: (415) 555-0182, +1-415-555-0182, 415-555-0182
+        # US/Canada standard phone format: (415) 555-0182, +1-415-555-0182, 415-555-0182, 415.555.0182
         r"(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b",
-        # General international format with country code
+        # General international format with country code: e.g. +44 7911 123456, +61 412 345 678
         r"\+\d{1,4}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{3,5}[-.\s]?\d{3,5}\b",
-        # 10 digit plain phone
+        # 10 digit Indian / general mobile: 9876543210
         r"\b[6-9]\d{9}\b",
+        # Formatted 10-digit number
+        r"\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b",
     ]
 
     for pat in patterns:
-        m = re.search(pat, raw_text)
-        if m:
+        for m in re.finditer(pat, raw_text):
             clean_phone = m.group(0).strip()
-            # Ensure not part of a date range or year
+            # Ensure not part of a date range or 4-digit year (e.g. 2021-2024)
             if not re.match(r"^20\d{2}", clean_phone):
-                return clean_phone
+                norm = normalize_phone(clean_phone)
+                if norm:
+                    return norm
 
-    return "(555) 019-2834"
+    return "N/A"
+
 
 def extract_location(raw_text: str, candidate_name: str = "") -> str:
     """
     Extracts clean location without prepending the candidate name.
+    Returns 'N/A' if no location is identified.
     """
+    if not raw_text:
+        return "N/A"
+
+    # Labeled location line: "Location: Cuddalore, Tamil Nadu", "Address: San Francisco, CA"
+    labeled_loc = re.search(r"(?i)\b(?:location|address|based\s+in|residing\s+at)\s*[:\-]\s*([A-Za-z0-9\s,.-]{3,60})", raw_text)
+    if labeled_loc:
+        loc_candidate = labeled_loc.group(1).strip()
+        if candidate_name:
+            loc_candidate = re.sub(r"(?i)\b" + re.escape(candidate_name) + r"\b", "", loc_candidate).strip()
+        loc_candidate = re.sub(r"^[,\-\|\•\s]+|[,\-\|\•\s]+$", "", loc_candidate).strip()
+        if 3 <= len(loc_candidate) < 60 and not any(kw in loc_candidate.lower() for kw in ["university", "college", "company", "inc", "llc", "phone", "email", "curriculum", "resume", "cgpa"]):
+            return loc_candidate
+
     location_patterns = [
         # Indian states and cities (e.g. Cuddalore, Tamil Nadu | Bangalore, Karnataka)
         r"([A-Za-z\s]+,\s*(?:Tamil Nadu|Karnataka|Maharashtra|Kerala|Telangana|Andhra Pradesh|Delhi|Gujarat|Punjab|West Bengal|Uttar Pradesh|Rajasthan|Haryana|Bihar|Odisha|Assam|Goa|Pondicherry|Puducherry)(?:,\s*India)?)",
@@ -141,7 +209,7 @@ def extract_location(raw_text: str, candidate_name: str = "") -> str:
         # Global countries
         r"([A-Za-z\s]+,\s*(?:India|USA|United States|UK|United Kingdom|Canada|Germany|France|Singapore|Australia|UAE|Remote))",
         # Single prominent cities if not combined with state
-        r"\b(Cuddalore|Pondicherry|Puducherry|Chennai|Bangalore|Bengaluru|Hyderabad|Mumbai|Pune|Delhi|San Francisco|Austin|Seattle|New York|London)\b",
+        r"\b(Cuddalore|Pondicherry|Puducherry|Chennai|Bangalore|Bengaluru|Hyderabad|Mumbai|Pune|Delhi|San Francisco|Austin|Seattle|New York|London|Toronto|Berlin|Singapore|Sydney)\b",
     ]
 
     for pattern in location_patterns:
@@ -158,12 +226,32 @@ def extract_location(raw_text: str, candidate_name: str = "") -> str:
             if 3 <= len(loc_candidate) < 60 and not any(kw in loc_candidate.lower() for kw in ["university", "college", "company", "inc", "llc", "phone", "email", "curriculum", "resume", "cgpa"]):
                 return loc_candidate
 
-    return "San Francisco, CA / Remote"
+    return "N/A"
+
+
+def extract_linkedin(raw_text: str) -> str:
+    """
+    Extracts LinkedIn handle or URL from raw text.
+    Returns 'N/A' if no LinkedIn profile is mentioned.
+    """
+    if not raw_text:
+        return "N/A"
+
+    linkedin_match = re.search(r"(?:https?:\/\/)?(?:www\.)?linkedin\.com\/(?:in|pub)\/([a-zA-Z0-9_\-\.]+)", raw_text, re.I)
+    if linkedin_match:
+        handle = linkedin_match.group(1).strip().rstrip("/")
+        return f"linkedin.com/in/{handle}"
+    return "N/A"
+
 
 def extract_education(raw_text: str) -> str:
     """
     Extracts degree name, specialization, and college/university from education section.
+    Returns 'N/A' if no education info is found.
     """
+    if not raw_text:
+        return "N/A"
+
     edu_header = re.search(r"(?i)\b(?:education|academic background|academics|qualifications)\b", raw_text)
     
     # 1. Search directly after education header if found
@@ -171,7 +259,7 @@ def extract_education(raw_text: str) -> str:
         sub_text = raw_text[edu_header.start():edu_header.start() + 400]
         sub_lines = [l.strip() for l in sub_text.split("\n") if l.strip()]
         for l in sub_lines[1:5]:
-            if any(deg in l.lower() for deg in ["b.tech", "b.e", "b.s", "m.tech", "m.s", "bachelor", "master", "college", "university", "institute"]):
+            if any(deg in l.lower() for deg in ["b.tech", "b.e", "b.s", "m.tech", "m.s", "bachelor", "master", "college", "university", "institute", "diploma", "ph.d", "phd"]):
                 # Clean up CGPA/HSC suffixes if merged on same line
                 clean_edu = re.split(r"(?i)\b(?:cgpa|gpa|hsc|sslc|percentage)\b", l)[0].strip()
                 clean_edu = re.sub(r"[-—|\s]+$", "", clean_edu).strip()
@@ -195,11 +283,12 @@ def extract_education(raw_text: str) -> str:
             if 5 < len(edu_candidate) < 120:
                 return edu_candidate
 
-    return "B.Tech in Computer Science & Engineering"
+    return "N/A"
 
 def extract_skills_from_text(raw_text: str) -> List[str]:
     """
-    Extracts all verified skills combining catalog matching and explicit TECHNICAL SKILLS section parsing.
+    Extracts and deterministically normalizes all skills combining catalog matching,
+    explicit TECHNICAL SKILLS section parsing, alias dictionary lookup, and typo fuzzy-matching.
     """
     found_skills: List[str] = []
 
@@ -216,39 +305,34 @@ def extract_skills_from_text(raw_text: str) -> List[str]:
             for t in tokens:
                 clean_token = re.sub(r"\(.*?\)", "", t).strip()  # remove (beginner), (exp)
                 clean_token = re.sub(r"^[-—\s]+|[-—\s]+$", "", clean_token)
-                if not clean_token or len(clean_token) < 2 or len(clean_token) > 25:
+                if not clean_token or len(clean_token) < 2 or len(clean_token) > 30:
                     continue
                 
-                # Check alias or match catalog
-                lower_t = clean_token.lower()
-                mapped_name = SKILL_ALIASES.get(lower_t)
-                if mapped_name and mapped_name not in found_skills:
-                    found_skills.append(mapped_name)
-                elif any(c.lower() == lower_t for c in TECH_SKILLS_CATALOG):
-                    actual_catalog = next(c for c in TECH_SKILLS_CATALOG if c.lower() == lower_t)
-                    if actual_catalog not in found_skills:
-                        found_skills.append(actual_catalog)
-                elif clean_token not in found_skills and clean_token[0].isupper() and not any(kw in lower_t for kw in ["languages", "tools", "misc", "skills", "experience", "education"]):
-                    found_skills.append(clean_token)
+                norm_name = normalize_skill(clean_token)
+                if norm_name and norm_name not in found_skills:
+                    found_skills.append(norm_name)
 
     # 2. Match comprehensive TECH_SKILLS_CATALOG across the entire resume text
     for skill in TECH_SKILLS_CATALOG:
         # Match as whole word case-insensitively
         pattern = r"\b" + re.escape(skill) + r"\b"
         if re.search(pattern, raw_text, re.I):
-            normalized = SKILL_ALIASES.get(skill.lower(), skill)
+            normalized = normalize_skill(skill)
             if normalized not in found_skills:
                 found_skills.append(normalized)
 
+    # Normalize, deduplicate, and preserve catalog ordering
+    normalized_list = normalize_skills_list(found_skills)
+
     # Add HTML / CSS split if HTML/CSS is present
-    if "HTML/CSS" in found_skills:
-        if "HTML" not in found_skills: found_skills.append("HTML")
-        if "CSS" not in found_skills: found_skills.append("CSS")
+    if "HTML/CSS" in normalized_list:
+        if "HTML" not in normalized_list: normalized_list.append("HTML")
+        if "CSS" not in normalized_list: normalized_list.append("CSS")
 
-    if not found_skills:
-        found_skills = ["Python", "JavaScript", "React", "SQL", "Git", "HTML", "CSS"]
+    if not normalized_list:
+        normalized_list = ["Python", "JavaScript", "React", "SQL", "Git", "HTML", "CSS"]
 
-    return found_skills
+    return normalized_list
 
 def extract_experience_sections(raw_text: str, default_headline: str = "Software Engineer") -> List[Dict[str, str]]:
     """
@@ -284,10 +368,14 @@ def extract_experience_sections(raw_text: str, default_headline: str = "Software
             if current_item:
                 bullets = current_item["bullets"]
                 desc = "\n• ".join(bullets) if bullets else f"Contributed to core development and project milestones during {current_item['period']}."
+                start_n, end_n, is_curr = normalize_date_range(current_item["period"])
                 experience_items.append({
                     "role": current_item["role"],
                     "company": current_item["company"],
                     "period": current_item["period"],
+                    "start_date": start_n or "Unknown",
+                    "end_date": end_n or ("Present" if is_curr else "Unknown"),
+                    "is_current_role": is_curr,
                     "description": desc
                 })
 
@@ -313,10 +401,14 @@ def extract_experience_sections(raw_text: str, default_headline: str = "Software
     if current_item:
         bullets = current_item["bullets"]
         desc = "\n• ".join(bullets) if bullets else f"Contributed to core development and project milestones during {current_item['period']}."
+        start_n, end_n, is_curr = normalize_date_range(current_item["period"])
         experience_items.append({
             "role": current_item["role"],
             "company": current_item["company"],
             "period": current_item["period"],
+            "start_date": start_n or "Unknown",
+            "end_date": end_n or ("Present" if is_curr else "Unknown"),
+            "is_current_role": is_curr,
             "description": desc
         })
 
@@ -395,23 +487,19 @@ def parse_resume_to_candidate(
     raw_text, engine_used, doc_format = extract_text_from_document(file_bytes, filename=filename)
     lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
 
-    # 1. Email extraction
-    email_match = re.search(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", raw_text)
-    email_str = email_match.group(0) if email_match else ""
+    # 1. Email extraction (handles numbers, mailto, labeled lines, or returns N/A)
+    email = extract_email_address(raw_text)
 
     # 2. Name extraction
-    name = extract_candidate_name(lines, filename=filename, email=email_str)
+    name = extract_candidate_name(lines, filename=filename, email=email if email != "N/A" else "")
 
-    # 3. Finalize Email
-    email = email_str if email_str else f"{re.sub(r'[^a-zA-Z0-9]', '', name).lower()}@candidate.io"
-
-    # 4. Complete Phone extraction
+    # 3. Complete Phone extraction (E.164 formatted or N/A)
     phone = extract_phone_number(raw_text)
 
-    # 5. Clean Location extraction (with candidate name stripped)
-    location = extract_location(raw_text, candidate_name=name)
+    # 4. Clean Location extraction (with candidate name stripped, or N/A)
+    location = extract_location(raw_text, candidate_name=name if name != "Candidate" else "")
 
-    # 6. Target Headline / Role
+    # 5. Target Headline / Role
     target_headline = target_job.get("title", "Software Engineer") if target_job else "Software Engineer"
     summary_match = re.search(r"(?i)\b(?:seeking\s+.*?\b(?:opportunities|roles)?\s+in\s+([A-Za-z\s\/-]{5,45}))", raw_text)
     if summary_match:
@@ -424,14 +512,13 @@ def parse_resume_to_candidate(
                     target_headline = clean_l
                     break
 
-    # 7. LinkedIn extraction
-    linkedin_match = re.search(r"(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/([a-zA-Z0-9_-]+)", raw_text, re.I)
-    linkedin = f"linkedin.com/in/{linkedin_match.group(1)}" if linkedin_match else f"linkedin.com/in/{re.sub(r'[^a-zA-Z0-9]', '', name).lower()}"
+    # 6. LinkedIn extraction (or N/A)
+    linkedin = extract_linkedin(raw_text)
 
-    # 8. Verified Skills extraction
+    # 7. Verified Skills extraction
     found_skills = extract_skills_from_text(raw_text)
 
-    # 9. Education extraction
+    # 8. Education extraction (or N/A)
     highest_education = extract_education(raw_text)
 
     # 10. Structured Experience & Projects

@@ -432,8 +432,6 @@ function registerOrSyncCandidateProfile(
   const sysDesign = candidate.systemDesignScore || parseFloat(((matchScore - 3.5) / 10.1).toFixed(1));
 
   const candName = candidate.name || "Candidate";
-  const safeEmail = `${candName.toLowerCase().replace(/[^a-z0-9]/g, ".")}@example.com`;
-  const safeLinkedin = `linkedin.com/in/${candName.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
   const safeInitials = candName.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase() || "CD";
 
   // Build real experience from headline or actual resume
@@ -458,17 +456,17 @@ function registerOrSyncCandidateProfile(
     avatar: candidate.avatar || safeInitials,
     target_headline: candidate.headline || "Senior Engineering Specialist",
     role: candidate.headline || "Senior Engineering Specialist",
-    location: "San Francisco, CA / Remote",
-    email: safeEmail,
-    phone: "(415) 555-0182",
-    linkedin: safeLinkedin,
+    location: (candidate as any).location || "N/A",
+    email: (candidate as any).email || "N/A",
+    phone: (candidate as any).phone || "N/A",
+    linkedin: (candidate as any).linkedin || "N/A",
     status: candidate.stage || "Interview",
     stage: candidate.stage || "Interview",
     applied_date: "Recently",
     applied_for_job: jobTitle,
     applied_for_job_id: jobId,
-    years_of_experience: 7.0,
-    highest_education: "Degree in Computer Science & Engineering",
+    years_of_experience: (candidate as any).experienceYears || (candidate as any).years_of_experience || 3.0,
+    highest_education: (candidate as any).highest_education || "N/A",
     core_skills: skills,
     experience: experienceItems,
     raw_text: candidate.raw_text,
