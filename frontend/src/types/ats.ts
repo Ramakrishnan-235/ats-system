@@ -208,3 +208,35 @@ export interface UploadIssue {
   attempt?: string;
   nextRetryIn?: string;
 }
+
+export interface NewCandidatePayload {
+  id?: string;
+  name: string;
+  headline?: string;
+  avatar?: string;
+  isImageAvatar?: boolean;
+  matchScore?: number;
+  matchLabel?: string;
+  skills?: string[];
+  stage?: string;
+  stageBadgeStyle?: string;
+  technicalDepthScore?: number;
+  systemDesignScore?: number;
+  quote?: string;
+  location?: string;
+  email?: string;
+  phone?: string;
+  linkedin?: string;
+  highest_education?: string;
+  experienceYears?: number;
+  experience?: ExperienceItem[];
+  scorecard?: any;
+  enriched_skills?: EnrichedSkillEntity[];
+  raw_text?: string;
+  pdf_blob_url?: string;
+  pdf_url?: string;
+  sourceResumeLink?: string;
+  potentialGap?: string;
+  suggestedImprovements?: string[];
+  suggestedQuestions?: string[];
+}

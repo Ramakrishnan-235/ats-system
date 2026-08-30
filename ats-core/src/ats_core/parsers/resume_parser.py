@@ -15,6 +15,10 @@ from ats_core.parsers.skill_matcher import SkillMatcher
 from ats_core.parsers.llm_residue_extractor import LLMResidueExtractor
 from ats_core.parsers.normalization_cascade import resolve_skill, resolve_skills_batch
 from ats_core.parsers.context_enricher import enrich_candidate_skills
+from ats_core.parsers.skill_aggregator import aggregate_skill_mentions
+from ats_core.evaluator.skill_evaluator import evaluate_candidate_skills_coverage
+from ats_core.parsers.title_normalizer import parse_title, calculate_title_trajectory
+from ats_core.parsers.employer_normalizer import normalize_employer
 from ats_core.parsers.normalizers import (
     normalize_date,
     normalize_date_range,
@@ -414,9 +418,17 @@ def extract_experience_sections(raw_text: str, default_headline: str = "Software
             desc = f"Contributed to core development and project milestones during {period}."
 
         start_n, end_n, is_curr = normalize_date_range(period)
+        parsed_role = parse_title(role)
+        norm_company = normalize_employer(company)
+
         experience_items.append({
             "role": role,
             "company": company,
+            "normalized_company": norm_company,
+            "normalized_title": parsed_role,
+            "seniority": parsed_role["seniority"],
+            "function": parsed_role["function"],
+            "is_management": parsed_role["is_management"],
             "period": period,
             "start_date": start_n or "Unknown",
             "end_date": end_n or ("Present" if is_curr else "Unknown"),
@@ -638,6 +650,24 @@ def parse_resume_to_candidate(
         candidate_skills=found_skills
     )
 
+    # 14. Step 8 Aggregation: Interval-Merged Candidate Skills & Scoring Engine Matrix
+    all_mentions = []
+    for e in enriched_skills:
+        for m in e.get("evidence_mentions", []):
+            all_mentions.append({
+                **m,
+                "canonical_name": e["canonical_name"],
+                "skill_id": f"skill-{e['canonical_name'].lower().replace(' ', '-')}",
+            })
+
+    candidate_skills_rows, skill_matrix = aggregate_skill_mentions(
+        mentions=all_mentions,
+        candidate_id=None
+    )
+
+    # 15. Step 9: Title Normalization & Career Trajectory
+    title_trajectory = calculate_title_trajectory(experience_items)
+
     candidate_profile = {
         "name": name,
         "anonymized_name": f"Candidate #{abs(hash(name)) % 9000 + 1000}",
@@ -656,6 +686,9 @@ def parse_resume_to_candidate(
         "highest_education": highest_education,
         "core_skills": found_skills,
         "enriched_skills": enriched_skills,
+        "candidate_skills": candidate_skills_rows,
+        "skill_matrix": skill_matrix,
+        "title_trajectory": title_trajectory,
         "skill_anchors": anchor_skill_mentions(raw_text, found_skills),
         "experience": experience_items,
         "scorecard": scorecard,

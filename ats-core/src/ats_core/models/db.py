@@ -122,4 +122,58 @@ class SkillTaxonomy(Base):
     occurrence_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     taxonomy_version: Mapped[str] = mapped_column(String(50), default="2026.08.1", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    mentions: Mapped[List["SkillMention"]] = relationship(back_populates="taxonomy_skill", cascade="all, delete-orphan")
+    candidate_skills: Mapped[List["CandidateSkill"]] = relationship(back_populates="taxonomy_skill", cascade="all, delete-orphan")
+
+
+class SkillMention(Base):
+    __tablename__ = "skill_mentions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), default=uuid.UUID("00000000-0000-0000-0000-000000000000"), nullable=False)
+    candidate_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False)
+    skill_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("skills_taxonomy.id", ondelete="CASCADE"), nullable=False)
+    section: Mapped[str] = mapped_column(Text, nullable=False)
+    entry_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    evidence_type: Mapped[str] = mapped_column(Text, nullable=False)
+    context_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    char_start: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    char_end: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    date_start: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    date_end: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    weight: Mapped[float] = mapped_column(Numeric(4, 2), nullable=False)
+    taxonomy_version: Mapped[str] = mapped_column(String(50), default="2026.08.1", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    taxonomy_skill: Mapped["SkillTaxonomy"] = relationship(back_populates="mentions")
+
+
+class CandidateSkill(Base):
+    __tablename__ = "candidate_skills"
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "skill_id", name="uq_candidate_skill"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), default=uuid.UUID("00000000-0000-0000-0000-000000000000"), nullable=False)
+    candidate_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False)
+    skill_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("skills_taxonomy.id", ondelete="CASCADE"), nullable=False)
+    mention_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    weighted_score: Mapped[float] = mapped_column(Numeric(6, 2), nullable=False)
+    best_evidence: Mapped[str] = mapped_column(Text, nullable=False)
+    is_certified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    first_used: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    last_used: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_current: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    months_of_use: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    months_since_last_use: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    taxonomy_skill: Mapped["SkillTaxonomy"] = relationship(back_populates="candidate_skills")
+

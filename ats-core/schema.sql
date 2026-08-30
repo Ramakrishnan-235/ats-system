@@ -179,3 +179,65 @@ CREATE TRIGGER trg_taxonomy_updated_at
 BEFORE UPDATE ON skills_taxonomy
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- =============================================================================
+-- 7. SKILL MENTIONS TABLE
+-- Stores every granular skill mention instance with verbatim text context,
+-- section anchor, line offsets, inherited date intervals, and evidence weights.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS skill_mentions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'::uuid,
+    candidate_id UUID NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+    skill_id UUID NOT NULL REFERENCES skills_taxonomy(id) ON DELETE CASCADE,
+    section TEXT NOT NULL,
+    entry_index INT,
+    evidence_type TEXT NOT NULL,
+    context_text TEXT,
+    char_start INT,
+    char_end INT,
+    date_start TEXT,
+    date_end TEXT,
+    weight FLOAT NOT NULL,
+    taxonomy_version TEXT NOT NULL DEFAULT '2026.08.1',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_skill_mentions_cand ON skill_mentions (candidate_id);
+CREATE INDEX IF NOT EXISTS idx_skill_mentions_skill ON skill_mentions (skill_id);
+CREATE INDEX IF NOT EXISTS idx_skill_mentions_section ON skill_mentions (section);
+CREATE INDEX IF NOT EXISTS idx_skill_mentions_evidence ON skill_mentions (evidence_type);
+
+-- =============================================================================
+-- 8. CANDIDATE SKILLS TABLE (AGGREGATED SCORING MATRIX)
+-- Stores non-overlapping merged intervals, months of experience, recency,
+-- certification status, and weighted scores for deterministic compliance scoring.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS candidate_skills (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'::uuid,
+    candidate_id UUID NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+    skill_id UUID NOT NULL REFERENCES skills_taxonomy(id) ON DELETE CASCADE,
+    mention_count INT NOT NULL,
+    weighted_score FLOAT NOT NULL,
+    best_evidence TEXT NOT NULL,
+    is_certified BOOLEAN DEFAULT FALSE,
+    first_used TEXT,
+    last_used TEXT,
+    is_current BOOLEAN DEFAULT FALSE,
+    months_of_use INT,
+    months_since_last_use INT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (candidate_id, skill_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_candidate_skills_cand ON candidate_skills (candidate_id);
+CREATE INDEX IF NOT EXISTS idx_candidate_skills_skill ON candidate_skills (skill_id);
+CREATE INDEX IF NOT EXISTS idx_candidate_skills_is_current ON candidate_skills (is_current);
+CREATE INDEX IF NOT EXISTS idx_candidate_skills_months ON candidate_skills (months_of_use);
+
+DROP TRIGGER IF EXISTS trg_candidate_skills_updated_at ON candidate_skills;
+CREATE TRIGGER trg_candidate_skills_updated_at
+BEFORE UPDATE ON candidate_skills
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+

@@ -14,6 +14,7 @@ import {
   JobRequisition,
   CandidateDetail,
   RankedCandidate,
+  NewCandidatePayload,
 } from "@/types/ats";
 
 const API_BASE_URL =
@@ -211,19 +212,22 @@ export async function fetchJobCandidates(
 
 export async function addJobCandidate(
   jobId: string,
-  payload: Partial<RankedCandidate> & { name: string }
+  payload: NewCandidatePayload
 ): Promise<RankedCandidate[]> {
   const storageKey = `ats_job_candidates_${jobId}`;
-  const candidateId = payload.id || `cand-${Date.now()}`;
+  const candidateId =
+    payload.id ||
+    (payload.sourceResumeLink ? payload.sourceResumeLink.replace("/candidates/", "") : null) ||
+    `cand-${Date.now()}`;
 
   const initials = payload.name
     .split(" ")
-    .map((n) => n[0])
+    .map((n: string) => n[0])
     .join("")
     .slice(0, 2)
     .toUpperCase() || "CD";
 
-  const newCand: RankedCandidate = {
+  const newCand: RankedCandidate & Record<string, any> = {
     id: candidateId,
     rank: 0,
     name: payload.name,
@@ -255,6 +259,18 @@ export async function addJobCandidate(
     quote:
       payload.quote ||
       `Demonstrated depth and practical achievements in ${(payload.skills || ["systems"]).slice(0, 3).join(", ")}.`,
+    location: payload.location,
+    email: payload.email,
+    phone: payload.phone,
+    linkedin: payload.linkedin,
+    highest_education: payload.highest_education,
+    experienceYears: payload.experienceYears,
+    experience: payload.experience,
+    scorecard: payload.scorecard,
+    enriched_skills: payload.enriched_skills,
+    raw_text: payload.raw_text,
+    pdf_blob_url: payload.pdf_blob_url,
+    pdf_url: payload.pdf_url,
     sourceResumeLink: `/candidates/${candidateId}`,
     potentialGap: payload.potentialGap,
     suggestedImprovements: payload.suggestedImprovements || [
@@ -306,7 +322,7 @@ export async function addJobCandidate(
   setStoredItem(storageKey, reranked);
 
   // Register in Candidate Profile Store so viewing /candidates/[id] works seamlessly
-  registerOrSyncCandidateProfile(newCand, "Cloud Architect", jobId);
+  registerOrSyncCandidateProfile(newCand, payload.headline || "Machine Learning Engineer", jobId);
 
   // Also sync to global candidates list
   syncToGlobalCandidates(newCand);
@@ -404,7 +420,7 @@ export async function updateJobCandidateStage(
 // -------------------------------------------------------------------
 
 function registerOrSyncCandidateProfile(
-  candidate: Partial<RankedCandidate> & { name: string },
+  candidate: Partial<RankedCandidate> & { name: string; [key: string]: any },
   jobTitle = "Cloud Architect",
   jobId = "job-009"
 ): CandidateDetail {
@@ -422,12 +438,33 @@ function registerOrSyncCandidateProfile(
     if (candidate.experience && candidate.experience.length > 0) {
       profiles[candId].experience = candidate.experience;
     }
+    if (candidate.location && candidate.location !== "N/A") {
+      profiles[candId].location = candidate.location;
+    }
+    if (candidate.email && candidate.email !== "N/A") {
+      profiles[candId].email = candidate.email;
+    }
+    if (candidate.phone && candidate.phone !== "N/A") {
+      profiles[candId].phone = candidate.phone;
+    }
+    if (candidate.linkedin && candidate.linkedin !== "N/A") {
+      profiles[candId].linkedin = candidate.linkedin;
+    }
+    if (candidate.highest_education && candidate.highest_education !== "N/A") {
+      profiles[candId].highest_education = candidate.highest_education;
+    }
+    if (candidate.scorecard) {
+      profiles[candId].scorecard = candidate.scorecard;
+    }
+    if (candidate.enriched_skills) {
+      profiles[candId].enriched_skills = candidate.enriched_skills;
+    }
     setStoredItem("ats_candidate_profiles", profiles);
     return profiles[candId];
   }
 
   const skills = candidate.skills || ["Cloud Architecture", "AWS", "Python", "Docker"];
-  const matchScore = candidate.matchScore || 92;
+  const matchScore = candidate.scorecard?.overall_match_score || candidate.matchScore || 92;
   const techDepth = candidate.technicalDepthScore || parseFloat((matchScore / 10.2).toFixed(1));
   const sysDesign = candidate.systemDesignScore || parseFloat(((matchScore - 3.5) / 10.1).toFixed(1));
 
@@ -449,6 +486,64 @@ function registerOrSyncCandidateProfile(
           },
         ];
 
+  const defaultScorecard = {
+    overall_match_score: matchScore,
+    match_tier:
+      matchScore >= 93
+        ? "Exceptional Match"
+        : matchScore >= 87
+        ? "Strong Match"
+        : "Match",
+    model_version: "Model gemma2:2b (Live Evaluator)",
+    evaluated_at: "Evaluated recently",
+    categories: [
+      {
+        name: "Technical Depth",
+        score: techDepth,
+        max_score: 10.0,
+        quote:
+          candidate.quote ||
+          `Extensive hands-on expertise in ${skills.slice(0, 3).join(", ")}.`,
+        source_ref: "Source Resume",
+      },
+      {
+        name: "System Design",
+        score: sysDesign,
+        max_score: 10.0,
+        quote:
+          "Demonstrated strong understanding of distributed architectures, high availability, and fault-tolerance.",
+        source_ref: "Architecture Review",
+      },
+      {
+        name: "Leadership",
+        score: 7.5,
+        max_score: 10.0,
+        quote:
+          "Proven track record of technical mentorship and cross-functional project execution.",
+        source_ref: "Team Feedback",
+      },
+    ],
+    risk_flags: candidate.potentialGap ? [candidate.potentialGap] : [],
+    suggested_improvements: candidate.suggestedImprovements || [
+      `1. Upskill in Core Architecture for ${jobTitle}: Deepen demonstrated production experience with ${skills[0] || "primary stack"}.`,
+      `2. Quantify Operational Scale: Detail measurable latency and throughput achievements on resume.`,
+    ],
+    suggestedQuestions: candidate.suggestedQuestions || [
+      `Can you describe the system architecture and scaling considerations for your recent ${skills[0] || "core"} project?`,
+      `How do you diagnose and resolve latency bottlenecks across distributed microservices?`,
+    ],
+    team_notes: [
+      {
+        id: `note-${Date.now()}`,
+        author: "Recruiter Admin",
+        initials: "RA",
+        role: "Admin",
+        timestamp: "Just now",
+        content: `Candidate added to ${jobTitle} pipeline with ${matchScore}% AI match score. Ready for technical screening.`,
+      },
+    ],
+  };
+
   const newProfile: CandidateDetail = {
     id: candId,
     name: candName,
@@ -468,67 +563,12 @@ function registerOrSyncCandidateProfile(
     years_of_experience: (candidate as any).experienceYears || (candidate as any).years_of_experience || 3.0,
     highest_education: (candidate as any).highest_education || "N/A",
     core_skills: skills,
+    enriched_skills: candidate.enriched_skills,
     experience: experienceItems,
     raw_text: candidate.raw_text,
     pdf_url: candidate.pdf_url || `${API_BASE_URL}/candidates/${candId}/resume-pdf`,
     pdf_blob_url: candidate.pdf_blob_url,
-    scorecard: {
-      overall_match_score: matchScore,
-      match_tier:
-        matchScore >= 93
-          ? "Exceptional Match"
-          : matchScore >= 87
-          ? "Strong Match"
-          : "Match",
-      model_version: "Model gemma2:2b (Live Evaluator)",
-      evaluated_at: "Evaluated recently",
-      categories: [
-        {
-          name: "Technical Depth",
-          score: techDepth,
-          max_score: 10.0,
-          quote:
-            candidate.quote ||
-            `Extensive hands-on expertise in ${skills.slice(0, 3).join(", ")}.`,
-          source_ref: "Source Resume",
-        },
-        {
-          name: "System Design",
-          score: sysDesign,
-          max_score: 10.0,
-          quote:
-            "Demonstrated strong understanding of distributed architectures, high availability, and fault-tolerance.",
-          source_ref: "Architecture Review",
-        },
-        {
-          name: "Leadership",
-          score: 7.5,
-          max_score: 10.0,
-          quote:
-            "Proven track record of technical mentorship and cross-functional project execution.",
-          source_ref: "Team Feedback",
-        },
-      ],
-      risk_flags: candidate.potentialGap ? [candidate.potentialGap] : [],
-      suggested_improvements: candidate.suggestedImprovements || [
-        `1. Upskill in Core Architecture for ${jobTitle}: Deepen demonstrated production experience with ${skills[0] || "primary stack"}.`,
-        `2. Quantify Operational Scale: Detail measurable latency and throughput achievements on resume.`,
-      ],
-      suggested_questions: candidate.suggestedQuestions || [
-        `Can you describe the system architecture and scaling considerations for your recent ${skills[0] || "core"} project?`,
-        `How do you diagnose and resolve latency bottlenecks across distributed microservices?`,
-      ],
-      team_notes: [
-        {
-          id: `note-${Date.now()}`,
-          author: "Recruiter Admin",
-          initials: "RA",
-          role: "Admin",
-          timestamp: "Just now",
-          content: `Candidate added to ${jobTitle} pipeline with ${matchScore}% AI match score. Ready for technical screening.`,
-        },
-      ],
-    },
+    scorecard: candidate.scorecard || defaultScorecard,
   };
 
   profiles[candId] = newProfile;

@@ -31,25 +31,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { uploadResumeFile, fetchCandidate } from "@/lib/api";
+import { NewCandidatePayload } from "@/types/ats";
 
-export interface NewCandidatePayload {
-  name: string;
-  headline: string;
-  avatar: string;
-  isImageAvatar: boolean;
-  matchScore: number;
-  matchLabel: string;
-  skills: string[];
-  stage: string;
-  stageBadgeStyle?: string;
-  technicalDepthScore: number;
-  systemDesignScore: number;
-  quote: string;
-  sourceResumeLink?: string;
-  potentialGap?: string;
-  suggestedImprovements?: string[];
-  suggestedQuestions?: string[];
-}
+export type { NewCandidatePayload };
 
 interface AddCandidateJobModalProps {
   open: boolean;
@@ -316,7 +300,11 @@ export function AddCandidateJobModal({
                   ? parsedCandidate.core_skills
                   : Array.from(new Set([...requiredSkills.slice(0, 3), "Python", "Microservices", "Docker"]));
 
-              const finalScore = calculateCandidateScore(extractedSkills);
+              const realCandId = res.candidate_id || parsedCandidate?.id;
+              const finalScore =
+                parsedCandidate?.scorecard?.overall_match_score ??
+                calculateCandidateScore(extractedSkills);
+
               const initials =
                 candidateName
                   .split(" ")
@@ -349,6 +337,7 @@ export function AddCandidateJobModal({
                   : undefined);
 
               const payload: NewCandidatePayload = {
+                id: realCandId,
                 name: candidateName,
                 headline: candidateHeadline,
                 avatar: parsedCandidate?.avatar || initials,
@@ -361,7 +350,19 @@ export function AddCandidateJobModal({
                 technicalDepthScore: techDepth,
                 systemDesignScore: sysDesign,
                 quote: quoteText,
-                sourceResumeLink: `/candidates/${res.candidate_id}`,
+                location: parsedCandidate?.location,
+                email: parsedCandidate?.email,
+                phone: parsedCandidate?.phone,
+                linkedin: parsedCandidate?.linkedin,
+                highest_education: parsedCandidate?.highest_education,
+                experienceYears: parsedCandidate?.years_of_experience,
+                experience: parsedCandidate?.experience,
+                scorecard: parsedCandidate?.scorecard,
+                enriched_skills: parsedCandidate?.enriched_skills,
+                raw_text: parsedCandidate?.raw_text,
+                pdf_blob_url: parsedCandidate?.pdf_blob_url || res.pdf_blob_url,
+                pdf_url: parsedCandidate?.pdf_url,
+                sourceResumeLink: `/candidates/${realCandId}`,
                 potentialGap,
                 suggestedImprovements:
                   parsedCandidate?.scorecard?.suggested_improvements && parsedCandidate.scorecard.suggested_improvements.length > 0
