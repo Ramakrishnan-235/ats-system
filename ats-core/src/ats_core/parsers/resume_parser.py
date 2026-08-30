@@ -11,6 +11,9 @@ from ats_core.parsers.section_anchor import (
     anchor_skill_mentions,
     DATE_RANGE_RE,
 )
+from ats_core.parsers.skill_matcher import SkillMatcher
+from ats_core.parsers.llm_residue_extractor import LLMResidueExtractor
+from ats_core.parsers.normalization_cascade import resolve_skill, resolve_skills_batch
 from ats_core.parsers.normalizers import (
     normalize_date,
     normalize_date_range,
@@ -296,41 +299,68 @@ def extract_education(raw_text: str) -> str:
 
 def extract_skills_from_text(raw_text: str) -> List[str]:
     """
-    Extracts and deterministically normalizes all skills combining catalog matching,
-    explicit TECHNICAL SKILLS section parsing, alias dictionary lookup, and typo fuzzy-matching.
+    Extracts and deterministically normalizes skills using the complete 6-step architecture:
+    1. spaCy PhraseMatcher Gazetteer against active ~500+ taxonomy entries.
+    2. Explicit anchored TECHNICAL SKILLS category tokens parsing.
+    3. LLM Residue Pass with strict verbatim evidence containment verification.
+    4. 4-Layer Normalization Cascade (Exact -> Fuzzy -> Embedding -> Flywheel Queue).
     """
     found_skills: List[str] = []
+    freeform_tokens: List[str] = []
 
-    # 1. Parse explicit TECHNICAL SKILLS section if present
+    # 1. Fast Token-Boundary Accurate Gazetteer Matching with spaCy PhraseMatcher (Step 3 & 4)
+    try:
+        matcher = SkillMatcher.get_instance()
+        gazetteer_skills = matcher.extract_canonical_skills(raw_text)
+        found_skills.extend(gazetteer_skills)
+    except Exception as e:
+        logger.warning(f"SkillMatcher execution fallback: {e}")
+
+    # 2. Parse explicit anchored TECHNICAL SKILLS category tokens
     skills_sec = re.search(r"(?i)\b(?:technical skills|skills|technologies|core competencies)\b\s*[:\n]", raw_text)
     if skills_sec:
         sub_text = raw_text[skills_sec.start():skills_sec.start() + 400]
-        # Look for category lines: "Languages: Python, Java | Frontend: React..."
         token_lines = sub_text.split("\n")[:5]
         for line in token_lines:
-            # Strip category labels like "Languages:", "Frontend:", "Tools:", "ML / misc:"
             cleaned = re.sub(r"(?i)\b(?:languages|frontend|backend|tools|databases|ml\s*/\s*misc|cloud|frameworks)\s*:\s*", "", line)
             tokens = re.split(r"[,|;•\*\t]+", cleaned)
             for t in tokens:
-                clean_token = re.sub(r"\(.*?\)", "", t).strip()  # remove (beginner), (exp)
+                clean_token = re.sub(r"\(.*?\)", "", t).strip()
                 clean_token = re.sub(r"^[-—\s]+|[-—\s]+$", "", clean_token)
-                if not clean_token or len(clean_token) < 2 or len(clean_token) > 30:
-                    continue
-                
-                norm_name = normalize_skill(clean_token)
-                if norm_name and norm_name not in found_skills:
-                    found_skills.append(norm_name)
+                if clean_token and 2 <= len(clean_token) <= 30:
+                    freeform_tokens.append(clean_token)
 
-    # 2. Match comprehensive TECH_SKILLS_CATALOG across the entire resume text
+    # 3. LLM Residue Pass (Step 5) with strict verbatim containment verification
+    try:
+        residue_extractor = LLMResidueExtractor.get_instance()
+        residue_skills = residue_extractor.extract_residue_skills(
+            resume_text=raw_text,
+            skills_already_found=found_skills,
+            register_flywheel=True
+        )
+        for r_skill in residue_skills:
+            if r_skill.get("name"):
+                freeform_tokens.append(r_skill["name"])
+    except Exception as e:
+        logger.warning(f"LLM Residue pass execution fallback: {e}")
+
+    # 4. Resolve freeform tokens through the 4-Layer Normalization Cascade (Step 6)
+    if freeform_tokens:
+        resolved_items = resolve_skills_batch(freeform_tokens, register_pending=True)
+        for item in resolved_items:
+            cname = item["canonical_name"]
+            if cname and cname not in found_skills:
+                found_skills.append(cname)
+
+    # 5. Check catalog fallbacks
     for skill in TECH_SKILLS_CATALOG:
-        # Match as whole word case-insensitively
         pattern = r"\b" + re.escape(skill) + r"\b"
         if re.search(pattern, raw_text, re.I):
             normalized = normalize_skill(skill)
             if normalized not in found_skills:
                 found_skills.append(normalized)
 
-    # Normalize, deduplicate, and preserve catalog ordering
+    # Normalize and deduplicate
     normalized_list = normalize_skills_list(found_skills)
 
     # Add HTML / CSS split if HTML/CSS is present
