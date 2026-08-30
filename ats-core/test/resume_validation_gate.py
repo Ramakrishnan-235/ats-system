@@ -4,18 +4,12 @@ import logging
 import random
 import sys
 import time
-from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Dict, Any
 
-# Add src to sys.path
-src_dir = str(Path(__file__).resolve().parent.parent / "src")
-if src_dir not in sys.path:
-    sys.path.insert(0, src_dir)
-
 from ats_core.parsers.anonymizer import ResumeAnonymizer
 from ats_core.parsers.ollama_extractor import OllamaCandidateExtractor
-from ats_core.schema.candidate import CandidateProfile
+from ats_core.schemas.candidate import CandidateProfile
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("validation_gate")
@@ -99,7 +93,7 @@ def run_gate():
     logger.info("Initializing Microsoft Presidio Anonymizer...")
     anonymizer = ResumeAnonymizer(min_score_threshold=0.55)
 
-    logger.info("Connecting to Local Ollama Instance ()...")
+    logger.info("Connecting to Local Ollama Instance (gemma4:e2b)...")
     extractor = OllamaCandidateExtractor(
         base_url="http://localhost:11434/v1",
         model_name="gemma4:e2b",

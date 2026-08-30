@@ -12,6 +12,7 @@ import {
   Sparkles,
   Check,
   Plus,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,88 +38,16 @@ interface TalentCandidate {
   status: "Active" | "Placed";
 }
 
-const TALENT_POOL: TalentCandidate[] = [
-  {
-    id: "cand-001",
-    name: "Marcus Chen",
-    role: "Senior Software Engineer",
-    location: "San Francisco, CA",
-    matchScore: 96,
-    skills: ["Python", "AWS", "React", "PostgreSQL"],
-    avatar:
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=160&auto=format&fit=crop&q=80",
-    experienceYears: 4,
-    status: "Active",
-  },
-  {
-    id: "cand-002",
-    name: "Elena Rostova",
-    role: "Lead Data Engineer",
-    location: "New York, NY",
-    matchScore: 91,
-    skills: ["Python", "Kubernetes", "Spark", "Docker"],
-    avatar:
-      "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=160&auto=format&fit=crop&q=80",
-    experienceYears: 7,
-    status: "Active",
-  },
-  {
-    id: "cand-003",
-    name: "David Ross",
-    role: "Backend Developer",
-    location: "Austin, TX",
-    matchScore: 88,
-    skills: ["Go", "Kubernetes", "GCP"],
-    avatar: "DR",
-    experienceYears: 4,
-    status: "Active",
-  },
-  {
-    id: "cand-004",
-    name: "James Wilson",
-    role: "DevOps Specialist",
-    location: "Seattle, WA",
-    matchScore: 82,
-    skills: ["Python", "Ansible", "Terraform"],
-    avatar:
-      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=160&auto=format&fit=crop&q=80",
-    experienceYears: 5,
-    status: "Active",
-  },
-  {
-    id: "cand-005",
-    name: "Priya Sharma",
-    role: "Staff Backend Engineer",
-    location: "San Francisco, CA",
-    matchScore: 95,
-    skills: ["Python", "FastAPI", "Kubernetes", "PostgreSQL"],
-    avatar:
-      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=160&auto=format&fit=crop&q=80",
-    experienceYears: 8,
-    status: "Active",
-  },
-  {
-    id: "cand-006",
-    name: "Robert Vance",
-    role: "VP of Engineering",
-    location: "Austin, TX",
-    matchScore: 98,
-    skills: ["Leadership", "Distributed Systems", "Cloud"],
-    avatar:
-      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=160&auto=format&fit=crop&q=80",
-    experienceYears: 15,
-    status: "Placed",
-  },
-];
+const TALENT_POOL: TalentCandidate[] = [];
 
 export default function CandidatesPage() {
-  const [candidatesList, setCandidatesList] = useState<TalentCandidate[]>(TALENT_POOL);
+  const [candidatesList, setCandidatesList] = useState<TalentCandidate[]>([]);
   const [availableJobs, setAvailableJobs] = useState<JobRequisition[]>(MOCK_JOBS.slice(0, 15));
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState<"Hybrid" | "Semantic" | "Keyword">("Hybrid");
-  const [selectedSkills, setSelectedSkills] = useState<string[]>(["Python", "Kubernetes"]);
-  const [selectedExp, setSelectedExp] = useState<string>("3-5");
-  const [selectedStatus, setSelectedStatus] = useState<string[]>(["Active"]);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [selectedExp, setSelectedExp] = useState<string>("");
+  const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState("Relevance");
   const [addedJobs, setAddedJobs] = useState<Record<string, string>>({});
 
@@ -146,10 +75,9 @@ export default function CandidatesPage() {
             experienceYears: Math.round(d.years_of_experience || 4),
             status: "Active",
           }));
-          // Combine unique candidates by id
-          const existingIds = new Set(liveMapped.map((c) => c.id));
-          const rest = TALENT_POOL.filter((c) => !existingIds.has(c.id));
-          setCandidatesList([...liveMapped, ...rest]);
+          setCandidatesList(liveMapped);
+        } else {
+          setCandidatesList([]);
         }
       } catch (err) {
         console.warn("Could not load candidates / jobs:", err);
@@ -434,122 +362,140 @@ export default function CandidatesPage() {
                 </DropdownMenu>
               </div>
 
-              {/* 2x2 Grid of Candidate Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredCandidates.map((cand) => (
-                  <div
-                    key={cand.id}
-                    className="bg-white rounded-2xl border border-zinc-200/80 p-5 shadow-xs hover:border-zinc-300 hover:shadow-md transition-all flex flex-col justify-between min-h-[220px]"
-                  >
-                    <div>
-                      {/* Top: Avatar, Name, Location, Match % */}
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          {cand.avatar && typeof cand.avatar === "string" && cand.avatar.startsWith("http") ? (
-                            <img
-                              src={cand.avatar}
-                              alt={cand.name || "Candidate"}
-                              className="w-12 h-12 rounded-full object-cover border border-zinc-200 shrink-0"
-                            />
-                          ) : (
-                            <div className="w-12 h-12 rounded-full bg-[#eae7df] text-zinc-900 font-bold text-sm flex items-center justify-center shrink-0">
-                              {cand.avatar || (cand.name ? cand.name.slice(0, 2).toUpperCase() : "CD")}
-                            </div>
-                          )}
-                          <div>
-                            <h3 className="font-bold text-sm text-zinc-950">
-                              {cand.name || "Candidate"}
-                            </h3>
-                            <p className="text-xs text-zinc-500 font-medium leading-tight">
-                              {cand.role || "Software Specialist"}
-                            </p>
-                            <div className="flex items-center gap-1 text-[11px] text-zinc-400 mt-1">
-                              <MapPin className="w-3 h-3 text-zinc-400" />
-                              <span>{cand.location || "Remote"}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Match Score */}
-                        <div className="flex flex-col items-end">
-                          <span className="text-xl font-bold tracking-tight text-zinc-950 leading-none">
-                            {cand.matchScore}%
-                          </span>
-                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                            MATCH
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Skill Tags */}
-                      <div className="flex flex-wrap gap-1.5 mt-4">
-                        {cand.skills.map((skill) => (
-                          <span
-                            key={skill}
-                            className="bg-[#f4f3ee] text-zinc-800 text-[11px] font-medium px-2.5 py-0.5 rounded-lg border border-zinc-200/60"
-                          >
-                            {skill}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Bottom Action Buttons */}
-                    <div className="flex items-center gap-2.5 mt-5 pt-3 border-t border-zinc-100">
-                      <Link
-                        href={`/candidates/${cand.id}`}
-                        className="flex-1"
-                      >
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full text-xs font-semibold rounded-full h-8.5 border-zinc-300 bg-white text-zinc-900 hover:bg-zinc-100 hover:text-zinc-700 shadow-none transition-colors"
-                        >
-                          View
-                        </Button>
-                      </Link>
-
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            size="sm"
-                            className="flex-1 bg-black hover:bg-zinc-800 text-white hover:text-zinc-300 text-xs font-semibold rounded-full h-8.5 gap-1 shadow-none cursor-pointer transition-colors"
-                          >
-                            <span>
-                              {addedJobs[cand.id]
-                                ? addedJobs[cand.id]
-                                : "Add to Job"}
-                            </span>
-                            <ChevronDown className="w-3.5 h-3.5 text-zinc-300" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent
-                          align="end"
-                          className="bg-white rounded-xl p-1 min-w-[240px] max-h-[280px] overflow-y-auto"
-                        >
-                          <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                            Select Target Requisition:
-                          </div>
-                          {availableJobs.map((job) => (
-                            <DropdownMenuItem
-                              key={job.id}
-                              onClick={() => handleAddCandidateToJob(cand, job)}
-                              className="text-xs cursor-pointer py-2 flex flex-col items-start gap-0.5 hover:bg-zinc-50"
-                            >
-                              <span className="font-bold text-zinc-950">
-                                {job.title}
-                              </span>
-                              <span className="text-[10px] text-zinc-400 font-medium">
-                                {job.id} • {job.department}
-                              </span>
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+              {/* Grid of Candidate Cards / Empty State */}
+              {filteredCandidates.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-dashed border-zinc-200 p-12 text-center space-y-4">
+                  <div className="w-12 h-12 rounded-full bg-zinc-100 text-zinc-400 flex items-center justify-center mx-auto">
+                    <Users className="w-6 h-6" />
                   </div>
-                ))}
-              </div>
+                  <div>
+                    <h3 className="font-bold text-base text-zinc-900">
+                      No Candidates Found
+                    </h3>
+                    <p className="text-xs text-zinc-500 max-w-md mx-auto mt-1">
+                      No candidates currently match your filters or talent pool is empty. Upload candidate resumes to start scoring.
+                    </p>
+                  </div>
+                  <Link href="/upload" className="inline-block">
+                    <Button
+                      size="sm"
+                      className="bg-black hover:bg-zinc-800 text-white text-xs font-semibold rounded-full px-5 h-9 transition-colors"
+                    >
+                      Upload Resumes
+                    </Button>
+                  </Link>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredCandidates.map((cand) => (
+                    <div
+                      key={cand.id}
+                      className="bg-white rounded-2xl border border-zinc-200/80 p-5 shadow-xs hover:border-zinc-300 hover:shadow-md transition-all flex flex-col justify-between min-h-[220px]"
+                    >
+                      <div>
+                        {/* Top: Avatar, Name, Location, Match % */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            {cand.avatar && typeof cand.avatar === "string" && cand.avatar.startsWith("http") ? (
+                              <img
+                                src={cand.avatar}
+                                alt={cand.name || "Candidate"}
+                                className="w-12 h-12 rounded-full object-cover border border-zinc-200 shrink-0"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 rounded-full bg-[#eae7df] text-zinc-900 font-bold text-sm flex items-center justify-center shrink-0">
+                                {cand.avatar || (cand.name ? cand.name.slice(0, 2).toUpperCase() : "CD")}
+                              </div>
+                            )}
+                            <div>
+                              <h3 className="font-bold text-sm text-zinc-950">
+                                {cand.name || "Candidate"}
+                              </h3>
+                              <p className="text-xs text-zinc-500 font-medium leading-tight">
+                                {cand.role || "Software Specialist"}
+                              </p>
+                              <div className="flex items-center gap-1 text-[11px] text-zinc-400 mt-1">
+                                <MapPin className="w-3 h-3 text-zinc-400" />
+                                <span>{cand.location || "Remote"}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Match Score */}
+                          <div className="flex flex-col items-end">
+                            <span className="text-xl font-bold tracking-tight text-zinc-950 leading-none">
+                              {cand.matchScore}%
+                            </span>
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                              MATCH
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Skill Tags */}
+                        <div className="flex flex-wrap gap-1.5 mt-4">
+                          {cand.skills.map((skill) => (
+                            <span
+                              key={skill}
+                              className="bg-[#f4f3ee] text-zinc-800 text-[11px] font-medium px-2.5 py-0.5 rounded-lg border border-zinc-200/60"
+                            >
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Bottom Action Buttons */}
+                      <div className="flex items-center gap-2.5 mt-5 pt-3 border-t border-zinc-100">
+                        <Link
+                          href={`/candidates/${cand.id}`}
+                          className="flex-1"
+                        >
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full text-xs font-semibold rounded-full h-8.5 border-zinc-300 bg-white text-zinc-900 hover:bg-zinc-100 hover:text-zinc-700 shadow-none transition-colors"
+                          >
+                            View
+                          </Button>
+                        </Link>
+
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="sm"
+                              className="flex-1 bg-black hover:bg-zinc-800 text-white hover:text-zinc-300 text-xs font-semibold rounded-full h-8.5 gap-1 shadow-none cursor-pointer transition-colors"
+                            >
+                              <span>
+                                {addedJobs[cand.id]
+                                  ? addedJobs[cand.id]
+                                  : "Add to Job"}
+                              </span>
+                              <ChevronDown className="w-3.5 h-3.5 text-zinc-300" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent
+                            align="end"
+                            className="bg-white rounded-xl shadow-lg border border-zinc-200 w-56 max-h-64 overflow-y-auto"
+                          >
+                            {availableJobs.map((job) => (
+                              <DropdownMenuItem
+                                key={job.id}
+                                onClick={() => handleAddCandidateToJob(cand, job)}
+                                className="text-xs cursor-pointer py-2 hover:bg-zinc-50"
+                              >
+                                <span className="font-semibold truncate">
+                                  {job.title}
+                                </span>
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Load More Button */}
               <div className="flex justify-center pt-6">

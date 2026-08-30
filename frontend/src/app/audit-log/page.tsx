@@ -43,92 +43,10 @@ interface AuditEntry {
   rationale: string;
 }
 
-const MOCK_AUDIT_LOGS: AuditEntry[] = [
-  {
-    id: "aud-001",
-    timestamp: "Jan 20 14:32:07",
-    candidateInitials: "PS",
-    candidateName: "Priya Sharma",
-    jobRole: "Senior Backend Eng",
-    jobReq: "REQ-8902",
-    model: "gemma2:2b",
-    tokens: "2,340",
-    latency: "2.8s",
-    status: "OK",
-    promptTokens: 1820,
-    responseTokens: 520,
-    promptText: `System: You are an expert technical recruiter analyzing a candidate's resume against a job description. Ensure unbiased evaluation focusing solely on technical merit, system design capabilities, and relevant backend experience.
-
-Job Context: Senior Backend Engineer (REQ-8902).
-Required: Python, Go, Microservices, PostgreSQL, System Design for high-throughput systems (10k+ QPS).`,
-    responseText: `{
-  "score": 92,
-  "confidence": 0.95,
-  "verdict": "STRONG_HIRE",
-  "key_findings": [
-    "Demonstrates strong experience with required languages (Python, Go).",
-    "Proven track record with microservices migration directly applicable to REQ-8902."
-  ]
-}`,
-    rationale:
-      "The model identified a strong alignment between the candidate's practical experience with Go-based microservices and Kafka event pipelines against the core requirements of the Senior Backend Engineer role. The slight deduction in score (92/100) stems from the absence of direct Kubernetes experience, which was flagged as a preferred skill. Overall recommendation leans heavily towards advancing to a technical screen focusing on system design.",
-  },
-  {
-    id: "aud-002",
-    timestamp: "Jan 20 14:28:15",
-    candidateInitials: "MC",
-    candidateName: "Marcus Chen",
-    jobRole: "Senior Software Engineer",
-    jobReq: "REQ-8901",
-    model: "gemma2:2b",
-    tokens: "1,890",
-    latency: "1.5s",
-    status: "OK",
-    promptTokens: 1420,
-    responseTokens: 470,
-    promptText: `System: Evaluate candidate for Senior Software Engineer (REQ-8901). Focused on full stack scalability, React, TypeScript, and AWS cloud workflows.`,
-    responseText: `{
-  "score": 96,
-  "confidence": 0.98,
-  "verdict": "EXCEPTIONAL_HIRE",
-  "key_findings": [
-    "Demonstrated proficiency in full-stack architecture.",
-    "Comprehensive cloud migration background."
-  ]
-}`,
-    rationale:
-      "Exceptional synergy with frontend state orchestration and scalable microservices. Unanimous recommendation for immediate interview scheduling.",
-  },
-  {
-    id: "aud-003",
-    timestamp: "Jan 20 14:25:33",
-    candidateInitials: "ER",
-    candidateName: "Elena Rostova",
-    jobRole: "Lead Data Engineer",
-    jobReq: "REQ-8905",
-    model: "gemma2:2b",
-    tokens: "3,120",
-    latency: "3.2s",
-    status: "OK",
-    promptTokens: 2450,
-    responseTokens: 670,
-    promptText: `System: Evaluate candidate for Lead Data Engineer (REQ-8905). Key emphasis on Spark, Kafka stream processing, and distributed vector data infrastructure.`,
-    responseText: `{
-  "score": 91,
-  "confidence": 0.94,
-  "verdict": "STRONG_HIRE",
-  "key_findings": [
-    "Over 7 years architecting low-latency streaming infrastructure.",
-    "Extensive experience with PySpark, Delta Lake, and Kafka."
-  ]
-}`,
-    rationale:
-      "Candidate shows deep proficiency in high-throughput streaming systems and lakehouse management.",
-  },
-];
+const MOCK_AUDIT_LOGS: AuditEntry[] = [];
 
 export default function AuditLogPage() {
-  const [expandedId, setExpandedId] = useState<string | null>("aud-001");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedRange, setSelectedRange] = useState("Last 24 Hours");
   const [selectedModel, setSelectedModel] = useState("All Models");
   const [searchQuery, setSearchQuery] = useState("");
@@ -283,12 +201,18 @@ export default function AuditLogPage() {
               <div className="col-span-1 text-right pr-2">STATUS</div>
             </div>
 
-            {/* Audit Log Rows */}
-            {filteredLogs.map((log) => {
-              const isExpanded = expandedId === log.id;
+            {/* Audit Log Rows / Empty State */}
+            {filteredLogs.length === 0 ? (
+              <div className="p-12 text-center text-xs text-zinc-400 space-y-2">
+                <p className="font-semibold text-zinc-700">No Audit Records</p>
+                <p>Scoring prompts and LLM rationale logs will be recorded here when candidates are evaluated.</p>
+              </div>
+            ) : (
+              filteredLogs.map((log) => {
+                const isExpanded = expandedId === log.id;
 
-              return (
-                <div key={log.id} className="border-b border-zinc-100 last:border-0">
+                return (
+                  <div key={log.id} className="border-b border-zinc-100 last:border-0">
                   {/* Row Summary */}
                   <div
                     onClick={() => toggleRow(log.id)}
@@ -389,7 +313,8 @@ export default function AuditLogPage() {
                   )}
                 </div>
               );
-            })}
+            })
+          )}
           </div>
 
           {/* Pagination Footer */}

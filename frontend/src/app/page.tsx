@@ -26,8 +26,8 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<StatMetric[]>(MOCK_STATS);
   const [weeklyData, setWeeklyData] = useState<WeeklyData[]>(MOCK_WEEKLY_DATA);
   const [matchRate, setMatchRate] = useState<AIMatchRate>(MOCK_AI_MATCH_RATE);
-  const [processingResumes, setProcessingResumes] = useState(5);
-  const [todayEvaluations, setTodayEvaluations] = useState(94);
+  const [processingResumes, setProcessingResumes] = useState(0);
+  const [todayEvaluations, setTodayEvaluations] = useState(0);
   const [pipeline, setPipeline] =
     useState<Record<string, PipelineCandidateItem[]>>(MOCK_PIPELINE);
   const [isAddCandidateOpen, setIsAddCandidateOpen] = useState(false);

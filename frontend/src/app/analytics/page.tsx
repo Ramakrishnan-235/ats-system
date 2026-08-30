@@ -521,10 +521,10 @@ export default function AnalyticsPage() {
                         title="Candidate 91 Score -> Offer"
                       />
 
-                      {/* Highlighted Top-Right Dot (Priya Sharma: 95 -> Hired) */}
+                      {/* Highlighted Top-Right Dot (Candidate: 95 -> Hired) */}
                       <div
                         className="absolute top-6 right-8 group cursor-pointer z-10"
-                        onMouseEnter={() => setHoveredDot("priya")}
+                        onMouseEnter={() => setHoveredDot("cand")}
                       >
                         <div className="w-5 h-5 rounded-full border-2 border-black flex items-center justify-center animate-pulse">
                           <div className="w-2 h-2 rounded-full bg-black" />
@@ -534,12 +534,12 @@ export default function AnalyticsPage() {
                         <div
                           className={cn(
                             "absolute -top-8 right-0 bg-black text-white text-[11px] font-semibold px-2.5 py-1 rounded-md shadow-lg whitespace-nowrap transition-all duration-150",
-                            hoveredDot === "priya"
+                            hoveredDot === "cand"
                               ? "opacity-100 scale-100"
                               : "opacity-0 scale-95 pointer-events-none"
                           )}
                         >
-                          <span>Priya S. 95 → Hired</span>
+                          <span>Candidate 95 → Hired</span>
                         </div>
                       </div>
                     </div>

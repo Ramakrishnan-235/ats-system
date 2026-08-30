@@ -12,29 +12,42 @@ import { ResumeTab } from "@/components/candidate/resume-tab";
 import { TimelineTab } from "@/components/candidate/timeline-tab";
 import { AuditTrailTab } from "@/components/candidate/audit-trail-tab";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { fetchCandidate, updateCandidateStage } from "@/lib/api";
 import { CandidateDetail, CitationLocation } from "@/types/ats";
-import { MOCK_CANDIDATE_PRIYA } from "@/lib/mock-data";
 
 export default function CandidateDetailPage() {
   const params = useParams();
-  const candidateId = (params?.id as string) || "cand-001";
-  const [candidate, setCandidate] =
-    useState<CandidateDetail>(MOCK_CANDIDATE_PRIYA);
+  const candidateId = (params?.id as string) || "";
+  const [candidate, setCandidate] = useState<CandidateDetail | null>(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("ai-scorecard");
   const [activeCitation, setActiveCitation] = useState<CitationLocation | null>(null);
   const [splitView, setSplitView] = useState(false);
 
   useEffect(() => {
     async function load() {
-      const data = await fetchCandidate(candidateId);
-      if (data) setCandidate(data);
+      if (!candidateId) {
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      try {
+        const data = await fetchCandidate(candidateId);
+        setCandidate(data);
+      } catch (err) {
+        console.error("Failed to load candidate:", err);
+      } finally {
+        setLoading(false);
+      }
     }
     load();
   }, [candidateId]);
 
   const handleStageChange = async (newStage: string) => {
-    setCandidate((prev) => ({ ...prev, stage: newStage, status: newStage }));
+    if (!candidate) return;
+    setCandidate((prev) => (prev ? { ...prev, stage: newStage, status: newStage } : null));
     await updateCandidateStage(candidateId, newStage);
   };
 
@@ -59,8 +72,36 @@ export default function CandidateDetailPage() {
         <main className={`flex-1 p-8 w-full mx-auto space-y-6 transition-all ${
           splitView ? "max-w-[1700px]" : "max-w-6xl"
         }`}>
-          {/* Header Bar with Status & Stage Advancement */}
-          <CandidateHeader candidate={candidate} onStageChange={handleStageChange} />
+          {loading ? (
+            <div className="bg-white rounded-2xl border border-zinc-200 p-12 text-center text-zinc-500 font-medium text-xs">
+              Loading candidate profile...
+            </div>
+          ) : !candidate ? (
+            <div className="bg-white rounded-2xl border border-dashed border-zinc-200 p-12 text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-zinc-100 text-zinc-400 flex items-center justify-center mx-auto">
+                <Columns className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-zinc-900">
+                  Candidate Profile Not Found
+                </h3>
+                <p className="text-xs text-zinc-500 max-w-md mx-auto mt-1">
+                  Candidate record &apos;{candidateId}&apos; does not exist or has not been uploaded yet.
+                </p>
+              </div>
+              <Link href="/candidates">
+                <Button
+                  size="sm"
+                  className="bg-black hover:bg-zinc-800 text-white text-xs font-semibold rounded-full px-5 h-9 transition-colors"
+                >
+                  Return to Candidates Directory
+                </Button>
+              </Link>
+            </div>
+          ) : (
+            <>
+              {/* Header Bar with Status & Stage Advancement */}
+              <CandidateHeader candidate={candidate} onStageChange={handleStageChange} />
 
           {/* Split-View Mode (Side-by-Side Scorecard & Interactive PDF Viewer) */}
           {splitView ? (
@@ -194,6 +235,8 @@ export default function CandidateDetailPage() {
                 </Tabs>
               </div>
             </div>
+          )}
+          </>
           )}
         </main>
       </div>

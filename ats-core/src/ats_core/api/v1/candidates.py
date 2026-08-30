@@ -15,348 +15,8 @@ router = APIRouter(prefix="/candidates", tags=["Candidates & Evaluations"])
 UPLOAD_STAGING_DIR = Path(tempfile.gettempdir()) / "ats_uploads"
 UPLOAD_STAGING_DIR.mkdir(parents=True, exist_ok=True)
 
-# In-memory candidate database store matching benchmark mockups
-CANDIDATES_STORE: Dict[str, Dict[str, Any]] = {
-    "cand-001": {
-        "id": "cand-001",
-        "name": "Priya Sharma",
-        "anonymized_name": "Candidate #7712",
-        "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80",
-        "target_headline": "Senior Backend Engineer",
-        "role": "Senior Backend Engineer",
-        "location": "San Francisco, CA",
-        "email": "priya.s@example.com",
-        "phone": "(415) 555-0192",
-        "linkedin": "linkedin.com/in/priyas",
-        "status": "Interviewing",
-        "stage": "Interviewing",
-        "applied_date": "2 days ago",
-        "applied_for_job": "Senior Interface Designer / Senior Backend Requisition",
-        "years_of_experience": 8.0,
-        "highest_education": "M.S. Computer Science, Stanford University",
-        "core_skills": ["Python", "Kubernetes", "PostgreSQL", "FastAPI", "AWS", "Go"],
-        "experience": [
-            {
-                "role": "Staff Engineer",
-                "company": "Stripe",
-                "period": "2021 — Present",
-                "description": "Led core payments idempotency microservices and latency optimization for global transaction routing."
-            },
-            {
-                "role": "Senior Engineer",
-                "company": "Uber",
-                "period": "2018 — 2021",
-                "description": "Designed real-time geospatial driver dispatch ingestion microservices with Go and Kafka."
-            }
-        ],
-        "scorecard": {
-            "overall_match_score": 95,
-            "match_tier": "Exceptional Match",
-            "model_version": "Model gemma2:2b",
-            "evaluated_at": "Evaluated 2h ago",
-            "categories": [
-                {
-                    "name": "Technical Depth",
-                    "score": 9.2,
-                    "max_score": 10.0,
-                    "quote": "Led migration of monolith to FastAPI microservices, reducing p99 latency by 40%. Implemented robust idempotency keys for distributed payments...",
-                    "source_ref": "View source ¶12"
-                },
-                {
-                    "name": "System Design",
-                    "score": 8.5,
-                    "max_score": 10.0,
-                    "quote": "Strong evidence of distributed systems design, specifically regarding eventual consistency and partitioned PostgreSQL shards.",
-                    "source_ref": "View source ¶8"
-                },
-                {
-                    "name": "Leadership",
-                    "score": 7.0,
-                    "max_score": 10.0,
-                    "quote": "Mentored 3 junior engineers. Solid team contributor, but less evidence of cross-functional strategic planning.",
-                    "source_ref": "View source ¶19"
-                }
-            ],
-            "risk_flags": [
-                "No explicit evidence of managing Kubernetes clusters at enterprise scale (mentions usage, not administration)."
-            ],
-            "suggested_improvements": [
-                "1. Upskill in Enterprise Kubernetes: Obtain CKA certification or document hands-on multi-cluster orchestration & Helm chart management.",
-                "2. Expand on Cloud Architecture: Include specific AWS infrastructure automation (Terraform, IAM policies) in work history."
-            ],
-            "suggested_questions": [
-                "1. Can you describe a specific time you had to debug a failing Kubernetes pod in production?",
-                "2. How do you handle schema migrations across multiple deployed microservices?"
-            ],
-            "team_notes": [
-                {
-                    "id": "note-1",
-                    "author": "Alex Rivet",
-                    "initials": "AR",
-                    "role": "Admin",
-                    "timestamp": "Yesterday at 2:14 PM",
-                    "content": "Looks like a very strong technical fit. @Sarah can you drill into the Kubernetes experience during the system design loop?"
-                }
-            ]
-        }
-    },
-    "cand-002": {
-        "id": "cand-002",
-        "name": "David Chen",
-        "anonymized_name": "Candidate #7713",
-        "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80",
-        "target_headline": "Product Manager",
-        "role": "Product Manager",
-        "location": "New York, NY",
-        "email": "david.chen@example.com",
-        "phone": "(212) 555-0144",
-        "linkedin": "linkedin.com/in/davidchen",
-        "status": "Contacted",
-        "stage": "Contacted",
-        "applied_date": "3 days ago",
-        "applied_for_job": "Senior Product Manager",
-        "years_of_experience": 6.0,
-        "highest_education": "B.S. Product Design & Economics, NYU",
-        "core_skills": ["Product Strategy", "User Stories", "Roadmapping", "SQL", "Agile"],
-        "experience": [
-            {
-                "role": "Senior Product Manager",
-                "company": "Robinhood",
-                "period": "2022 — Present",
-                "description": "Spearheaded recurring investments feature and automated portfolio rebalancing."
-            }
-        ],
-        "scorecard": {
-            "overall_match_score": 88,
-            "match_tier": "Strong Match",
-            "model_version": "Model gemma2:2b",
-            "evaluated_at": "Evaluated 5h ago",
-            "categories": [
-                {
-                    "name": "Product Sense",
-                    "score": 9.0,
-                    "max_score": 10.0,
-                    "quote": "Focus on user-centric fintech products with proven A/B testing frameworks.",
-                    "source_ref": "View source ¶4"
-                },
-                {
-                    "name": "Execution & Delivery",
-                    "score": 8.6,
-                    "max_score": 10.0,
-                    "quote": "Shipped 4 major user-facing initiatives on schedule with cross-functional alignment.",
-                    "source_ref": "View source ¶7"
-                }
-            ],
-            "risk_flags": [
-                "Limited experience in enterprise B2B SaaS pricing models."
-            ],
-            "suggested_questions": [
-                "1. Walk us through how you prioritize trade-offs when engineering estimates double."
-            ],
-            "team_notes": []
-        }
-    },
-    "cand-004": {
-        "id": "cand-004",
-        "name": "Marcus Adebayo",
-        "anonymized_name": "Candidate #7714",
-        "avatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&auto=format&fit=crop&q=80",
-        "target_headline": "Lead UX Researcher",
-        "role": "Lead UX Researcher",
-        "location": "London, UK",
-        "email": "marcus.a@example.com",
-        "phone": "+44 20 7946 0912",
-        "linkedin": "linkedin.com/in/marcusadebayo",
-        "status": "Interview",
-        "stage": "Interview",
-        "applied_date": "5 days ago",
-        "applied_for_job": "Lead Product Designer",
-        "years_of_experience": 9.0,
-        "highest_education": "M.Sc. Human-Computer Interaction, UCL",
-        "core_skills": ["User Research", "Usability Testing", "Figma", "Design Systems", "Quantitative Research"],
-        "experience": [
-            {
-                "role": "Lead Researcher",
-                "company": "Monzo Bank",
-                "period": "2020 — Present",
-                "description": "Scaled qualitative user testing lab and instituted accessibility compliance benchmarks."
-            }
-        ],
-        "scorecard": {
-            "overall_match_score": 95,
-            "match_tier": "Exceptional Match",
-            "model_version": "Model gemma2:2b",
-            "evaluated_at": "Evaluated 1d ago",
-            "categories": [
-                {
-                    "name": "Research Methodology",
-                    "score": 9.6,
-                    "max_score": 10.0,
-                    "quote": "Demonstrated mastery of mixed-method user discovery and persona mapping.",
-                    "source_ref": "View source ¶6"
-                }
-            ],
-            "risk_flags": [],
-            "suggested_questions": [
-                "1. Describe your approach to synthesizing contradictory qualitative user feedback."
-            ],
-            "team_notes": []
-        }
-    },
-    "cand-006": {
-        "id": "cand-006",
-        "name": "Robert Vance",
-        "anonymized_name": "Candidate #7715",
-        "avatar": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=300&auto=format&fit=crop&q=80",
-        "target_headline": "VP of Engineering",
-        "role": "VP of Engineering",
-        "location": "Austin, TX",
-        "email": "robert.v@example.com",
-        "phone": "(512) 555-0188",
-        "linkedin": "linkedin.com/in/robertvance",
-        "status": "Negotiation",
-        "stage": "Negotiation",
-        "applied_date": "2 weeks ago",
-        "applied_for_job": "Senior Engineering Leadership",
-        "years_of_experience": 15.0,
-        "highest_education": "B.S. EECS, UC Berkeley",
-        "core_skills": ["Engineering Leadership", "Cloud Architecture", "Distributed Systems", "Budgeting", "Hiring"],
-        "experience": [
-            {
-                "role": "VP of Engineering",
-                "company": "Cloudflare",
-                "period": "2019 — Present",
-                "description": "Managed an engineering organization of 120+ engineers across 4 timezones."
-            }
-        ],
-        "scorecard": {
-            "overall_match_score": 98,
-            "match_tier": "Exceptional Match",
-            "model_version": "Model gemma2:2b",
-            "evaluated_at": "Evaluated 3d ago",
-            "categories": [
-                {
-                    "name": "Org Leadership & Strategy",
-                    "score": 9.9,
-                    "max_score": 10.0,
-                    "quote": "Built high-performing engineering teams with low attrition and strong cultural alignment.",
-                    "source_ref": "View source ¶2"
-                }
-            ],
-            "risk_flags": [],
-            "suggested_questions": [],
-            "team_notes": []
-        }
-    },
-    "cand-pool-001": {
-        "id": "cand-pool-001",
-        "name": "Dr. Marcus Vance",
-        "anonymized_name": "Candidate #9011",
-        "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80",
-        "target_headline": "Staff Distributed Systems Architect @ Meta",
-        "role": "Staff Distributed Systems Architect",
-        "location": "San Francisco, CA",
-        "email": "marcus.vance@example.com",
-        "phone": "(415) 555-0819",
-        "linkedin": "linkedin.com/in/marcusvance",
-        "status": "Interview",
-        "stage": "Interview",
-        "applied_date": "1 day ago",
-        "applied_for_job": "Cloud Architect / Distributed Systems Requisition",
-        "years_of_experience": 9.0,
-        "highest_education": "Ph.D. Computer Systems, UC Berkeley",
-        "core_skills": ["Python", "Kubernetes", "FastAPI", "AWS", "Go", "PostgreSQL", "Kafka"],
-        "experience": [
-            {
-                "role": "Staff Distributed Systems Architect",
-                "company": "Meta",
-                "period": "2021 — Present",
-                "description": "Engineered multi-region event streaming fabric processing 200k RPS with sub-millisecond p99 latency."
-            },
-            {
-                "role": "Principal Systems Engineer",
-                "company": "Amazon Web Services",
-                "period": "2017 — 2021",
-                "description": "Architected cloud control plane microservices with multi-region replication and failover."
-            }
-        ],
-        "scorecard": {
-            "overall_match_score": 96,
-            "match_tier": "Top Match",
-            "model_version": "Model gemma4:e2b",
-            "evaluated_at": "Evaluated 1h ago",
-            "categories": [
-                {
-                    "name": "Technical Depth",
-                    "score": 9.6,
-                    "max_score": 10.0,
-                    "quote": "Engineered multi-region event streaming fabric processing 200k RPS with sub-millisecond p99 latency.",
-                    "source_ref": "Meta Architecture Lead ¶4"
-                },
-                {
-                    "name": "System Design",
-                    "score": 9.4,
-                    "max_score": 10.0,
-                    "quote": "Extensive mastery in multi-cloud, high availability, and zero-downtime cutovers.",
-                    "source_ref": "AWS Control Plane ¶9"
-                }
-            ],
-            "risk_flags": [],
-            "suggested_questions": [
-                "1. Can you describe how you managed cross-region network partition scenarios in your Kafka fabric?",
-                "2. How do you approach zero-downtime multi-cloud failover architectures?"
-            ],
-            "team_notes": []
-        }
-    },
-    "cand-pool-002": {
-        "id": "cand-pool-002",
-        "name": "Samantha Reed",
-        "anonymized_name": "Candidate #9012",
-        "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80",
-        "target_headline": "Senior Backend & Platform Dev @ Datadog",
-        "role": "Senior Backend & Platform Dev",
-        "location": "New York, NY",
-        "email": "samantha.reed@example.com",
-        "phone": "(212) 555-0391",
-        "linkedin": "linkedin.com/in/samanthareed",
-        "status": "Qualified",
-        "stage": "Qualified",
-        "applied_date": "2 days ago",
-        "applied_for_job": "Platform & Cloud Architecture Requisition",
-        "years_of_experience": 6.0,
-        "highest_education": "M.S. Computer Engineering, Columbia University",
-        "core_skills": ["Python", "PostgreSQL", "FastAPI", "Docker", "Redis", "AWS", "Terraform"],
-        "experience": [
-            {
-                "role": "Senior Platform Engineer",
-                "company": "Datadog",
-                "period": "2020 — Present",
-                "description": "Architected distributed observability ingest services handling 15M metrics/minute with zero packet drop."
-            }
-        ],
-        "scorecard": {
-            "overall_match_score": 93,
-            "match_tier": "Top Match",
-            "model_version": "Model gemma4:e2b",
-            "evaluated_at": "Evaluated 2h ago",
-            "categories": [
-                {
-                    "name": "Technical Depth",
-                    "score": 9.2,
-                    "max_score": 10.0,
-                    "quote": "Architected distributed observability ingest services handling 15M metrics/minute with zero packet drop.",
-                    "source_ref": "Datadog Ingest Systems"
-                }
-            ],
-            "risk_flags": [],
-            "suggested_questions": [
-                "1. How do you scale Redis clusters and FastAPI worker pools to sustain peak telemetry spikes?"
-            ],
-            "team_notes": []
-        }
-    }
-}
+# In-memory candidate database store (populated dynamically upon upload/registration)
+CANDIDATES_STORE: Dict[str, Dict[str, Any]] = {}
 
 
 def register_candidate_profile(cand_dict: Dict[str, Any], job_title: str = "Software Engineer", department: str = "Engineering") -> Dict[str, Any]:
@@ -444,7 +104,10 @@ def register_candidate_profile(cand_dict: Dict[str, Any], job_title: str = "Soft
             "evaluated_at": "Evaluated recently",
             "categories": categories,
             "risk_flags": [gap] if gap else [],
-            "suggested_improvements": improvements,
+            "suggested_improvements": cand_dict.get("suggestedImprovements", [
+                f"1. Deepen hands-on proficiency in {skills[0] if skills else 'primary stack'}.",
+                "2. Highlight measurable latency and operational scale outcomes on resume."
+            ]),
             "suggested_questions": questions if questions else [
                 f"1. Can you describe how you architected systems using {skills[0] if skills else 'core stack'} in production?",
                 "2. What strategies do you employ for automated monitoring and error recovery?"
@@ -480,7 +143,7 @@ async def list_candidates(
         s = search.lower()
         candidates = [
             c for c in candidates
-            if s in c["name"].lower()
+            if s in c.get("name", "").lower()
             or s in c.get("target_headline", "").lower()
             or s in c.get("location", "").lower()
             or any(s in sk.lower() for sk in c.get("core_skills", []))
@@ -497,31 +160,31 @@ async def get_candidate(candidate_id: str):
     alt_id = candidate_id.replace("cand-", "")
     if alt_id in CANDIDATES_STORE:
         return CANDIDATES_STORE[alt_id]
-    
-    if "pool-001" in candidate_id:
-        return CANDIDATES_STORE["cand-pool-001"]
-    elif "pool-002" in candidate_id:
-        return CANDIDATES_STORE["cand-pool-002"]
-    
-    dynamic_cand = {
-        "id": candidate_id,
-        "name": "Candidate Profile",
-        "headline": "Software Engineer",
-        "skills": ["Python", "Cloud", "FastAPI"],
-        "matchScore": 90,
-    }
-    return register_candidate_profile(dynamic_cand)
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Candidate with ID '{candidate_id}' not found."
+    )
 
 
 @router.get("/{candidate_id}/scorecard")
 async def get_candidate_scorecard(candidate_id: str):
-    cand = CANDIDATES_STORE.get(candidate_id, CANDIDATES_STORE["cand-001"])
-    return cand.get("scorecard", {})
+    if candidate_id not in CANDIDATES_STORE:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Candidate with ID '{candidate_id}' not found."
+        )
+    return CANDIDATES_STORE[candidate_id].get("scorecard", {})
 
 
 @router.post("/{candidate_id}/notes")
 async def add_candidate_note(candidate_id: str, note: NoteCreateRequest):
-    cand = CANDIDATES_STORE.get(candidate_id, CANDIDATES_STORE["cand-001"])
+    if candidate_id not in CANDIDATES_STORE:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Candidate with ID '{candidate_id}' not found."
+        )
+    cand = CANDIDATES_STORE[candidate_id]
     new_note = {
         "id": f"note-{uuid.uuid4().hex[:6]}",
         "author": note.author,
@@ -530,13 +193,22 @@ async def add_candidate_note(candidate_id: str, note: NoteCreateRequest):
         "timestamp": "Just now",
         "content": note.content
     }
+    if "scorecard" not in cand:
+        cand["scorecard"] = {}
+    if "team_notes" not in cand["scorecard"]:
+        cand["scorecard"]["team_notes"] = []
     cand["scorecard"]["team_notes"].append(new_note)
     return new_note
 
 
 @router.patch("/{candidate_id}/stage")
 async def update_candidate_stage(candidate_id: str, new_stage: str = Query(...)):
-    cand = CANDIDATES_STORE.get(candidate_id, CANDIDATES_STORE["cand-001"])
+    if candidate_id not in CANDIDATES_STORE:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Candidate with ID '{candidate_id}' not found."
+        )
+    cand = CANDIDATES_STORE[candidate_id]
     cand["stage"] = new_stage
     cand["status"] = new_stage
     return {"status": "SUCCESS", "candidate_id": candidate_id, "stage": new_stage}
@@ -754,16 +426,6 @@ async def locate_candidate_citation(
             pass
 
     if not pdf_bytes:
-        # Fallback to test sample PDF
-        sample_path = Path(__file__).resolve().parent.parent.parent / "test" / "sample_resumes"
-        for f in sample_path.glob("*.pdf"):
-            try:
-                pdf_bytes = f.read_bytes()
-                break
-            except Exception:
-                pass
-
-    if not pdf_bytes:
         return {
             "found": False,
             "candidate_id": candidate_id,
@@ -797,17 +459,6 @@ async def get_candidate_resume_pdf(candidate_id: str):
                 media_type="application/pdf",
                 filename=f.name.split("_", 1)[-1] if "_" in f.name else f.name
             )
-
-    # Check sample resumes for default mock candidates
-    sample_path = Path(__file__).resolve().parent.parent.parent / "test" / "sample_resumes"
-    if sample_path.exists():
-        for f in sample_path.glob("*.pdf"):
-            if f.exists():
-                return FileResponse(
-                    path=str(f),
-                    media_type="application/pdf",
-                    filename=f.name
-                )
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,

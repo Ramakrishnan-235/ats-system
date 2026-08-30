@@ -4,7 +4,6 @@ import {
   MOCK_AI_MATCH_RATE,
   MOCK_PIPELINE,
   MOCK_JOBS,
-  MOCK_CANDIDATE_PRIYA,
   MOCK_CANDIDATES_REGISTRY,
 } from "./mock-data";
 import {
@@ -177,240 +176,7 @@ function getDefaultCandidatesForJob(
   jobId: string,
   jobInfo?: Partial<JobRequisition>
 ): RankedCandidate[] {
-  const targetJob = jobInfo || MOCK_JOBS.find((j) => j.id === jobId) || {
-    title: "Cloud Architect",
-    department: "Cloud & Infrastructure",
-    required_skills: ["AWS", "Terraform", "Kubernetes", "Microservices"],
-  };
-
-  const skills = targetJob.required_skills || ["Python", "Cloud", "Kubernetes"];
-
-  if (jobId === "job-009" || targetJob.title?.toLowerCase().includes("cloud")) {
-    return [
-      {
-        id: "cand-pool-001",
-        rank: 1,
-        name: "Dr. Marcus Vance",
-        headline: "Staff Distributed Systems Architect @ Meta",
-        avatar:
-          "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
-        isImageAvatar: true,
-        matchScore: 96,
-        matchLabel: "Top Match",
-        skills: ["AWS", "Terraform", "Kubernetes", "Cloud Architecture", "Go"],
-        stage: "Interview",
-        stageBadgeStyle: "bg-[#ede8dc] text-zinc-800",
-        technicalDepthScore: 9.6,
-        systemDesignScore: 9.4,
-        quote:
-          "Engineered multi-region event streaming fabric processing 200k RPS with sub-millisecond p99 latency.",
-        sourceResumeLink: "/candidates/cand-pool-001",
-        potentialGap: "High focus on proprietary Meta hyper-scale tooling; verify familiarity with standard Terraform modules.",
-        suggestedImprovements: [
-          "1. Bridge Proprietary Tools to Open Standards: Document production experience with open-source Terraform & Helm alongside internal hyper-scale tooling.",
-          "2. Highlight Multi-Cloud Migration: Elaborate on AWS/GCP hybrid network topologies directly in resume experience.",
-        ],
-        suggestedQuestions: [
-          "Can you describe how you managed cross-region network partition scenarios in your cloud fabric?",
-          "How do you approach zero-downtime multi-cloud failover architectures?",
-        ],
-        jobId,
-      },
-      {
-        id: "cand-pool-002",
-        rank: 2,
-        name: "Samantha Reed",
-        headline: "Senior Backend & Platform Dev @ Datadog",
-        avatar:
-          "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
-        isImageAvatar: true,
-        matchScore: 93,
-        matchLabel: "Top Match",
-        skills: ["AWS", "Terraform", "Docker", "PostgreSQL", "FastAPI"],
-        stage: "Qualified",
-        stageBadgeStyle: "bg-emerald-100 text-emerald-900",
-        technicalDepthScore: 9.2,
-        systemDesignScore: 9.0,
-        quote:
-          "Architected distributed observability ingest services handling 15M metrics/minute with zero packet drop.",
-        sourceResumeLink: "/candidates/cand-pool-002",
-        potentialGap: "Fewer years leading multi-region Azure / GCP hybrid migrations.",
-        suggestedImprovements: [
-          "1. Expand on Multi-Cloud Governance: Highlight architectural patterns across GCP / Azure hybrid clouds on your resume.",
-          "2. Add High-Concurrency Database Tuning: Detail PostgreSQL connection pooling, vacuuming, and replication benchmarks.",
-        ],
-        suggestedQuestions: [
-          "How do you scale Redis clusters and FastAPI worker pools to sustain peak telemetry spikes?",
-          "What is your strategy for automated Terraform drift detection?",
-        ],
-        jobId,
-      },
-      {
-        id: "cand-pool-003",
-        rank: 3,
-        name: "Kai Nakamura",
-        headline: "Cloud Software Engineer @ Shopify",
-        avatar: "KN",
-        isImageAvatar: false,
-        matchScore: 89,
-        matchLabel: "Strong Match",
-        skills: ["GCP", "Kubernetes", "Terraform", "Docker", "Go"],
-        stage: "Screening",
-        stageBadgeStyle: "bg-zinc-100 text-zinc-700",
-        technicalDepthScore: 8.8,
-        systemDesignScore: 8.5,
-        quote:
-          "Maintained Kubernetes cluster orchestration and developed automated canary deployment operators across multi-cloud regions.",
-        sourceResumeLink: "/candidates/cand-pool-003",
-        potentialGap: "Primary expertise in GCP rather than AWS core network peering.",
-        suggestedImprovements: [
-          "1. Upskill in AWS Cloud Networking: Gain hands-on exposure with AWS Transit Gateway, Direct Connect, and VPC peering.",
-          "2. Add Application Layer Metrics: Detail latency reduction and service-level objectives for Go microservices.",
-        ],
-        suggestedQuestions: [
-          "How do you design Kubernetes RBAC policies for isolated multi-tenant services?",
-        ],
-        jobId,
-      },
-      {
-        id: "cand-5",
-        rank: 4,
-        name: "Alex Rivera",
-        headline: "Senior Cloud Engineer @ Netflix",
-        avatar: "AR",
-        isImageAvatar: false,
-        matchScore: 85,
-        matchLabel: "Match",
-        skills: ["AWS", "Terraform", "Well-Architected Framework", "Go"],
-        stage: "Applied",
-        stageBadgeStyle: "bg-zinc-100 text-zinc-600",
-        technicalDepthScore: 8.3,
-        systemDesignScore: 8.1,
-        quote:
-          "Automated cloud infrastructure provisioning across 12 AWS regions using Terraform and custom Go operators.",
-        sourceResumeLink: "/candidates/cand-5",
-        potentialGap: "Focus is largely on DevOps and Cloud IaC rather than overarching enterprise application architecture.",
-        suggestedImprovements: [
-          "1. Deepen Application Architecture Exposure: Show end-to-end service design and API lifecycle ownership beyond IaC provisioning.",
-          "2. Add Security Hardening Benchmarks: Include SOC2/ISO compliance automation and IAM least-privilege enforcement in project descriptions.",
-        ],
-        suggestedQuestions: [
-          "What are your strategies for managing complex multi-environment Terraform state files?",
-        ],
-        jobId,
-      },
-      {
-        id: "cand-pool-005",
-        rank: 5,
-        name: "David Ross",
-        headline: "Distributed Systems Developer @ Block",
-        avatar: "DR",
-        isImageAvatar: false,
-        matchScore: 81,
-        matchLabel: "Potential Match",
-        skills: ["Microservices", "Kafka", "PostgreSQL", "Go"],
-        stage: "Screening",
-        stageBadgeStyle: "bg-zinc-100 text-zinc-700",
-        technicalDepthScore: 8.0,
-        systemDesignScore: 7.8,
-        quote:
-          "Built financial ledger consistency check services validating 50k transactions/sec with zero race conditions.",
-        sourceResumeLink: "/candidates/cand-pool-005",
-        potentialGap: "More application level experience than cloud infrastructure governance.",
-        suggestedImprovements: [
-          "1. Gain Cloud Infrastructure Mastery: Complete AWS Solution Architect certifications and document Terraform deployment pipelines.",
-          "2. Expand on Disaster Recovery: Detail failover strategies and cross-datacenter state synchronization on resume.",
-        ],
-        suggestedQuestions: [
-          "How do you ensure data integrity during cross-region failover?",
-        ],
-        jobId,
-      },
-    ];
-  }
-
-  // Generic fallback for any other job requisition
-  return [
-    {
-      id: `cand-${jobId}-1`,
-      rank: 1,
-      name: "Priya Sharma",
-      headline: `Staff Engineer @ Stripe`,
-      avatar:
-        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
-      isImageAvatar: true,
-      matchScore: 95,
-      matchLabel: "Top Match",
-      skills: skills.slice(0, 3).concat(["Python", "Kubernetes"]),
-      stage: "Interview",
-      stageBadgeStyle: "bg-[#ede8dc] text-zinc-800",
-      technicalDepthScore: 9.2,
-      systemDesignScore: 8.5,
-      quote: `Led core architecture and microservices for ${targetJob.title}, reducing p99 latency by 40%.`,
-      sourceResumeLink: `/candidates/cand-${jobId}-1`,
-      potentialGap: "Heavy reliance on managed PaaS historically; probe raw infrastructure depth.",
-      suggestedImprovements: [
-        `1. Upskill in Core Architecture for ${targetJob.title || "Target Role"}: Deepen demonstrated production experience with ${skills[0] || "core stack"}.`,
-        `2. Highlight Scale & Throughput: Detail measurable RPS and latency outcomes directly in recent work history.`,
-      ],
-      suggestedQuestions: [
-        `Can you describe the microservices architecture you designed for ${skills[0] || "core platform"}?`,
-      ],
-      jobId,
-    },
-    {
-      id: `cand-${jobId}-2`,
-      rank: 2,
-      name: "Jane Doe",
-      headline: `Senior Specialist @ Square`,
-      avatar: "JD",
-      isImageAvatar: false,
-      matchScore: 92,
-      matchLabel: "Strong Match",
-      skills: skills.slice(0, 2).concat(["SQL", "AWS"]),
-      stage: "Qualified",
-      stageBadgeStyle: "bg-zinc-100 text-zinc-700",
-      technicalDepthScore: 8.9,
-      systemDesignScore: 8.7,
-      quote: "Architected real-time processing pipelines handling 50k transactions/sec with zero loss.",
-      sourceResumeLink: `/candidates/cand-${jobId}-2`,
-      potentialGap: "Limited direct experience with event streaming at high volume.",
-      suggestedImprovements: [
-        `1. Deepen Hands-on Experience with ${skills[1] || "Event Streaming"}: Showcase distributed message broker pipelines for ${targetJob.title || "this role"}.`,
-        `2. Expand on Database Sharding: Add PostgreSQL indexing and partition performance details to resume.`,
-      ],
-      suggestedQuestions: [
-        "How did you ensure transactional consistency across your distributed services?",
-      ],
-      jobId,
-    },
-    {
-      id: `cand-${jobId}-3`,
-      rank: 3,
-      name: "Mark Tan",
-      headline: `Platform Engineer @ Robinhood`,
-      avatar: "MT",
-      isImageAvatar: false,
-      matchScore: 87,
-      matchLabel: "Match",
-      skills: skills.slice(1, 3).concat(["Go", "Docker"]),
-      stage: "Screening",
-      stageBadgeStyle: "bg-zinc-100 text-zinc-700",
-      technicalDepthScore: 8.4,
-      systemDesignScore: 8.6,
-      quote: "Maintained multi-cluster infrastructure running 200+ core microservices with 99.99% availability.",
-      sourceResumeLink: `/candidates/cand-${jobId}-3`,
-      potentialGap: "Primary expertise is in Go infrastructure rather than application layer.",
-      suggestedImprovements: [
-        `1. Align Application Development Stack: Build projects demonstrating asynchronous backend APIs aligned with ${targetJob.title || "this position"}.`,
-        `2. Highlight Application-Level Data Persistence: Detail relational database query optimizations and caching patterns.`,
-      ],
-      suggestedQuestions: [
-        "How do you approach automated canary deployments with Kubernetes?",
-      ],
-      jobId,
-    },
-  ];
+  return [];
 }
 
 export async function fetchJobCandidates(
@@ -425,7 +191,7 @@ export async function fetchJobCandidates(
     });
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
+      if (Array.isArray(data)) {
         setStoredItem(storageKey, data);
         return data;
       }
@@ -436,20 +202,11 @@ export async function fetchJobCandidates(
 
   // Local storage fallback
   const stored = getStoredItem<RankedCandidate[] | null>(storageKey, null);
-  if (stored && Array.isArray(stored) && stored.length > 0) {
+  if (stored && Array.isArray(stored)) {
     return stored;
   }
 
-  // Initialize and persist default pool for this job
-  const defaultPool = getDefaultCandidatesForJob(jobId, jobInfo);
-  setStoredItem(storageKey, defaultPool);
-
-  // Register default candidates in profile store
-  defaultPool.forEach((c) => {
-    registerOrSyncCandidateProfile(c, jobInfo?.title || "Target Requisition", jobId);
-  });
-
-  return defaultPool;
+  return [];
 }
 
 export async function addJobCandidate(
@@ -846,7 +603,7 @@ export async function fetchCandidates(params?: {
   return Array.from(map.values());
 }
 
-export async function fetchCandidate(id: string): Promise<CandidateDetail> {
+export async function fetchCandidate(id: string): Promise<CandidateDetail | null> {
   // 1. Try local storage cache
   const profiles = getStoredItem<Record<string, CandidateDetail>>("ats_candidate_profiles", {});
   if (profiles[id]) {
@@ -873,22 +630,7 @@ export async function fetchCandidate(id: string): Promise<CandidateDetail> {
     return { ...MOCK_CANDIDATES_REGISTRY[id], id };
   }
 
-  // 4. Fallback: synthesize realistic profile for any other candidate ID
-  const synthesized = registerOrSyncCandidateProfile(
-    {
-      id,
-      name: id.includes("pool")
-        ? "Dr. Marcus Vance"
-        : `Candidate ${id.replace(/[^0-9]/g, "") || "Specialist"}`,
-      headline: "Cloud & Distributed Systems Architect",
-      skills: ["AWS", "Terraform", "Kubernetes", "Cloud Architecture", "Python"],
-      matchScore: 94,
-    },
-    "Cloud Architect",
-    "job-009"
-  );
-
-  return synthesized;
+  return null;
 }
 
 export async function updateCandidateStage(

@@ -47,7 +47,7 @@ export interface JobRequisition {
     score: number;
     label: string;
     last_run: string;
-    status: "ACTIVE" | "PAUSED";
+    status: "ACTIVE" | "PAUSED" | "PENDING";
   };
   icon_type:
     | "code"

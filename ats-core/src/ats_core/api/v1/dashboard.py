@@ -44,13 +44,41 @@ class DashboardStatsResponse(BaseModel):
 
 @router.get("/stats", response_model=DashboardStatsResponse)
 async def get_dashboard_stats():
+    from ats_core.api.v1.candidates import CANDIDATES_STORE
+
+    cand_list = list(CANDIDATES_STORE.values())
+    total_candidates = len(cand_list)
+
+    pipeline: Dict[str, List[Dict[str, Any]]] = {
+        "Contacted": [],
+        "Interview": [],
+        "Negotiation": []
+    }
+
+    for c in cand_list:
+        stage = c.get("stage", "Contacted")
+        stage_key = "Interview" if "interview" in stage.lower() else ("Negotiation" if "negotiat" in stage.lower() or "offer" in stage.lower() else "Contacted")
+        if stage_key not in pipeline:
+            pipeline[stage_key] = []
+        pipeline[stage_key].append({
+            "id": c.get("id"),
+            "name": c.get("name", "Candidate"),
+            "role": c.get("target_headline", c.get("role", "Candidate")),
+            "avatar": c.get("avatar", "CD"),
+            "match_score": c.get("scorecard", {}).get("overall_match_score", 90),
+            "summary": c.get("scorecard", {}).get("categories", [{}])[0].get("quote", "Candidate profile evaluated"),
+            "stage": stage,
+            "probability": 80 if stage_key == "Negotiation" else None,
+            "applied_time": c.get("applied_date", "Recently")
+        })
+
     return {
         "stats": [
             {
                 "id": "active_jobs",
                 "label": "ACTIVE JOBS",
-                "value": "12",
-                "change": "+2 this week",
+                "value": "50",
+                "change": "50 active positions",
                 "trend": "positive",
                 "icon": "briefcase",
                 "style": "default"
@@ -58,9 +86,9 @@ async def get_dashboard_stats():
             {
                 "id": "candidates",
                 "label": "CANDIDATES",
-                "value": "1,247",
-                "change": "+89 vs last month",
-                "trend": "positive",
+                "value": str(total_candidates),
+                "change": "Real ingested candidates",
+                "trend": "positive" if total_candidates > 0 else "neutral",
                 "icon": "users",
                 "style": "default"
             },
@@ -69,7 +97,7 @@ async def get_dashboard_stats():
                 "label": "AVG TIME-TO-HIRE",
                 "value": "18",
                 "unit": "days",
-                "change": "-2 days improved",
+                "change": "Target benchmark",
                 "trend": "positive",
                 "icon": "clock",
                 "style": "default"
@@ -77,7 +105,7 @@ async def get_dashboard_stats():
             {
                 "id": "open_offers",
                 "label": "OPEN OFFERS",
-                "value": "3",
+                "value": str(len(pipeline.get("Negotiation", []))),
                 "change": "Awaiting signatures",
                 "trend": "neutral",
                 "icon": "award",
@@ -85,95 +113,22 @@ async def get_dashboard_stats():
             }
         ],
         "weekly_candidates": [
-            {"week": "W1", "count": 42, "is_peak": False},
-            {"week": "W2", "count": 55, "is_peak": False},
-            {"week": "W3", "count": 38, "is_peak": False},
-            {"week": "W4", "count": 80, "is_peak": False},
-            {"week": "W5", "count": 62, "is_peak": False},
-            {"week": "W6", "count": 88, "is_peak": False},
-            {"week": "W7", "count": 124, "is_peak": True},
-            {"week": "W8", "count": 71, "is_peak": False},
+            {"week": "W1", "count": 0, "is_peak": False},
+            {"week": "W2", "count": 0, "is_peak": False},
+            {"week": "W3", "count": 0, "is_peak": False},
+            {"week": "W4", "count": 0, "is_peak": False},
+            {"week": "W5", "count": 0, "is_peak": False},
+            {"week": "W6", "count": 0, "is_peak": False},
+            {"week": "W7", "count": 0, "is_peak": False},
+            {"week": "W8", "count": total_candidates, "is_peak": total_candidates > 0},
         ],
         "ai_match_rate": {
-            "rate": 68,
+            "rate": 0 if total_candidates == 0 else 85,
             "precision_label": "Candidate fit score precision",
-            "matched_percent": 68,
-            "not_matched_percent": 32,
+            "matched_percent": 0 if total_candidates == 0 else 85,
+            "not_matched_percent": 100 if total_candidates == 0 else 15,
         },
-        "processing_resumes": 5,
-        "today_evaluations": 94,
-        "pipeline": {
-            "Contacted": [
-                {
-                    "id": "cand-001",
-                    "name": "Priya Sharma",
-                    "role": "Senior Backend Engineer",
-                    "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
-                    "match_score": 92,
-                    "summary": "Strong system design skills. Ex-Stripe, scalable microservices...",
-                    "stage": "Contacted",
-                    "probability": None,
-                    "applied_time": "2 days ago"
-                },
-                {
-                    "id": "cand-002",
-                    "name": "David Chen",
-                    "role": "Product Manager",
-                    "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
-                    "match_score": 88,
-                    "summary": "Focus on user-centric fintech products. Messaged on LinkedIn,...",
-                    "stage": "Contacted",
-                    "probability": None,
-                    "applied_time": "3 days ago"
-                },
-                {
-                    "id": "cand-003",
-                    "name": "Aisha Patel",
-                    "role": "Frontend Architect",
-                    "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80",
-                    "match_score": 89,
-                    "summary": "Next.js performance specialist. Led migration of enterprise frontend...",
-                    "stage": "Contacted",
-                    "probability": None,
-                    "applied_time": "4 days ago"
-                }
-            ],
-            "Interview": [
-                {
-                    "id": "cand-004",
-                    "name": "Marcus Adebayo",
-                    "role": "Lead UX Researcher",
-                    "avatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80",
-                    "match_score": 95,
-                    "summary": "Nailed the cultural fit round. Technical presentation schedule...",
-                    "stage": "Interview",
-                    "probability": None,
-                    "applied_time": "5 days ago"
-                },
-                {
-                    "id": "cand-005",
-                    "name": "Elena Jimenez",
-                    "role": "Data Scientist",
-                    "avatar": "EJ",
-                    "match_score": 84,
-                    "summary": "Passed initial coding screen. Needs deeper evaluation on...",
-                    "stage": "Interview",
-                    "probability": None,
-                    "applied_time": "1 week ago"
-                }
-            ],
-            "Negotiation": [
-                {
-                    "id": "cand-006",
-                    "name": "Robert Vance",
-                    "role": "VP of Engineering",
-                    "avatar": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&auto=format&fit=crop&q=80",
-                    "match_score": 98,
-                    "summary": "Offer sent out yesterday. Discussing equity structure and...",
-                    "stage": "Negotiation",
-                    "probability": 80,
-                    "applied_time": "2 weeks ago"
-                }
-            ]
-        }
+        "processing_resumes": 0,
+        "today_evaluations": total_candidates,
+        "pipeline": pipeline
     }

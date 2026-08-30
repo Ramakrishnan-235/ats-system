@@ -68,6 +68,7 @@ class WorkExperience(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def sanitize_experience(cls, data: Any) -> Any:
+        from ats_core.parsers.normalizers import normalize_date, normalize_skills_list
         if isinstance(data, dict):
             wpt = data.get("workplace_type") or data.get("location_type")
             if wpt and wpt not in [e.value for e in WorkplaceType]:
@@ -80,6 +81,23 @@ class WorkExperience(BaseModel):
                     data["workplace_type"] = WorkplaceType.ONSITE.value
                 else:
                     data["workplace_type"] = WorkplaceType.UNKNOWN.value
+
+            # Deterministic Date Normalization
+            if "start_date" in data and data["start_date"]:
+                norm_start = normalize_date(str(data["start_date"]), is_current=False)
+                if norm_start:
+                    data["start_date"] = norm_start
+
+            if "end_date" in data and data["end_date"]:
+                is_curr = bool(data.get("is_current_role", False))
+                norm_end = normalize_date(str(data["end_date"]), is_current=is_curr)
+                if norm_end:
+                    data["end_date"] = norm_end
+                    if norm_end.lower() == "present":
+                        data["is_current_role"] = True
+
+            if "primary_technologies" in data and isinstance(data["primary_technologies"], list):
+                data["primary_technologies"] = normalize_skills_list(data["primary_technologies"])
         return data
 
 

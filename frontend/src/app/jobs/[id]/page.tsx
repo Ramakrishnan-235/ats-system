@@ -63,148 +63,7 @@ import {
 import { JobRequisition, RankedCandidate } from "@/types/ats";
 import { MOCK_JOBS } from "@/lib/mock-data";
 
-const INITIAL_RANKED_CANDIDATES: RankedCandidate[] = [
-  {
-    id: "cand-1",
-    rank: 1,
-    name: "Priya Sharma",
-    headline: "Staff Eng @ Stripe",
-    avatar:
-      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
-    isImageAvatar: true,
-    matchScore: 95,
-    matchLabel: "Top Match",
-    skills: ["Python", "Kubernetes", "FastAPI"],
-    stage: "Interview",
-    stageBadgeStyle: "bg-[#ede8dc] text-zinc-800",
-    technicalDepthScore: 9.2,
-    systemDesignScore: 8.5,
-    quote:
-      "Led migration of monolith to FastAPI microservices, reducing p99 latency by 40%",
-    sourceResumeLink: "/candidates/cand-001",
-    potentialGap:
-      "No explicit evidence of managing Kubernetes clusters at enterprise scale. Heavy reliance on managed PaaS historically.",
-    suggestedImprovements: [
-      "1. Upskill in Enterprise Kubernetes: Obtain CKA or document multi-cluster orchestration, Helm deployments, and ingress controller tuning for high-traffic environments.",
-      "2. Highlight Cloud Infra Automation: Detail Terraform/IaC modules and AWS VPC peering architectures directly within recent work experience.",
-    ],
-    suggestedQuestions: [
-      "Can you describe the specific microservices architecture used in the FastAPI migration?",
-      "How did you handle the migration cutover with zero downtime?",
-    ],
-  },
-  {
-    id: "cand-2",
-    rank: 2,
-    name: "Jane Doe",
-    headline: "Senior Backend @ Square",
-    avatar: "JD",
-    isImageAvatar: false,
-    matchScore: 92,
-    matchLabel: "Strong Match",
-    skills: ["Python", "SQL", "AWS"],
-    stage: "Qualified",
-    stageBadgeStyle: "bg-zinc-100 text-zinc-700",
-    technicalDepthScore: 8.9,
-    systemDesignScore: 8.7,
-    quote:
-      "Architected real-time payment reconciliation pipeline handling 50k transactions/sec with zero loss.",
-    sourceResumeLink: "/candidates/cand-002",
-    potentialGap:
-      "Limited direct experience with event-driven streaming frameworks like Apache Kafka.",
-    suggestedImprovements: [
-      "1. Gain Hands-on Streaming & Kafka Experience: The role requires distributed event queues; add projects showing Kafka consumer group management and schema evolution.",
-      "2. Expand on Database Sharding: Clarify PostgreSQL partitioning and read-replica failover strategies on resume to match senior requirements.",
-    ],
-    suggestedQuestions: [
-      "How did you ensure transactional consistency across your distributed payment microservices?",
-      "What database partitioning strategies did you employ for scaling SQL databases?",
-    ],
-  },
-  {
-    id: "cand-3",
-    rank: 3,
-    name: "Mark Tan",
-    headline: "Infrastructure Engineer @ Robinhood",
-    avatar: "MT",
-    isImageAvatar: false,
-    matchScore: 87,
-    matchLabel: "Match",
-    skills: ["Go", "Kubernetes", "Docker"],
-    stage: "Screening",
-    stageBadgeStyle: "bg-zinc-100 text-zinc-700",
-    technicalDepthScore: 8.4,
-    systemDesignScore: 8.6,
-    quote:
-      "Maintained multi-cluster Kubernetes infrastructure running 200+ core microservices with 99.99% availability.",
-    sourceResumeLink: "/candidates/cand-003",
-    potentialGap:
-      "Primary expertise is in Go infrastructure rather than Python application development.",
-    suggestedImprovements: [
-      "1. Demonstrate Modern Python Application Depth: Build and showcase production-grade asynchronous FastAPI / Pydantic v2 services to match the job stack.",
-      "2. Include Application-level Data Modeling: Add experience working directly with ORMs, database migrations (Alembic), and domain-driven design.",
-    ],
-    suggestedQuestions: [
-      "How do you approach automated canary deployments with Istio and Kubernetes?",
-      "Can you share how you debug high-memory or CPU throttling issues in containerized workloads?",
-    ],
-  },
-  {
-    id: "cand-4",
-    rank: 4,
-    name: "Elena Rostova",
-    headline: "Lead Data Engineer @ Databricks",
-    avatar:
-      "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80",
-    isImageAvatar: true,
-    matchScore: 85,
-    matchLabel: "Match",
-    skills: ["Spark", "Kafka", "Python"],
-    stage: "Screening",
-    stageBadgeStyle: "bg-zinc-100 text-zinc-700",
-    technicalDepthScore: 8.7,
-    systemDesignScore: 8.2,
-    quote:
-      "Built distributed data pipelines streaming 10TB+ daily with Spark and Kafka lakehouse storage.",
-    sourceResumeLink: "/candidates/cand-004",
-    potentialGap:
-      "More oriented toward data platform architecture than user-facing synchronous REST/gRPC API microservices.",
-    suggestedImprovements: [
-      "1. Bridge into Synchronous Web Architectures: Emphasize synchronous REST/gRPC API design and low-latency microservices alongside big data pipeline work.",
-      "2. Add User-Facing Auth & API Security Experience: Highlight OAuth2, JWT, rate-limiting, and API gateway integrations on the resume.",
-    ],
-    suggestedQuestions: [
-      "How do you handle schema evolution and backpressure in Kafka streaming pipelines?",
-    ],
-  },
-  {
-    id: "cand-5",
-    rank: 5,
-    name: "Alex Rivera",
-    headline: "Senior Cloud Engineer @ Netflix",
-    avatar: "AR",
-    isImageAvatar: false,
-    matchScore: 81,
-    matchLabel: "Potential Match",
-    skills: ["AWS", "Terraform", "Go"],
-    stage: "Applied",
-    stageBadgeStyle: "bg-zinc-100 text-zinc-600",
-    technicalDepthScore: 8.0,
-    systemDesignScore: 7.8,
-    quote:
-      "Automated cloud infrastructure provisioning across 12 AWS regions using Terraform and custom Go operators.",
-    sourceResumeLink: "/candidates/cand-005",
-    potentialGap:
-      "Focus is largely on DevOps and Cloud IaC rather than backend business application logic.",
-    suggestedImprovements: [
-      "1. Deepen Backend Business Logic Exposure: Highlight feature development, service business logic, and transactional guarantees in addition to IaC/DevOps.",
-      "2. Quantify User-Facing Application Impact: Detail how infrastructure enhancements directly reduced end-user latency or enabled new product feature releases.",
-    ],
-    suggestedQuestions: [
-      "What are your strategies for managing complex multi-environment Terraform state files?",
-    ],
-  },
-];
+const INITIAL_RANKED_CANDIDATES: RankedCandidate[] = [];
 
 export default function JobPipelineDetailPage() {
   const params = useParams();
@@ -222,16 +81,13 @@ export default function JobPipelineDetailPage() {
         location: "Remote",
         status: "OPEN",
         posted_date: "Jan 15",
-        candidates_count: 34,
-        avatars: [
-          "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80",
-          "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80",
-        ],
+        candidates_count: 0,
+        avatars: [],
         top_match: {
-          score: 95,
-          label: "95 Top Match",
-          last_run: "Just now",
-          status: "ACTIVE",
+          score: 0,
+          label: "No Candidates",
+          last_run: "-",
+          status: "PENDING",
         },
         icon_type: "code",
         job_description:
@@ -254,10 +110,8 @@ export default function JobPipelineDetailPage() {
   >("AI Ranked List");
 
   // Candidates list state
-  const [candidates, setCandidates] = useState<RankedCandidate[]>(
-    INITIAL_RANKED_CANDIDATES
-  );
-  const [expandedCand, setExpandedCand] = useState<string | null>("cand-1");
+  const [candidates, setCandidates] = useState<RankedCandidate[]>([]);
+  const [expandedCand, setExpandedCand] = useState<string | null>(null);
 
   // Action states
   const [isReRunning, setIsReRunning] = useState(false);
@@ -626,139 +480,164 @@ export default function JobPipelineDetailPage() {
                 <div className="col-span-2 text-right pr-4">STAGE</div>
               </div>
 
-              {/* Candidates Rows */}
-              {candidates.map((cand) => {
-                const isExpanded = expandedCand === cand.id;
-                const isAdvanced = !!advancedCandidates[cand.id];
-                const isAdvancingThis = advancingCandId === cand.id;
-
-                return (
-                  <div
-                    key={cand.id}
-                    className="border-b border-zinc-100 last:border-0"
+              {/* Candidates Rows / Empty State */}
+              {candidates.length === 0 ? (
+                <div className="p-12 text-center space-y-4">
+                  <div className="w-12 h-12 rounded-full bg-zinc-100 text-zinc-400 flex items-center justify-center mx-auto">
+                    <Users className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-zinc-900">
+                      No Candidates in Requisition Pipeline
+                    </h3>
+                    <p className="text-xs text-zinc-500 max-w-md mx-auto mt-1">
+                      No candidates have applied or been added to this position yet. Add candidates manually or ingest resumes to run match scoring.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => setIsAddCandidateOpen(true)}
+                    size="sm"
+                    className="bg-black hover:bg-zinc-800 text-white text-xs font-semibold rounded-full px-5 h-9 transition-colors cursor-pointer"
                   >
-                    {/* Summary Row */}
+                    Add Candidate to Requisition
+                  </Button>
+                </div>
+              ) : (
+                candidates.map((cand) => {
+                  const isExpanded = expandedCand === cand.id;
+                  const isAdvanced = !!advancedCandidates[cand.id];
+                  const isAdvancingThis = advancingCandId === cand.id;
+
+                  return (
                     <div
-                      onClick={() =>
-                        setExpandedCand(isExpanded ? null : cand.id)
-                      }
-                      className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-zinc-50/70 transition-colors cursor-pointer"
+                      key={cand.id}
+                      className="border-b border-zinc-100 last:border-0"
                     >
-                      {/* Rank Number */}
-                      <div className="col-span-1 text-base font-bold text-zinc-950 text-center">
-                        {cand.rank}
-                      </div>
-
-                      {/* Candidate Avatar & Info */}
-                      <div className="col-span-4 flex items-center gap-3">
-                        {cand.isImageAvatar ? (
-                          <img
-                            src={cand.avatar}
-                            alt={cand.name}
-                            className="w-10 h-10 rounded-full object-cover border border-zinc-200 shrink-0"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded-full bg-[#eae7df] text-zinc-900 font-bold text-xs flex items-center justify-center shrink-0">
-                            {cand.avatar}
-                          </div>
-                        )}
-                        <div>
-                          <h4 className="font-bold text-sm text-zinc-950 hover:underline">
-                            {cand.name}
-                          </h4>
-                          <p className="text-xs text-zinc-500 font-medium">
-                            {cand.headline}
-                          </p>
+                      {/* Summary Row */}
+                      <div
+                        onClick={() =>
+                          setExpandedCand(isExpanded ? null : cand.id)
+                        }
+                        className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-zinc-50/70 transition-colors cursor-pointer"
+                      >
+                        {/* Rank Number */}
+                        <div className="col-span-1 text-base font-bold text-zinc-950 text-center">
+                          {cand.rank}
                         </div>
-                      </div>
 
-                      {/* AI Match Score + Bar */}
-                      <div className="col-span-3 space-y-1.5 pr-6">
-                        <div className="flex items-baseline justify-between text-xs">
-                          <span className="font-bold text-base text-zinc-950">
-                            {cand.matchScore}
-                          </span>
-                          {cand.matchLabel && (
-                            <span className="text-[10px] font-bold text-zinc-500">
+                        {/* Candidate Avatar & Info */}
+                        <div className="col-span-4 flex items-center gap-3">
+                          {cand.isImageAvatar ? (
+                            <img
+                              src={cand.avatar}
+                              alt={cand.name}
+                              className="w-10 h-10 rounded-full object-cover border border-zinc-200 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-[#eae7df] text-zinc-900 font-bold text-xs flex items-center justify-center shrink-0">
+                              {cand.avatar}
+                            </div>
+                          )}
+                          <div>
+                            <h4 className="font-bold text-sm text-zinc-950 hover:underline">
+                              {cand.name}
+                            </h4>
+                            <p className="text-xs text-zinc-500 font-medium">
+                              {cand.headline}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* AI Match Score Column */}
+                        <div className="col-span-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base font-bold text-zinc-950">
+                              {cand.matchScore}
+                            </span>
+                            <span className="text-[11px] font-semibold text-zinc-600">
                               {cand.matchLabel}
+                            </span>
+                          </div>
+                          <div className="w-44 bg-zinc-100 h-1.5 rounded-full overflow-hidden mt-1.5">
+                            <div
+                              className="bg-black h-full rounded-full"
+                              style={{ width: `${cand.matchScore}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Key Skills Extraction */}
+                        <div className="col-span-2 flex flex-wrap gap-1">
+                          {cand.skills.slice(0, 3).map((skill) => (
+                            <span
+                              key={skill}
+                              className="bg-zinc-100 text-zinc-700 text-[10px] font-medium px-2 py-0.5 rounded-md"
+                            >
+                              {skill}
+                            </span>
+                          ))}
+                          {cand.skills.length > 3 && (
+                            <span className="text-[10px] text-zinc-400 font-medium py-0.5">
+                              +{cand.skills.length - 3}
                             </span>
                           )}
                         </div>
-                        <div className="w-full bg-zinc-100 h-1.5 rounded-full overflow-hidden">
-                          <div
-                            style={{ width: `${cand.matchScore}%` }}
-                            className="bg-black h-full rounded-full transition-all duration-300"
-                          />
-                        </div>
-                      </div>
 
-                      {/* Key Skills Extraction Badges */}
-                      <div className="col-span-2 flex flex-wrap gap-1">
-                        {cand.skills.map((s) => (
+                        {/* Stage Pill + Action Options */}
+                        <div className="col-span-2 flex items-center justify-end gap-2 pr-2">
                           <span
-                            key={s}
-                            className="bg-zinc-100 text-zinc-800 text-[10px] font-medium px-2 py-0.5 rounded-md"
+                            className={cn(
+                              "inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full",
+                              cand.stageBadgeStyle || "bg-zinc-100 text-zinc-800"
+                            )}
                           >
-                            {s}
+                            <span className="w-1.5 h-1.5 rounded-full bg-zinc-800" />
+                            <span>{cand.stage}</span>
                           </span>
-                        ))}
-                      </div>
 
-                      {/* Stage Pill + Action Options */}
-                      <div className="col-span-2 flex items-center justify-end gap-2 pr-2">
-                        <span
-                          className={cn(
-                            "inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full",
-                            cand.stageBadgeStyle || "bg-zinc-100 text-zinc-800"
-                          )}
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full bg-zinc-800" />
-                          <span>{cand.stage}</span>
-                        </span>
-
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              onClick={(e) => e.stopPropagation()}
-                              title="Options"
-                              className="text-zinc-400 hover:text-zinc-700 p-1 rounded-md hover:bg-zinc-100 transition-colors"
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                onClick={(e) => e.stopPropagation()}
+                                title="Options"
+                                className="text-zinc-400 hover:text-zinc-700 p-1 rounded-md hover:bg-zinc-100 transition-colors"
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="end"
+                              className="bg-white rounded-xl text-xs p-1 shadow-lg border border-zinc-200 min-w-[200px]"
                             >
-                              <MoreVertical className="w-4 h-4" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent
-                            align="end"
-                            className="bg-white rounded-xl text-xs p-1 shadow-lg border border-zinc-200 min-w-[200px]"
-                          >
-                            <DropdownMenuItem asChild>
-                              <Link
-                                href={cand.sourceResumeLink || `/candidates/${cand.id}`}
+                              <DropdownMenuItem asChild>
+                                <Link
+                                  href={cand.sourceResumeLink || `/candidates/${cand.id}`}
+                                  className="cursor-pointer font-medium"
+                                >
+                                  View Candidate Profile
+                                </Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleAdvanceCandidate(cand.id)}
                                 className="cursor-pointer font-medium"
                               >
-                                View Candidate Profile
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleAdvanceCandidate(cand.id)}
-                              className="cursor-pointer font-medium"
-                            >
-                              Advance Candidate Stage
-                            </DropdownMenuItem>
-                            <div className="h-px bg-zinc-100 my-1" />
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRemoveCandidate(cand.id);
-                              }}
-                              className="cursor-pointer text-red-600 hover:text-red-700 hover:bg-red-50 focus:text-red-700 focus:bg-red-50 flex items-center gap-2 font-medium"
-                            >
-                              <UserMinus className="w-3.5 h-3.5" />
-                              <span>Remove from Job Ranking</span>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                                Advance Candidate Stage
+                              </DropdownMenuItem>
+                              <div className="h-px bg-zinc-100 my-1" />
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveCandidate(cand.id);
+                                }}
+                                className="cursor-pointer text-red-600 hover:text-red-700 hover:bg-red-50 focus:text-red-700 focus:bg-red-50 flex items-center gap-2 font-medium"
+                              >
+                                <UserMinus className="w-3.5 h-3.5" />
+                                <span>Remove from Job Ranking</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
-                    </div>
 
                     {/* Expanded AI Reasoning & Breakdown Panel */}
                     {isExpanded && (
@@ -918,9 +797,10 @@ export default function JobPipelineDetailPage() {
                         </div>
                       </div>
                     )}
-                  </div>
-                );
-              })}
+                    </div>
+                  );
+                })
+              )}
             </div>
           )}
 

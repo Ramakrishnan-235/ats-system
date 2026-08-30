@@ -57,9 +57,13 @@ class ExtractedSkill(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def sanitize_skill(cls, data: Any) -> Any:
+        from ats_core.parsers.normalizers import normalize_skill
         if isinstance(data, str):
-            return {"name": data}
+            return {"name": normalize_skill(data)}
         if isinstance(data, dict):
+            raw_name = data.get("name") or data.get("skill") or data.get("skill_name") or "Unknown Skill"
+            data["name"] = normalize_skill(str(raw_name))
+
             cat = data.get("category")
             if cat and cat not in [e.value for e in SkillCategory]:
                 # Attempt soft mapping or fallback
@@ -102,27 +106,35 @@ class SkillsTaxonomy(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def handle_flexible_skills_input(cls, data: Any) -> Any:
+        from ats_core.parsers.normalizers import normalize_skill, normalize_skills_list
         if isinstance(data, list):
             detailed = []
             for item in data:
                 if isinstance(item, str):
-                    detailed.append({"name": item, "category": SkillCategory.TOOLING_PLATFORM.value})
+                    detailed.append({"name": normalize_skill(item), "category": SkillCategory.TOOLING_PLATFORM.value})
                 elif isinstance(item, dict):
                     name = item.get("name") or item.get("skill") or item.get("skill_name") or "Unknown"
                     level = item.get("proficiency") or item.get("level") or SkillProficiency.INTERMEDIATE.value
                     detailed.append({
-                        "name": str(name),
+                        "name": normalize_skill(str(name)),
                         "proficiency": level,
                         "category": SkillCategory.TOOLING_PLATFORM.value
                     })
             return {"detailed_skills": detailed}
         elif isinstance(data, dict):
+            if "core_languages" in data and isinstance(data["core_languages"], list):
+                data["core_languages"] = normalize_skills_list(data["core_languages"])
+            if "frameworks_and_tools" in data and isinstance(data["frameworks_and_tools"], list):
+                data["frameworks_and_tools"] = normalize_skills_list(data["frameworks_and_tools"])
+            if "databases_and_infrastructure" in data and isinstance(data["databases_and_infrastructure"], list):
+                data["databases_and_infrastructure"] = normalize_skills_list(data["databases_and_infrastructure"])
+
             known_fields = {"core_languages", "frameworks_and_tools", "databases_and_infrastructure", "detailed_skills"}
             if not any(k in known_fields for k in data.keys()):
                 flat_skills = []
                 for _, skill_list in data.items():
                     if isinstance(skill_list, list):
                         for s in skill_list:
-                            flat_skills.append({"name": str(s), "category": SkillCategory.TOOLING_PLATFORM.value})
+                            flat_skills.append({"name": normalize_skill(str(s)), "category": SkillCategory.TOOLING_PLATFORM.value})
                 return {"detailed_skills": flat_skills}
         return data

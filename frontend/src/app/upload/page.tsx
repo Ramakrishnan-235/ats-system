@@ -93,7 +93,7 @@ export default function UploadResumesPage() {
               filename: file.name,
               taskId: res.task_id || newActive.taskId,
               duration: "4.8s",
-              candidateId: res.candidate_id || "cand-001",
+              candidateId: res.candidate_id || res.id || `cand-${Date.now()}`,
             },
             ...prev,
           ]);
