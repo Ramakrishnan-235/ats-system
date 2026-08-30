@@ -6,6 +6,8 @@ import {
   Link2,
   Briefcase,
   GraduationCap,
+  Sparkles,
+  ShieldCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CandidateDetail } from "@/types/ats";
@@ -130,21 +132,48 @@ export function CandidateLeftPanel({ candidate }: CandidateLeftPanelProps) {
           </div>
         )}
 
-        {/* Core Skills Chips */}
+        {/* Core Skills Chips with Context Enrichment */}
         <div className="pt-4 border-t border-zinc-100 space-y-2.5">
-          <span className="text-[11px] font-bold text-zinc-500 tracking-wider uppercase block">
-            CORE SKILLS
-          </span>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-zinc-500 tracking-wider uppercase block">
+              VERIFIED SKILLS ({candidate.core_skills.length})
+            </span>
+          </div>
           <div className="flex flex-wrap gap-1.5">
-            {candidate.core_skills.map((skill) => (
-              <Badge
-                key={skill}
-                variant="tag"
-                className="text-[11px] px-2.5 py-0.5 rounded-md font-medium"
-              >
-                {skill}
-              </Badge>
-            ))}
+            {candidate.core_skills.map((skill) => {
+              const enriched = candidate.enriched_skills?.find(
+                (e) => e.canonical_name.toLowerCase() === skill.toLowerCase()
+              );
+              const isImpact = enriched?.highest_mention_tier === "demonstrated_impact";
+              const isDemonstrated = enriched?.highest_mention_tier === "demonstrated";
+              const isCert = enriched?.is_certified;
+              const isActive = enriched?.is_actively_used;
+
+              return (
+                <div
+                  key={skill}
+                  className={`inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-md font-medium border transition-colors ${
+                    isImpact
+                      ? "bg-emerald-50 text-emerald-900 border-emerald-200/80 shadow-2xs"
+                      : isDemonstrated
+                      ? "bg-sky-50 text-sky-900 border-sky-200/80"
+                      : isCert
+                      ? "bg-amber-50 text-amber-900 border-amber-200/80"
+                      : "bg-zinc-50 text-zinc-800 border-zinc-200/70"
+                  }`}
+                  title={
+                    enriched
+                      ? `Tier: ${enriched.highest_mention_tier.replace("_", " ")} | Weight: ${enriched.max_evidence_weight}x | Status: ${isActive ? "Active in current role" : enriched.last_used_date || "Demonstrated"}`
+                      : skill
+                  }
+                >
+                  {isImpact && <Sparkles className="w-2.5 h-2.5 text-emerald-600 shrink-0" />}
+                  {isCert && !isImpact && <ShieldCheck className="w-2.5 h-2.5 text-amber-600 shrink-0" />}
+                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />}
+                  <span>{skill}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

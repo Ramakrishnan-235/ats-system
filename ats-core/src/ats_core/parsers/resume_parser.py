@@ -14,6 +14,7 @@ from ats_core.parsers.section_anchor import (
 from ats_core.parsers.skill_matcher import SkillMatcher
 from ats_core.parsers.llm_residue_extractor import LLMResidueExtractor
 from ats_core.parsers.normalization_cascade import resolve_skill, resolve_skills_batch
+from ats_core.parsers.context_enricher import enrich_candidate_skills
 from ats_core.parsers.normalizers import (
     normalize_date,
     normalize_date_range,
@@ -630,6 +631,13 @@ def parse_resume_to_candidate(
     # Avatar initials
     initials = "".join([part[0] for part in name.split()[:2]]).upper() or "DK"
 
+    # 13. Context Enrichment (Entity Recognition: Evidence Tiers, Actions, Metrics, Recency & Certifications)
+    enriched_skills = enrich_candidate_skills(
+        raw_text=raw_text,
+        experience_items=experience_items,
+        candidate_skills=found_skills
+    )
+
     candidate_profile = {
         "name": name,
         "anonymized_name": f"Candidate #{abs(hash(name)) % 9000 + 1000}",
@@ -647,6 +655,7 @@ def parse_resume_to_candidate(
         "years_of_experience": years_of_experience,
         "highest_education": highest_education,
         "core_skills": found_skills,
+        "enriched_skills": enriched_skills,
         "skill_anchors": anchor_skill_mentions(raw_text, found_skills),
         "experience": experience_items,
         "scorecard": scorecard,

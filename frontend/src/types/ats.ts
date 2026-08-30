@@ -108,6 +108,17 @@ export interface TeamNote {
   content: string;
 }
 
+export interface EnrichedSkillEntity {
+  canonical_name: string;
+  category?: string;
+  highest_mention_tier: "demonstrated_impact" | "demonstrated" | "contextual" | "skills_bar" | "certified" | "summary" | "education";
+  max_evidence_weight: number;
+  is_certified: boolean;
+  is_actively_used: boolean;
+  last_used_date?: string;
+  mentions_count: number;
+}
+
 export interface CandidateDetail {
   id: string;
   name: string;
@@ -127,6 +138,7 @@ export interface CandidateDetail {
   years_of_experience: number;
   highest_education: string;
   core_skills: string[];
+  enriched_skills?: EnrichedSkillEntity[];
   experience: ExperienceItem[];
   scorecard: {
     overall_match_score: number;
