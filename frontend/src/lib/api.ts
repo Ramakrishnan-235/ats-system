@@ -641,21 +641,22 @@ export async function fetchCandidates(params?: {
   return Array.from(map.values());
 }
 
-export async function fetchCandidate(id: string): Promise<CandidateDetail | null> {
+export async function fetchCandidate(id: string, includePii: boolean = false): Promise<CandidateDetail | null> {
   // 1. Try local storage cache
+  const cacheKey = includePii ? `ats_candidate_profile_pii_${id}` : `ats_candidate_profile_${id}`;
   const profiles = getStoredItem<Record<string, CandidateDetail>>("ats_candidate_profiles", {});
-  if (profiles[id]) {
-    return profiles[id];
+  if (profiles[cacheKey]) {
+    return profiles[cacheKey];
   }
 
   // 2. Try backend
   try {
-    const res = await fetch(`${API_BASE_URL}/candidates/${id}`, {
+    const res = await fetch(`${API_BASE_URL}/candidates/${id}?include_pii=${includePii}`, {
       cache: "no-store",
     });
     if (res.ok) {
       const data = await res.json();
-      profiles[id] = data;
+      profiles[cacheKey] = data;
       setStoredItem("ats_candidate_profiles", profiles);
       return data;
     }

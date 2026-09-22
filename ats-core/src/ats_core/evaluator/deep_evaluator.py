@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import time
 from typing import Dict, Any, Optional
 from openai import OpenAI
@@ -23,11 +24,27 @@ class LocalDeepEvaluator:
     Produces structured scorecards, evidence citations, and tailored interview plans.
     """
 
+    # Compiled regex patterns for prompt injection defenses
+    _CONTROL_TOKENS_PATTERN = re.compile(
+        r"(<\|[^>]*\|>|\[/?INST\]|<<?/?SYS>>?|\[/?SYS\]|</?s>|</?turn>|</?start_of_turn>|</?end_of_turn>)",
+        re.IGNORECASE
+    )
+    _ADVERSARIAL_DIRECTIVES_PATTERN = re.compile(
+        r"(?i)\b(ignore\s+(all\s+)?(previous|prior)\s+instructions|system\s+prompt\s+override|disregard\s+(the\s+above|all\s+rules)|new\s+system\s+prompt)\b"
+    )
+    _ROLE_DELIMITER_PATTERN = re.compile(
+        r"(?im)(?:^|\b)(system|assistant|user|human|evaluator)\s*:",
+    )
+    _XML_TAG_ESCAPE_PATTERN = re.compile(
+        r"<\/?(untrusted_candidate_dossier|job_requisition)[^>]*>",
+        re.IGNORECASE
+    )
+
     def __init__(
         self,
         base_url: Optional[str] = None,
         model_name: Optional[str] = None,
-        temperature: float = 0.1,
+        temperature: float = 0.0,
         max_retries: int = 3,
     ):
         self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
@@ -49,13 +66,27 @@ class LocalDeepEvaluator:
         logger.info(f"Initialized Deep Evaluator with Ollama model: {self.model_name} at {self.base_url}")
 
     def _sanitize_text(self, text: str) -> str:
-        """Sanitizes candidate input by neutralizing prompt injection triggers and fake system directives."""
+        """
+        Robustly sanitizes candidate and job description inputs:
+        1. Neutralizes triple-backtick markdown breakout sequences.
+        2. Strips LLM chat control tokens (<|im_start|>, [INST], etc.).
+        3. Neutralizes structural XML enclosure tags to prevent prompt escaping.
+        4. Neutralizes fake conversational system/assistant prefixes.
+        5. Defangs explicit jailbreak directives.
+        """
         if not text:
             return ""
+
         sanitized = text.replace("```", "'''")
-        sanitized = sanitized.replace("<|im_start|>", "").replace("<|im_end|>", "")
-        sanitized = sanitized.replace("[INST]", "").replace("[/INST]", "")
-        sanitized = sanitized.replace("System:", "Applicant Note:").replace("SYSTEM:", "Applicant Note:")
+        # Prevent boundary breakout from enclosing XML tags
+        sanitized = self._XML_TAG_ESCAPE_PATTERN.sub("[escaped_tag]", sanitized)
+        # Strip LLM control sequences
+        sanitized = self._CONTROL_TOKENS_PATTERN.sub("", sanitized)
+        # Neutralize fake role prefixes
+        sanitized = self._ROLE_DELIMITER_PATTERN.sub("Applicant text:", sanitized)
+        # Defang jailbreak override directives
+        sanitized = self._ADVERSARIAL_DIRECTIVES_PATTERN.sub("[neutralized_directive]", sanitized)
+
         return sanitized.strip()
 
     def _build_evaluation_prompt(

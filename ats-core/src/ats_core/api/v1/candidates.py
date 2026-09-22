@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Query
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
+
 logger = logging.getLogger("ats.api.candidates")
 
 router = APIRouter(prefix="/candidates", tags=["Candidates & Evaluations"])
@@ -17,6 +19,22 @@ UPLOAD_STAGING_DIR.mkdir(parents=True, exist_ok=True)
 
 # In-memory candidate database store (populated dynamically upon upload/registration)
 CANDIDATES_STORE: Dict[str, Dict[str, Any]] = {}
+
+
+def mask_candidate_pii(cand_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Returns a secure sanitized copy of candidate profile with personal PII redacted
+    for unbiased / blind screening, unless explicit permission is granted.
+    """
+    masked = dict(cand_dict)
+    # Mask direct PII identifiers
+    masked["name"] = cand_dict.get("anonymized_name") or f"Candidate #{str(cand_dict.get('id', ''))[:8]}"
+    masked["email"] = "[REDACTED_EMAIL@DOMAIN.COM]"
+    masked["phone"] = "[REDACTED_PHONE_NUMBER]"
+    masked["location"] = "[REDACTED_LOCATION]"
+    masked["linkedin"] = "[REDACTED_LINK]"
+    masked["is_pii_masked"] = True
+    return masked
 
 
 def register_candidate_profile(cand_dict: Dict[str, Any], job_title: str = "Software Engineer", department: str = "Engineering") -> Dict[str, Any]:
@@ -129,7 +147,8 @@ class NoteCreateRequest(BaseModel):
 async def list_candidates(
     search: Optional[str] = Query(None),
     stage: Optional[str] = Query(None),
-    skill: Optional[str] = Query(None)
+    skill: Optional[str] = Query(None),
+    include_pii: bool = Query(False, description="Set to true only when authorized to view unmasked PII")
 ):
     candidates = list(CANDIDATES_STORE.values())
 
@@ -149,22 +168,32 @@ async def list_candidates(
             or any(s in sk.lower() for sk in c.get("core_skills", []))
         ]
 
+    if not include_pii:
+        candidates = [mask_candidate_pii(c) for c in candidates]
+
     return candidates
 
 
 @router.get("/{candidate_id}")
-async def get_candidate(candidate_id: str):
-    if candidate_id in CANDIDATES_STORE:
-        return CANDIDATES_STORE[candidate_id]
+async def get_candidate(
+    candidate_id: str,
+    include_pii: bool = Query(False, description="Set to true only when authorized to view unmasked PII")
+):
+    target = CANDIDATES_STORE.get(candidate_id)
+    if not target:
+        alt_id = candidate_id.replace("cand-", "")
+        target = CANDIDATES_STORE.get(alt_id)
 
-    alt_id = candidate_id.replace("cand-", "")
-    if alt_id in CANDIDATES_STORE:
-        return CANDIDATES_STORE[alt_id]
+    if not target:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Candidate with ID '{candidate_id}' not found."
+        )
 
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Candidate with ID '{candidate_id}' not found."
-    )
+    if not include_pii:
+        return mask_candidate_pii(target)
+
+    return target
 
 
 @router.get("/{candidate_id}/scorecard")
@@ -264,10 +293,11 @@ async def upload_resume_async(
         except Exception as e:
             logger.warning(f"Could not fetch JOBS_STORE: {e}")
 
-    # Extract real profile data from the uploaded PDF document
+    # Extract real profile data from the uploaded PDF document (Non-blocking)
     try:
         from ats_core.parsers.resume_parser import parse_resume_to_candidate
-        parsed_candidate = parse_resume_to_candidate(
+        parsed_candidate = await run_in_threadpool(
+            parse_resume_to_candidate,
             doc_bytes,
             filename=safe_filename,
             target_job=target_job
@@ -286,7 +316,8 @@ async def upload_resume_async(
         try:
             from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
             evaluator = LocalDeepEvaluator()
-            eval_result = evaluator.evaluate(
+            eval_result = await run_in_threadpool(
+                evaluator.evaluate,
                 candidate_id=candidate_id,
                 candidate_profile_text=parsed_candidate.get("raw_text", ""),
                 job_title=job_title_eval,
@@ -331,29 +362,51 @@ async def upload_resume_async(
                     ]
                 }
         except Exception as eval_err:
-            logger.warning(f"Ollama deep evaluation fallback: {eval_err}")
+            logger.warning(f"Ollama deep evaluation fallback: {eval_err}", exc_info=True)
 
         # Store in live candidates memory
         CANDIDATES_STORE[candidate_id] = parsed_candidate
         candidate_name = parsed_candidate.get("name", "Candidate")
-        final_score = parsed_candidate["scorecard"]["overall_match_score"]
+        final_score = parsed_candidate.get("scorecard", {}).get("overall_match_score", 0)
         logger.info(f"Successfully staged candidate '{candidate_name}' ({candidate_id}) with score {final_score}")
     except Exception as parse_err:
-        logger.warning(f"Resume text extraction fallback: {parse_err}")
-        candidate_name = "Candidate"
-        final_score = 90
+        logger.exception(f"Resume text extraction fallback: {parse_err}")
+        candidate_name = safe_filename.replace(".pdf", "")
+        final_score = 0
+        parsed_candidate = {
+            "id": candidate_id,
+            "name": candidate_name,
+            "anonymized_name": f"Candidate #{candidate_id.replace('cand-', '')[:5]}",
+            "target_headline": "Document Parse Error",
+            "role": "Pending Extraction",
+            "location": "N/A",
+            "email": "N/A",
+            "phone": "N/A",
+            "status": "EVALUATION_FAILED",
+            "stage": "Review Required",
+            "years_of_experience": 0.0,
+            "core_skills": [],
+            "scorecard": {
+                "overall_match_score": 0,
+                "match_tier": "Evaluation Failed",
+                "risk_flags": [f"Parsing error: {str(parse_err)}"],
+                "suggested_questions": [],
+                "categories": []
+            }
+        }
+        CANDIDATES_STORE[candidate_id] = parsed_candidate
 
     task_id = f"TSK-{uuid.uuid4().hex[:4].upper()}"
 
     return {
-        "status": "ACCEPTED",
+        "status": "ACCEPTED" if final_score > 0 else "EVALUATION_FAILED",
         "task_id": task_id,
         "candidate_id": candidate_id,
         "filename": safe_filename,
         "name": candidate_name,
         "job_id": job_id,
         "match_score": final_score,
-        "message": f"Resume for {candidate_name} processed and evaluated for {target_job['title'] if target_job else 'the role'}."
+        "message": f"Resume for {candidate_name} processed and evaluated for {target_job['title'] if target_job else 'the role'}." if final_score > 0 else f"Resume parsing or evaluation failed: {str(parse_err) if 'parse_err' in locals() else 'Unknown error'}"
     }
 
 
