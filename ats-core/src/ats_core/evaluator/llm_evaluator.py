@@ -59,13 +59,37 @@ class LLMEvaluator:
         self,
         base_url: Optional[str] = None,
         model_name: Optional[str] = None,
+        api_key: Optional[str] = None,
         temperature: float = 0.0,
     ):
-        self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-        self.model_name = model_name or os.getenv("OLLAMA_MODEL", "deepseek-v4-flash:cloud")
+        openrouter_key = (
+            api_key
+            or os.getenv("OPENROUTER_API_KEY", "").strip()
+            or os.getenv("LLM_API_KEY", "").strip()
+        )
+        if openrouter_key:
+            self.base_url = base_url or os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
+            self.model_name = model_name or os.getenv("LLM_MODEL", "qwen/qwen-2.5-72b-instruct")
+            self.api_key = openrouter_key
+        else:
+            self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+            self.model_name = model_name or os.getenv("OLLAMA_MODEL", "qwen3.5:2b")
+            self.api_key = "ollama"
+
         self.temperature = temperature
-        raw_client = OpenAI(base_url=self.base_url, api_key="ollama")
-        self.client = instructor.from_openai(raw_client, mode=instructor.Mode.JSON)
+
+        headers = {}
+        if "openrouter.ai" in self.base_url:
+            headers["HTTP-Referer"] = os.getenv("OPENROUTER_HTTP_REFERER", "http://localhost:3000")
+            headers["X-Title"] = os.getenv("OPENROUTER_APP_TITLE", "AI-Powered ATS")
+
+        raw_client = OpenAI(
+            base_url=self.base_url,
+            api_key=self.api_key,
+            default_headers=headers if headers else None,
+        )
+        mode = instructor.Mode.TOOLS if "openrouter.ai" in self.base_url else instructor.Mode.JSON
+        self.client = instructor.from_openai(raw_client, mode=mode)
 
     def evaluate(self, candidate_summary: str, job_description: str) -> EvaluationReport:
         """Evaluates a candidate profile against a job description producing an EvaluationReport."""

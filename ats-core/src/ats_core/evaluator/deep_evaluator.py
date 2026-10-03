@@ -45,26 +45,46 @@ class LocalDeepEvaluator:
         self,
         base_url: Optional[str] = None,
         model_name: Optional[str] = None,
+        api_key: Optional[str] = None,
         temperature: float = 0.0,
         max_retries: int = 3,
     ):
-        self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-        self.model_name = model_name or os.getenv("OLLAMA_MODEL", "deepseek-v4-flash:cloud")
+        openrouter_key = (
+            api_key
+            or os.getenv("OPENROUTER_API_KEY", "").strip()
+            or os.getenv("LLM_API_KEY", "").strip()
+        )
+        if openrouter_key:
+            self.base_url = base_url or os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
+            self.model_name = model_name or os.getenv("LLM_MODEL", "qwen/qwen-2.5-72b-instruct")
+            self.api_key = openrouter_key
+        else:
+            self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+            self.model_name = model_name or os.getenv("OLLAMA_MODEL", "qwen3.5:2b")
+            self.api_key = "ollama"
+
         self.temperature = temperature
         self.max_retries = max_retries
 
-        # Initialize OpenAI client pointed to local Ollama server
+        headers = {}
+        if "openrouter.ai" in self.base_url:
+            headers["HTTP-Referer"] = os.getenv("OPENROUTER_HTTP_REFERER", "http://localhost:3000")
+            headers["X-Title"] = os.getenv("OPENROUTER_APP_TITLE", "AI-Powered ATS")
+
+        # Initialize OpenAI client pointed to OpenRouter or local Ollama server
         raw_client = OpenAI(
             base_url=self.base_url,
-            api_key="ollama",  # Placeholder non-empty API key for OpenAI SDK
+            api_key=self.api_key,
+            default_headers=headers if headers else None,
         )
 
-        # Patch client with Instructor using JSON Schema mode
+        # Patch client with Instructor using appropriate mode for provider
+        mode = instructor.Mode.TOOLS if "openrouter.ai" in self.base_url else instructor.Mode.JSON
         self.client = instructor.from_openai(
             raw_client,
-            mode=instructor.Mode.JSON,
+            mode=mode,
         )
-        logger.info(f"Initialized Deep Evaluator with Ollama model: {self.model_name} at {self.base_url}")
+        logger.info(f"Initialized Deep Evaluator with model: {self.model_name} at {self.base_url} (mode: {mode})")
 
     def _sanitize_text(self, text: str) -> str:
         """

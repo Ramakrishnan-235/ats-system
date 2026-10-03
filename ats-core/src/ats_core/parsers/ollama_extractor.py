@@ -16,26 +16,45 @@ class OllamaCandidateExtractor:
         self,
         base_url: Optional[str] = None,
         model_name: Optional[str] = None,
+        api_key: Optional[str] = None,
         temperature: float = 0.0,
         max_retries: int = 3,
     ):
-        self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-        self.model_name = model_name or os.getenv("OLLAMA_MODEL", "deepseek-v4-flash:cloud")
+        openrouter_key = (
+            api_key
+            or os.getenv("OPENROUTER_API_KEY", "").strip()
+            or os.getenv("LLM_API_KEY", "").strip()
+        )
+        if openrouter_key:
+            self.base_url = base_url or os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
+            self.model_name = model_name or os.getenv("LLM_MODEL", "qwen/qwen-2.5-72b-instruct")
+            self.api_key = openrouter_key
+        else:
+            self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+            self.model_name = model_name or os.getenv("OLLAMA_MODEL", "qwen3.5:2b")
+            self.api_key = "ollama"
+
         self.temperature = temperature
         self.max_retries = max_retries
 
-        # Initialize standard OpenAI client pointed at Ollama
+        headers = {}
+        if "openrouter.ai" in self.base_url:
+            headers["HTTP-Referer"] = os.getenv("OPENROUTER_HTTP_REFERER", "http://localhost:3000")
+            headers["X-Title"] = os.getenv("OPENROUTER_APP_TITLE", "AI-Powered ATS")
+
+        # Initialize standard OpenAI client pointed at OpenRouter or Ollama
         raw_client = OpenAI(
             base_url=self.base_url,
-            api_key="ollama",  # Required non-empty string for OpenAI client
+            api_key=self.api_key,
+            default_headers=headers if headers else None,
         )
 
-        # Patch client with Instructor using JSON mode for local LLMs
+        # Patch client with Instructor using JSON mode
         self.client = instructor.from_openai(
             raw_client,
             mode=instructor.Mode.JSON
         )
-        logger.info(f"Initialized Ollama Extractor with model: {self.model_name} at {self.base_url}")
+        logger.info(f"Initialized Extractor with model: {self.model_name} at {self.base_url}")
 
     def _sanitize_text(self, text: str) -> str:
         """Neutralizes prompt injection directives in candidate resumes."""

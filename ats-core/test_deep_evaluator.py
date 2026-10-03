@@ -38,12 +38,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 
 def run_test():
-    # Configure evaluator with local Ollama model gemma4:e2b
-    evaluator = LocalDeepEvaluator(
-        base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
-        model_name=os.getenv("OLLAMA_MODEL", "qwen3.5:2b"),
-        temperature=0.1
-    )
+    # Configure evaluator (picks up OpenRouter or Ollama from environment)
+    evaluator = LocalDeepEvaluator(temperature=0.1)
 
     job_title = "Senior Distributed Systems & Storage Engineer"
     job_description = """
