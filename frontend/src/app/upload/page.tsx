@@ -1,199 +1,70 @@
 "use client";
 
-import React, { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopNav } from "@/components/layout/top-nav";
 import { ResumeDropzone } from "@/components/upload/resume-dropzone";
 import { ActiveUploadRow } from "@/components/upload/active-upload-row";
 import { CompletedUploadRow } from "@/components/upload/completed-upload-row";
 import { IssuesRetriesPanel } from "@/components/upload/issues-retries-panel";
-import { uploadResumeFile } from "@/lib/api";
-import {
-  MOCK_ACTIVE_UPLOADS,
-  MOCK_COMPLETED_UPLOADS,
-  MOCK_ISSUES,
-} from "@/lib/mock-data";
-import { ActiveUpload, CompletedUpload, UploadIssue } from "@/types/ats";
+import { uploadAndWait, getErrorMessage } from "@/lib/api";
+import type { ActiveUpload, CompletedUpload, UploadIssue } from "@/types/ats";
 
 export default function UploadResumesPage() {
-  const [activeUploads, setActiveUploads] =
-    useState<ActiveUpload[]>(MOCK_ACTIVE_UPLOADS);
-  const [completedUploads, setCompletedUploads] =
-    useState<CompletedUpload[]>(MOCK_COMPLETED_UPLOADS);
-  const [issues, setIssues] = useState<UploadIssue[]>(MOCK_ISSUES);
+  const [activeUploads, setActiveUploads] = useState<ActiveUpload[]>([]);
+  const [completedUploads, setCompletedUploads] = useState<CompletedUpload[]>([]);
+  const [issues, setIssues] = useState<UploadIssue[]>([]);
+  const originals = useRef(new Map<string, File>());
+  const controllers = useRef(new Map<string, AbortController>());
+  useEffect(() => {
+    const pending = controllers.current;
+    const files = originals.current;
+    return () => { pending.forEach(controller => controller.abort()); pending.clear(); files.clear(); };
+  }, []);
 
-  const handleFilesSelected = async (files: File[]) => {
-    for (const file of files) {
-      const newUploadId = `up-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-      const newActive: ActiveUpload = {
-        id: newUploadId,
-        filename: file.name,
-        taskId: `TSK-${Math.floor(1000 + Math.random() * 9000)}`,
-        statusLabel: "PROCESSING • 10%",
-        progress: 10,
-        currentStep: "Parsing",
-      };
-
-      setActiveUploads((prev) => [newActive, ...prev]);
-
-      // Call API
-      uploadResumeFile(file).then((res) => {
-        // Simulate step progression
-        setTimeout(() => {
-          setActiveUploads((prev) =>
-            prev.map((item) =>
-              item.id === newUploadId
-                ? {
-                    ...item,
-                    currentStep: "PII Scrub",
-                    progress: 40,
-                    statusLabel: "SCRUBBING PII • 40%",
-                  }
-                : item
-            )
-          );
-        }, 1200);
-
-        setTimeout(() => {
-          setActiveUploads((prev) =>
-            prev.map((item) =>
-              item.id === newUploadId
-                ? {
-                    ...item,
-                    currentStep: "LLM Extract",
-                    progress: 75,
-                    statusLabel: "LLM EXTRACT • 75%",
-                  }
-                : item
-            )
-          );
-        }, 2500);
-
-        setTimeout(() => {
-          setActiveUploads((prev) =>
-            prev.map((item) =>
-              item.id === newUploadId
-                ? {
-                    ...item,
-                    currentStep: "Indexing",
-                    progress: 95,
-                    statusLabel: "INDEXING • 95%",
-                  }
-                : item
-            )
-          );
-        }, 3800);
-
-        setTimeout(() => {
-          // Move to completed
-          setActiveUploads((prev) => prev.filter((item) => item.id !== newUploadId));
-          setCompletedUploads((prev) => [
-            {
-              id: `comp-${Date.now()}`,
-              filename: file.name,
-              taskId: res.task_id || newActive.taskId,
-              duration: "4.8s",
-              candidateId: res.candidate_id || res.id || `cand-${Date.now()}`,
-            },
-            ...prev,
-          ]);
-        }, 4800);
-      });
+  const processFile = async (file: File, uploadId: string) => {
+    const controller = new AbortController();
+    controllers.current.set(uploadId, controller);
+    originals.current.set(uploadId, file);
+    setIssues(previous => previous.filter(issue => issue.id !== uploadId));
+    setActiveUploads(previous => [{ id: uploadId, filename: file.name, taskId: "Awaiting backend", statusLabel: "Uploading and processing", progress: 0, currentStep: "Parsing" }, ...previous]);
+    const started = performance.now();
+    try {
+      const result = await uploadAndWait(file, undefined, controller.signal);
+      if (controller.signal.aborted) return;
+      setCompletedUploads(previous => [{ id: uploadId, filename: file.name, taskId: result.task_id, duration: `${((performance.now() - started) / 1000).toFixed(1)}s`, candidateId: result.candidate_id, evaluationStatus: result.evaluation_status }, ...previous]);
+      originals.current.delete(uploadId);
+    } catch (error) {
+      if (!controller.signal.aborted) setIssues(previous => [{ id: uploadId, filename: file.name, status: "failed", message: getErrorMessage(error) }, ...previous]);
+    } finally {
+      if (controllers.current.get(uploadId) === controller) {
+        controllers.current.delete(uploadId);
+        if (!controller.signal.aborted) setActiveUploads(previous => previous.filter(upload => upload.id !== uploadId));
+      }
     }
   };
-
-  const handleCancelActive = (id: string) => {
-    setActiveUploads((prev) => prev.filter((item) => item.id !== id));
+  const cancel = (uploadId: string) => {
+    controllers.current.get(uploadId)?.abort();
+    controllers.current.delete(uploadId);
+    originals.current.delete(uploadId);
+    setActiveUploads(previous => previous.filter(upload => upload.id !== uploadId));
+    setIssues(previous => previous.filter(issue => issue.id !== uploadId));
   };
-
-  const handleRetryIssue = (id: string) => {
-    const issue = issues.find((i) => i.id === id);
-    if (issue) {
-      setIssues((prev) => prev.filter((i) => i.id !== id));
-      handleFilesSelected([new File(["demo pdf content"], issue.filename, { type: "application/pdf" })]);
-    }
+  const retry = (uploadId: string) => {
+    const file = originals.current.get(uploadId);
+    if (file && !controllers.current.has(uploadId)) void processFile(file, uploadId);
   };
-
-  const handleCancelIssue = (id: string) => {
-    setIssues((prev) => prev.filter((i) => i.id !== id));
-  };
-
   return (
     <div className="min-h-screen flex bg-[#faf9f6]">
       <Sidebar />
-
       <div className="flex-1 flex flex-col min-w-0">
-        <TopNav showDateFilter={false} searchPlaceholder="Search candidates..." />
-
+        <TopNav title="Upload Resumes" showDateFilter={false} />
         <main className="flex-1 p-8 max-w-5xl w-full mx-auto space-y-8">
-          {/* Breadcrumb & Title */}
-          <div>
-            <div className="flex items-center gap-2 text-xs font-bold text-zinc-400 tracking-wider uppercase mb-1">
-              <span>ATS</span>
-              <span>›</span>
-              <span className="text-zinc-800">CANDIDATES</span>
-            </div>
-            <h1 className="text-2xl font-bold text-zinc-950 tracking-tight">
-              Upload Resumes
-            </h1>
-            <p className="text-xs text-zinc-500 font-medium mt-1">
-              High-accuracy PDF resume ingestion processed asynchronously — PII is redacted before AI analysis.
-            </p>
-          </div>
-
-          {/* Large Dropzone */}
-          <ResumeDropzone onFilesSelected={handleFilesSelected} />
-
-          {/* Section: Active Uploads */}
-          {activeUploads.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="text-base font-bold text-zinc-950">
-                  Active Uploads
-                </span>
-                <span className="w-5 h-5 rounded-full bg-zinc-200 text-zinc-700 font-bold text-[11px] flex items-center justify-center">
-                  {activeUploads.length}
-                </span>
-              </div>
-
-              <div className="space-y-3">
-                {activeUploads.map((upload) => (
-                  <ActiveUploadRow
-                    key={upload.id}
-                    upload={upload}
-                    onCancel={handleCancelActive}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Section: Completed */}
-          {completedUploads.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="text-base font-bold text-zinc-950">
-                  Completed
-                </span>
-                <span className="w-5 h-5 rounded-full bg-zinc-200 text-zinc-700 font-bold text-[11px] flex items-center justify-center">
-                  {completedUploads.length}
-                </span>
-              </div>
-
-              <div className="space-y-3">
-                {completedUploads.map((item) => (
-                  <CompletedUploadRow key={item.id} item={item} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Section: Issues & Retries */}
-          <IssuesRetriesPanel
-            issues={issues}
-            onRetry={handleRetryIssue}
-            onCancel={handleCancelIssue}
-          />
+          <p className="text-sm text-zinc-600">Uploads are processed by the backend. Completion confirms ingestion; AI evaluation may remain pending. Cancel stops waiting for a response; processing already received by the server may continue.</p>
+          <ResumeDropzone onFilesSelected={files => files.forEach(file => void processFile(file, crypto.randomUUID()))} />
+          {activeUploads.length > 0 && <section className="space-y-3"><h2 className="font-bold">Active uploads</h2>{activeUploads.map(upload => <ActiveUploadRow key={upload.id} upload={upload} onCancel={cancel} />)}</section>}
+          {completedUploads.length > 0 && <section className="space-y-3"><h2 className="font-bold">Completed</h2>{completedUploads.map(item => <CompletedUploadRow key={item.id} item={item} />)}</section>}
+          {issues.length > 0 && <IssuesRetriesPanel issues={issues} onRetry={retry} onCancel={cancel} />}
         </main>
       </div>
     </div>

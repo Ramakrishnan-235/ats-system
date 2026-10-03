@@ -1,4 +1,6 @@
 import re
+import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from ats_core.parsers.pdf_parser import HybridPDFParser
@@ -27,6 +29,8 @@ from ats_core.parsers.normalizers import (
     normalize_skills_list,
     SKILL_ALIASES,
 )
+
+logger = logging.getLogger("ats.parsers.resume")
 
 _pdf_parser = HybridPDFParser()
 
@@ -359,7 +363,7 @@ def extract_skills_from_text(raw_text: str) -> List[str]:
 
     # 5. Check catalog fallbacks
     for skill in TECH_SKILLS_CATALOG:
-        pattern = r"\b" + re.escape(skill) + r"\b"
+        pattern = r"(?<!\w)" + re.escape(skill) + r"(?![\w+#])"
         if re.search(pattern, raw_text, re.I):
             normalized = normalize_skill(skill)
             if normalized not in found_skills:
@@ -372,9 +376,6 @@ def extract_skills_from_text(raw_text: str) -> List[str]:
     if "HTML/CSS" in normalized_list:
         if "HTML" not in normalized_list: normalized_list.append("HTML")
         if "CSS" not in normalized_list: normalized_list.append("CSS")
-
-    if not normalized_list:
-        normalized_list = ["Python", "JavaScript", "React", "SQL", "Git", "HTML", "CSS"]
 
     return normalized_list
 
@@ -393,8 +394,8 @@ def extract_experience_sections(raw_text: str, default_headline: str = "Software
             continue
 
         period = entry["date_range"] or "Recent"
-        role = default_headline
-        company = "Industry Partner"
+        role = "Unknown Role"
+        company = "Unknown Company"
 
         # Deduce role and company from non-bullet header lines
         header_lines = [
@@ -408,14 +409,14 @@ def extract_experience_sections(raw_text: str, default_headline: str = "Software
                 continue
             if any(r in clean_hl.lower() for r in ["engineer", "developer", "intern", "lead", "architect", "manager", "specialist", "scientist", "analyst", "consultant"]):
                 role = clean_hl
-            elif len(clean_hl) > 2 and company == "Industry Partner" and not any(k in clean_hl.lower() for k in ["education", "cgpa", "skills", "projects"]):
+            elif len(clean_hl) > 2 and company == "Unknown Company" and not any(k in clean_hl.lower() for k in ["education", "cgpa", "skills", "projects"]):
                 company = clean_hl
 
         bullets = entry["bullets"]
         if bullets:
             desc = "\n• " + "\n• ".join(bullets)
         else:
-            desc = f"Contributed to core development and project milestones during {period}."
+            desc = entry["raw_text"].strip()
 
         start_n, end_n, is_curr = normalize_date_range(period)
         parsed_role = parse_title(role)
@@ -448,7 +449,7 @@ def extract_experience_sections(raw_text: str, default_headline: str = "Software
                     p_desc = parts[1].strip() if len(parts) > 1 else "Project implementation"
                     if 3 < len(p_title) < 40:
                         experience_items.append({
-                            "role": f"Project Lead ({p_title})",
+                            "role": f"Project ({p_title})",
                             "company": "Technical Project",
                             "period": "Recent",
                             "start_date": "Recent",
@@ -457,54 +458,40 @@ def extract_experience_sections(raw_text: str, default_headline: str = "Software
                             "description": p_desc
                         })
 
-    if not experience_items:
-        experience_items = [
-            {
-                "role": default_headline,
-                "company": "Technical Experience",
-                "period": "2023 — Present",
-                "start_date": "2023",
-                "end_date": "Present",
-                "is_current_role": True,
-                "description": "Led development of scalable web applications, data pipelines, and frontend features."
-            }
-        ]
-
     return experience_items
 
-    return experience_items
 
-def calculate_candidate_experience_years(raw_text: str) -> float:
+def calculate_candidate_experience_years(
+    raw_text: str, reference_date: Optional[datetime] = None
+) -> float:
+    """Estimate tenure from dated employment entries, merging concurrent roles.
+
+    Education, certificates, undated projects and counts of the word "intern"
+    do not establish employment duration. Missing evidence returns zero.
     """
-    Calculates candidate years of experience.
-    Accurately identifies students/interns (e.g. 2022-26 exp) vs seasoned professionals.
-    """
-    # 1. Check if candidate is currently a student / new-graduate
-    is_student_or_newgrad = bool(
-        re.search(r"(?i)(?:2022[–—-]26|2023[–—-]27|2021[–—-]25|\(exp\)|\(expected\)|\bnew-graduate\b|\bseeking\s+202\d\b|\bintern\b)", raw_text)
-    )
+    from ats_core.parsers.skill_aggregator import parse_date_to_datetime, merge_date_intervals
 
-    if is_student_or_newgrad:
-        # Count number of internships / projects
-        internship_count = len(re.findall(r"(?i)\bintern\b|\binternship\b", raw_text))
-        if internship_count >= 3:
-            return 1.5
-        elif internship_count >= 1:
-            return 1.0
-        return 0.8
+    reference = reference_date or datetime.now()
+    lines, anchors = anchor_sections(raw_text)
+    intervals = []
+    for entry in extract_structured_experience_entries(lines, anchors):
+        period = entry.get("date_range")
+        if not period:
+            continue
+        start_date, end_date, _ = normalize_date_range(period)
+        # Month-only start in "May-Aug 2025" inherits the explicitly stated
+        # end year, rather than whichever year the parser happens to run in.
+        month_start = re.match(r"(?i)^([a-z]+)\.?\s*[-–—]", period)
+        end_year = re.search(r"\b((?:19|20)\d{2})\b", period)
+        if month_start and end_year:
+            start_date = normalize_date(f"{month_start.group(1)} {end_year.group(1)}")
+        start = parse_date_to_datetime(start_date, reference_date=reference)
+        end = parse_date_to_datetime(end_date, is_end=True, reference_date=reference)
+        if start and end and start <= end and start <= reference:
+            intervals.append((start, min(end, reference)))
+    days = sum((end - start).days + 1 for start, end in merge_date_intervals(intervals))
+    return round(days / 365.25, 1)
 
-    # 2. For professionals, look for employment start year
-    year_numbers = [int(y) for y in re.findall(r"\b(20\d{2}|19\d{2})\b", raw_text)]
-    if year_numbers:
-        # Filter out future years and secondary school years
-        valid_years = [y for y in year_numbers if 2000 <= y <= 2026]
-        if valid_years:
-            earliest_year = min(valid_years)
-            calc_years = 2026 - earliest_year
-            if 0 < calc_years <= 25:
-                return float(calc_years)
-
-    return 3.0
 
 def parse_resume_to_candidate(
     file_bytes: bytes,
@@ -558,86 +545,28 @@ def parse_resume_to_candidate(
     # 11. Years of experience calculation
     years_of_experience = calculate_candidate_experience_years(raw_text)
 
-    # 12. AI Scorecard Generation tailored to extracted data
-    score = min(98, max(75, 80 + len(found_skills) * 1))
-    tier = "Exceptional Match" if score >= 92 else ("Strong Match" if score >= 85 else "Potential Fit")
-    primary_skills = found_skills[:4]
-
-    # Calculate job-specific improvement areas based on resume vs target job
-    job_title = target_job.get("title", "this role") if target_job else target_headline
-    required_skills = target_job.get("required_skills", []) if target_job else []
-    
-    missing_skills = [
-        req for req in required_skills
-        if not any(req.lower() in fs.lower() or fs.lower() in req.lower() for fs in found_skills)
-    ]
-    
-    suggested_improvements = []
-    if missing_skills:
-        top_missing = missing_skills[:2]
-        suggested_improvements.append(
-            f"1. Upskill in {', '.join(top_missing)}: Recommended for {job_title} requisition to expand technical coverage."
-        )
-    else:
-        suggested_improvements.append(
-            f"1. Deepen Production Specialization in {primary_skills[0]}: Expand enterprise architectural patterns and high-throughput trade-offs for {job_title}."
-        )
-    
-    if years_of_experience < 2.5:
-        suggested_improvements.append(
-            f"2. Transition from Academic/Internship Projects to Full-Scale Production: Highlight deployed user impact and end-to-end system reliability."
-        )
-    else:
-        suggested_improvements.append(
-            f"2. Quantify Business & Performance Impact: Add measurable metrics (e.g. latency reduction, RPS handled, cost savings) to {primary_skills[1] if len(primary_skills) > 1 else 'core'} project descriptions."
-        )
-
+    # Parsing extracts evidence; only an actual evaluator can assign fit scores.
     scorecard = {
-        "overall_match_score": score,
-        "match_tier": tier,
-        "model_version": "Model gemma2:2b (Live Ollama)",
-        "evaluated_at": "Evaluated just now",
-        "categories": [
-            {
-                "name": "Technical Depth",
-                "score": round(min(10.0, 7.8 + (len(found_skills) * 0.15)), 1),
-                "max_score": 10.0,
-                "quote": f"Demonstrates strong technical capabilities in {', '.join(primary_skills)}. Solid foundation across modern frameworks and tools.",
-                "source_ref": "Extracted from Resume Skills & Work History"
-            },
-            {
-                "name": "System Design & Architecture",
-                "score": round(min(10.0, 7.2 + (years_of_experience * 0.4)), 1),
-                "max_score": 10.0,
-                "quote": f"Has {years_of_experience} years of hands-on experience developing software systems, applications, and pipelines.",
-                "source_ref": "Extracted from Experience Timeline"
-            },
-            {
-                "name": "Execution & Delivery",
-                "score": 8.8,
-                "max_score": 10.0,
-                "quote": f"Proven track record of delivering technical solutions and maintaining production-grade applications.",
-                "source_ref": "Extracted from Professional History"
-            }
-        ],
-        "risk_flags": [
-            f"Verify hands-on production deployment depth with {found_skills[-1] if len(found_skills) > 4 else 'distributed services'} during technical screening."
-        ],
-        "suggested_improvements": suggested_improvements,
-        "suggested_questions": [
-            f"1. Could you describe a complex feature or project where you utilized {primary_skills[0]} to solve an engineering challenge?",
-            f"2. How do you approach state management and API integration when working with {primary_skills[1] if len(primary_skills) > 1 else 'modern web apps'}?"
-        ],
-        "team_notes": [
-            {
-                "id": "note-auto-1",
-                "author": "AI Screening Agent",
-                "initials": "AI",
-                "role": "Automated Review",
-                "timestamp": "Just now",
-                "content": f"Resume parsed automatically from {filename}. Profile extracted with {len(found_skills)} verified technical skills ({', '.join(found_skills[:6])}) and {years_of_experience} years experience."
-            }
-        ]
+        "overall_match_score": None,
+        "match_tier": "Not Evaluated",
+        "evaluation_status": "PENDING",
+        "model_version": None,
+        "evaluated_at": None,
+        "categories": [],
+        "risk_flags": [],
+        "suggested_improvements": [],
+        "suggested_questions": [],
+        "team_notes": [{
+            "id": "note-auto-1",
+            "author": "Resume Parser",
+            "initials": "RP",
+            "role": "Automated Extraction",
+            "timestamp": "Just now",
+            "content": (
+                f"Resume parsed from {filename}. Extracted {len(found_skills)} skill mentions "
+                "and dated employment entries. Skills and tenure require recruiter verification."
+            ),
+        }],
     }
 
     # Avatar initials

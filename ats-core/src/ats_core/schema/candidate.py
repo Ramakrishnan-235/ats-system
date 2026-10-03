@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, ConfigDict, model_validator, AliasChoices
 
 from ats_core.schema.skills import SkillsTaxonomy
 from ats_core.schema.timeline import EmploymentTimeline
+from ats_core.schema._normalization import normalization_input
 
 
 class EducationEntry(BaseModel):
@@ -38,10 +39,11 @@ class EducationEntry(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def coerce_graduation_year(cls, data: Any) -> Any:
+        data = normalization_input(cls, data)
         if isinstance(data, dict):
-            for k in ("graduation_year", "year_of_completion", "year", "years", "date"):
-                if k in data and data[k] is not None and not isinstance(data[k], str):
-                    data[k] = str(data[k])
+            value = data.get("graduation_year")
+            if value is not None and not isinstance(value, str):
+                data["graduation_year"] = str(value)
         return data
 
 
@@ -77,8 +79,9 @@ class CertificationEntry(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def coerce_dates(cls, data: Any) -> Any:
+        data = normalization_input(cls, data)
         if isinstance(data, dict):
-            for k in ("issue_date", "date_obtained", "date", "issued", "expiration_date"):
+            for k in ("issue_date", "expiration_date"):
                 if k in data and data[k] is not None and not isinstance(data[k], str):
                     data[k] = str(data[k])
         return data

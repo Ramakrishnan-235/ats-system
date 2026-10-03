@@ -29,11 +29,13 @@ class AuditLogger:
                 return None
             try:
                 return uuid.UUID(str(val))
-            except (ValueError, AttributeError):
-                return uuid.uuid5(uuid.NAMESPACE_DNS, str(val))
+            except (ValueError, AttributeError) as exc:
+                raise ValueError("Audit foreign keys must be valid existing UUIDs") from exc
 
-        c_uuid = parse_uuid(candidate_id) or uuid.uuid4()
-        j_uuid = parse_uuid(job_id) or uuid.uuid4()
+        c_uuid = parse_uuid(candidate_id)
+        j_uuid = parse_uuid(job_id)
+        if c_uuid is None or j_uuid is None:
+            raise ValueError("Candidate and job IDs are required to persist an audit")
         app_uuid = parse_uuid(application_id)
 
         tier_val = (

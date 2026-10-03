@@ -31,8 +31,8 @@ For the complete architectural design, sequence diagrams, and end-to-end compone
 Ensure you have the following installed on your system:
 
 - **Docker & Docker Compose** (for PostgreSQL 16 + pgvector, Redis, and Ollama)
-- **Python 3.11+** and [**`uv`**](https://docs.astral.sh/uv/) (recommended for fast dependency management) or `pip`
-- **Node.js 18+ or 20+** and **npm** / **pnpm** / **yarn** (for the Next.js frontend)
+- **Python 3.12** and [**`uv`**](https://docs.astral.sh/uv/) (recommended for fast dependency management) or `pip`
+- **Node.js 20.9+** and **npm** / **pnpm** / **yarn** (for the Next.js frontend)
 - **Ollama** (running locally or inside Docker for local LLM inference)
 
 ---
@@ -51,10 +51,23 @@ OLLAMA_MODEL="deepseek-v4-flash:cloud" # or gemma4:e2b
 DATABASE_URL="postgresql+asyncpg://ats_user:ats_password@localhost:5433/ats_db"
 SYNC_DATABASE_URL="postgresql://ats_user:ats_password@localhost:5433/ats_db"
 
-# Security & API Authentication (optional for development)
-ATS_AUTH_ENABLED="false"
-ATS_API_KEY="your-secure-api-key-here"
+# Security & API Authentication
+ATS_AUTH_ENABLED="true"
+ATS_API_KEY="replace-with-a-unique-secret"
+ATS_CORS_ORIGINS="http://localhost:3000,http://127.0.0.1:3000"
+ATS_MAX_UPLOAD_BYTES="10485760"
 ```
+
+The API loads `ats-core/.env` without overriding existing environment variables. Authentication
+is enabled by default and startup fails if the key is missing. Generate a key with
+`python -c "import secrets; print(secrets.token_urlsafe(32))"`. Set `ATS_AUTH_ENABLED=false`
+explicitly only for local development. Configure allowed browser origins with
+`ATS_CORS_ORIGINS`; uploaded PDFs default to a 10 MiB limit.
+
+Candidate, job, and taxonomy HTTP routes currently use process-local stores. The Celery
+worker writes to PostgreSQL through a separate ingestion path. Restarts lose the HTTP
+stores, and multiple API processes do not share them. See [the review report](CODE_REVIEW_REPORT.md)
+for the implemented hardening and remaining persistence work.
 
 ### Frontend (`frontend/.env.local`)
 Create `frontend/.env.local` if you need custom API URLs (defaults to `http://localhost:8000/api/v1`):

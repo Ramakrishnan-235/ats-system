@@ -54,6 +54,8 @@ import {
 import { cn } from "@/lib/utils";
 import {
   fetchJobDetail,
+  updateJobRequisition,
+  getErrorMessage,
   evaluateJobMatching,
   fetchJobCandidates,
   addJobCandidate,
@@ -61,7 +63,6 @@ import {
   updateJobCandidateStage,
 } from "@/lib/api";
 import { JobRequisition, RankedCandidate } from "@/types/ats";
-import { MOCK_JOBS } from "@/lib/mock-data";
 
 const INITIAL_RANKED_CANDIDATES: RankedCandidate[] = [];
 
@@ -71,39 +72,8 @@ export default function JobPipelineDetailPage() {
   const rawId = (params?.id as string) || "job-001";
 
   // Job Requisition State
-  const [job, setJob] = useState<JobRequisition>(() => {
-    const found = MOCK_JOBS.find((j) => j.id === rawId);
-    return (
-      found || {
-        id: rawId,
-        title: "Senior Backend Engineer",
-        department: "Engineering",
-        location: "Remote",
-        status: "OPEN",
-        posted_date: "Jan 15",
-        candidates_count: 0,
-        avatars: [],
-        top_match: {
-          score: 0,
-          label: "No Candidates",
-          last_run: "-",
-          status: "PENDING",
-        },
-        icon_type: "code",
-        job_description:
-          "We are seeking an experienced Senior Backend Engineer to join our core platform team. You will be responsible for designing, building, and maintaining scalable microservices that power our primary application.\n\nKey Responsibilities:\n• Architect high-performance APIs\n• Optimize database queries and schema design\n• Lead migration of legacy services to distributed cloud microservices",
-        min_years_experience: 5.0,
-        required_skills: [
-          "Python",
-          "FastAPI",
-          "PostgreSQL",
-          "Kubernetes",
-          "AWS",
-          "Go",
-        ],
-      }
-    );
-  });
+  const [job, setJob] = useState<JobRequisition | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<
     "AI Ranked List" | "Pipeline Board" | "Job Details" | "Activity"
@@ -126,11 +96,11 @@ export default function JobPipelineDetailPage() {
 
   // Edit Modal State
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [editTitle, setEditTitle] = useState(job.title);
-  const [editDepartment, setEditDepartment] = useState(job.department);
-  const [editLocation, setEditLocation] = useState(job.location);
-  const [editDescription, setEditDescription] = useState(job.job_description);
-  const [editSkills, setEditSkills] = useState<string[]>(job.required_skills);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDepartment, setEditDepartment] = useState("");
+  const [editLocation, setEditLocation] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editSkills, setEditSkills] = useState<string[]>([]);
   const [newSkillText, setNewSkillText] = useState("");
 
   useEffect(() => {
@@ -146,7 +116,7 @@ export default function JobPipelineDetailPage() {
           setEditSkills(jobData.required_skills);
         }
 
-        const candidateData = await fetchJobCandidates(rawId, jobData || undefined);
+        const candidateData = await fetchJobCandidates(rawId);
         if (candidateData && candidateData.length > 0) {
           setCandidates(candidateData);
           if (candidateData[0]) {
@@ -155,33 +125,20 @@ export default function JobPipelineDetailPage() {
         }
       }
     }
-    loadJobAndCandidates();
+    loadJobAndCandidates().catch(reason => setError(getErrorMessage(reason)));
   }, [rawId]);
 
   const handleReRunMatch = async () => {
+    if (!job) return;
     setIsReRunning(true);
-    setReRunMessage("Running hybrid retrieval + cross-encoder re-ranking...");
+    setReRunMessage("Waiting for backend matching...");
     try {
-      await evaluateJobMatching({
-        job_title: job.title,
-        job_description: job.job_description,
-      });
-      const refreshed = await fetchJobCandidates(rawId, job);
-      if (refreshed && refreshed.length > 0) {
-        setCandidates(refreshed);
-      }
-      setTimeout(() => {
-        setIsReRunning(false);
-        setReRunMessage("✓ Match scores re-evaluated with Stage 3 LLM!");
-        setTimeout(() => setReRunMessage(null), 4000);
-      }, 1200);
-    } catch {
-      setTimeout(() => {
-        setIsReRunning(false);
-        setReRunMessage("✓ Pipeline candidate rankings refreshed!");
-        setTimeout(() => setReRunMessage(null), 4000);
-      }, 1000);
-    }
+      await evaluateJobMatching({ job_title: job.title, job_description: job.job_description });
+      setCandidates(await fetchJobCandidates(rawId));
+      setReRunMessage("Matching request completed. Pipeline loaded from the backend.");
+      setError(null);
+    } catch (reason) { setReRunMessage(null); setError(getErrorMessage(reason)); }
+    finally { setIsReRunning(false); }
   };
 
   const handleAddCandidate = async (payload: NewCandidatePayload) => {
@@ -196,10 +153,7 @@ export default function JobPipelineDetailPage() {
         setExpandedCand(matched.id);
       }
 
-      setJob((prev) => ({
-        ...prev,
-        candidates_count: updatedList.length,
-      }));
+      setJob(prev => prev ? { ...prev, candidates_count: updatedList.length } : null);
 
       const myRank = matched ? matched.rank : 1;
       setReRunMessage(
@@ -207,7 +161,8 @@ export default function JobPipelineDetailPage() {
       );
       setTimeout(() => setReRunMessage(null), 6000);
     } catch (err) {
-      console.error("Failed to add candidate:", err);
+      setError(getErrorMessage(err));
+      throw err;
     }
   };
 
@@ -221,24 +176,21 @@ export default function JobPipelineDetailPage() {
       if (expandedCand === candId) {
         setExpandedCand(updatedList[0]?.id || null);
       }
-      setJob((prev) => ({
-        ...prev,
-        candidates_count: updatedList.length,
-      }));
+      setJob(prev => prev ? { ...prev, candidates_count: updatedList.length } : null);
 
       setReRunMessage(
         `✓ Candidate "${name}" removed from this job. Remaining ${updatedList.length} candidates dynamically re-ranked.`
       );
       setTimeout(() => setReRunMessage(null), 5000);
     } catch (err) {
-      console.error("Failed to remove candidate:", err);
+      setError(getErrorMessage(err));
     }
   };
 
   const handleAdvanceCandidate = async (candId: string) => {
     setAdvancingCandId(candId);
     const currentCand = candidates.find((c) => c.id === candId);
-    if (!currentCand) return;
+    if (!currentCand) { setAdvancingCandId(null); return; }
 
     const nextStage =
       currentCand.stage === "Applied"
@@ -268,21 +220,17 @@ export default function JobPipelineDetailPage() {
       );
     } catch (err) {
       setAdvancingCandId(null);
-      console.error("Failed to advance candidate stage:", err);
+      setError(getErrorMessage(err));
     }
   };
 
-  const handleSaveJobEdit = (e: React.FormEvent) => {
+  const handleSaveJobEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setJob((prev) => ({
-      ...prev,
-      title: editTitle,
-      department: editDepartment,
-      location: editLocation,
-      job_description: editDescription,
-      required_skills: editSkills,
-    }));
-    setIsEditOpen(false);
+    try {
+      setJob(await updateJobRequisition(rawId, { title: editTitle, department: editDepartment, location: editLocation, job_description: editDescription, required_skills: editSkills }));
+      setIsEditOpen(false);
+      setError(null);
+    } catch (reason) { setError(getErrorMessage(reason)); }
   };
 
   const handleAddSkill = () => {
@@ -295,6 +243,8 @@ export default function JobPipelineDetailPage() {
   const handleRemoveSkill = (skillToRemove: string) => {
     setEditSkills(editSkills.filter((s) => s !== skillToRemove));
   };
+
+  if (!job) return <div className="p-8">{error ? <p role="alert" className="text-red-700">{error}</p> : <p role="status">Loading job…</p>}<Link href="/jobs">Back to jobs</Link></div>;
 
   return (
     <div className="min-h-screen flex bg-[#faf9f6] text-zinc-900 font-sans antialiased">
@@ -333,6 +283,7 @@ export default function JobPipelineDetailPage() {
 
         {/* Main Content Area */}
         <main className="flex-1 p-8 max-w-[1280px] w-full mx-auto space-y-6">
+          {error && <p role="alert" className="text-red-700">{error}</p>}
           {/* Re-run notification banner */}
           {reRunMessage && (
             <div className="bg-[#ede8dc] border border-[#dad4c5] text-zinc-900 px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between animate-in fade-in-50 duration-200">
@@ -552,7 +503,7 @@ export default function JobPipelineDetailPage() {
                         <div className="col-span-3">
                           <div className="flex items-center gap-2">
                             <span className="text-base font-bold text-zinc-950">
-                              {cand.matchScore}
+                              {cand.matchScore ?? "Pending"}
                             </span>
                             <span className="text-[11px] font-semibold text-zinc-600">
                               {cand.matchLabel}
@@ -561,7 +512,7 @@ export default function JobPipelineDetailPage() {
                           <div className="w-44 bg-zinc-100 h-1.5 rounded-full overflow-hidden mt-1.5">
                             <div
                               className="bg-black h-full rounded-full"
-                              style={{ width: `${cand.matchScore}%` }}
+                              style={{ width: `${cand.matchScore ?? "Pending"}%` }}
                             />
                           </div>
                         </div>
@@ -651,7 +602,7 @@ export default function JobPipelineDetailPage() {
                             </div>
 
                             {/* Technical Depth */}
-                            {cand.technicalDepthScore && (
+                            {cand.technicalDepthScore != null && (
                               <div className="space-y-1.5">
                                 <div className="flex justify-between text-xs font-semibold text-zinc-700">
                                   <span>Technical Depth</span>
@@ -686,7 +637,7 @@ export default function JobPipelineDetailPage() {
                             )}
 
                             {/* System Design */}
-                            {cand.systemDesignScore && (
+                            {cand.systemDesignScore != null && (
                               <div className="space-y-1.5">
                                 <div className="flex justify-between text-xs font-semibold text-zinc-700">
                                   <span>System Design</span>
@@ -832,21 +783,8 @@ export default function JobPipelineDetailPage() {
                   },
                   {
                     stage: "Offer",
-                    count: 1,
-                    items: [
-                      {
-                        id: "cand-offer-1",
-                        rank: 0,
-                        name: "Marcus Chen",
-                        headline: "Lead Architect",
-                        avatar:
-                          "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
-                        isImageAvatar: true,
-                        matchScore: 96,
-                        skills: ["Python", "AWS", "Kafka"],
-                        stage: "Offer",
-                      },
-                    ],
+                    count: candidates.filter(c => c.stage === "Offer").length,
+                    items: candidates.filter(c => c.stage === "Offer"),
                   },
                 ].map((col) => (
                   <div
@@ -891,7 +829,7 @@ export default function JobPipelineDetailPage() {
                               </div>
                             </div>
                             <span className="bg-zinc-100 text-zinc-900 font-bold text-[11px] px-2 py-0.5 rounded-md">
-                              {cand.matchScore}
+                              {cand.matchScore ?? "Pending"}
                             </span>
                           </div>
 

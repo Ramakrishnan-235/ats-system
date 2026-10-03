@@ -14,6 +14,7 @@ Rules:
 import logging
 import os
 import json
+import re
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from openai import OpenAI
@@ -66,6 +67,7 @@ class LLMResidueExtractor:
         self.model_name = model_name or os.getenv("OLLAMA_MODEL", "deepseek-v4-flash:cloud")
         self.temperature = temperature
         self._client: Optional[instructor.Instructor] = None
+        self._anonymizer = None
 
     @classmethod
     def get_instance(cls) -> "LLMResidueExtractor":
@@ -86,6 +88,21 @@ class LLMResidueExtractor:
             )
         return self._client
 
+    def _redact_for_llm(self, resume_text: str) -> str:
+        """Initialize redaction on demand, before accessing any LLM client."""
+        if self._anonymizer is None:
+            from ats_core.parsers.anonymizer import ResumeAnonymizer
+
+            self._anonymizer = ResumeAnonymizer(min_score_threshold=0.55)
+        redacted = self._anonymizer.anonymize(resume_text)
+        # Explicit links may identify applicants even if the NLP recognizers
+        # miss them. This protects the residue prompt without claiming complete
+        # PII detection for arbitrary prose.
+        return re.sub(
+            r"\b(?:https?://|www\.)[^\s]+|(?<!\w)(?:linkedin\.com|github\.com)/[^\s]+",
+            "[PROFILE_URL]", redacted, flags=re.IGNORECASE,
+        )
+
     def extract_residue_skills(
         self,
         resume_text: str,
@@ -94,40 +111,48 @@ class LLMResidueExtractor:
     ) -> List[Dict[str, Any]]:
         """
         Executes residue extraction pass:
-        1. Calls LLM with RESIDUE_PROMPT and schema constraints.
+        1. Redacts resume PII before accessing the LLM; uses local rules if unavailable.
         2. Strict verification: Discards any item where evidence is NOT in resume_text verbatim.
         3. Persists valid unmapped items to Flywheel queue with status='pending', source='llm'.
         """
         if not resume_text or not resume_text.strip():
             return []
 
-        user_prompt = f"""
-        <resume_text>
-        {resume_text}
-        </resume_text>
-
-        <skills_already_found>
-        {', '.join(skills_already_found)}
-        </skills_already_found>
-        """
-
         verified_skills: List[Dict[str, Any]] = []
-
         try:
-            res: LLMResidueOutput = self.client.chat.completions.create(
-                model=self.model_name,
-                response_model=LLMResidueOutput,
-                temperature=self.temperature,
-                max_retries=2,
-                messages=[
-                    {"role": "system", "content": RESIDUE_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-            )
-            raw_candidates = res.new_skills
-        except Exception as e:
-            logger.warning(f"Ollama residue pass unavailable or failed: {e}. Running fallback rule residue.")
+            safe_resume_text = self._redact_for_llm(resume_text)
+            if not safe_resume_text or not safe_resume_text.strip():
+                raise ValueError("Redacted resume text is empty")
+        except Exception:
+            # Fail closed: even a local Ollama endpoint can route to a cloud
+            # model. Never send the original text when redaction fails.
+            logger.warning("Residue PII redaction unavailable; using local rule extraction only.")
             raw_candidates = self._fallback_rule_residue(resume_text, skills_already_found)
+        else:
+            user_prompt = f"""
+            <resume_text>
+            {safe_resume_text}
+            </resume_text>
+
+            <skills_already_found>
+            {', '.join(skills_already_found)}
+            </skills_already_found>
+            """
+            try:
+                res: LLMResidueOutput = self.client.chat.completions.create(
+                    model=self.model_name,
+                    response_model=LLMResidueOutput,
+                    temperature=self.temperature,
+                    max_retries=2,
+                    messages=[
+                        {"role": "system", "content": RESIDUE_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                )
+                raw_candidates = res.new_skills
+            except Exception:
+                logger.warning("Ollama residue pass unavailable; using local rule extraction.")
+                raw_candidates = self._fallback_rule_residue(resume_text, skills_already_found)
 
         taxonomy_service = SkillTaxonomyService.get_instance()
 

@@ -22,16 +22,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { fetchCandidates, fetchJobs, addJobCandidate } from "@/lib/api";
+import { fetchCandidates, fetchJobs, addJobCandidate, getErrorMessage } from "@/lib/api";
 import { JobRequisition } from "@/types/ats";
-import { MOCK_JOBS } from "@/lib/mock-data";
 
 interface TalentCandidate {
   id: string;
   name: string;
   role: string;
   location: string;
-  matchScore: number;
+  matchScore: number | null;
   skills: string[];
   avatar: string;
   experienceYears: number;
@@ -42,7 +41,8 @@ const TALENT_POOL: TalentCandidate[] = [];
 
 export default function CandidatesPage() {
   const [candidatesList, setCandidatesList] = useState<TalentCandidate[]>([]);
-  const [availableJobs, setAvailableJobs] = useState<JobRequisition[]>(MOCK_JOBS.slice(0, 15));
+  const [availableJobs, setAvailableJobs] = useState<JobRequisition[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState<"Hybrid" | "Semantic" | "Keyword">("Hybrid");
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
@@ -64,15 +64,15 @@ export default function CandidatesPage() {
         }
 
         if (liveData && liveData.length > 0) {
-          const liveMapped: TalentCandidate[] = liveData.map((d: any) => ({
+          const liveMapped: TalentCandidate[] = liveData.map((d) => ({
             id: d.id,
             name: d.name || "Candidate",
             role: d.target_headline || d.role || "Software Engineer",
             location: d.location || "Remote",
-            matchScore: d.scorecard?.overall_match_score || 92,
-            skills: d.core_skills || ["Python", "FastAPI"],
+            matchScore: d.scorecard?.overall_match_score ?? null,
+            skills: d.core_skills || [],
             avatar: d.avatar || (d.name ? d.name.slice(0, 2).toUpperCase() : "CD"),
-            experienceYears: Math.round(d.years_of_experience || 4),
+            experienceYears: Math.round(d.years_of_experience || 0),
             status: "Active",
           }));
           setCandidatesList(liveMapped);
@@ -80,7 +80,7 @@ export default function CandidatesPage() {
           setCandidatesList([]);
         }
       } catch (err) {
-        console.warn("Could not load candidates / jobs:", err);
+        setError(getErrorMessage(err));
       }
     }
     loadData();
@@ -94,7 +94,7 @@ export default function CandidatesPage() {
         headline: cand.role || "Software Engineer",
         avatar: cand.avatar,
         isImageAvatar: Boolean(cand.avatar && typeof cand.avatar === "string" && cand.avatar.startsWith("http")),
-        matchScore: cand.matchScore || 85,
+        matchScore: null,
         skills: cand.skills || [],
         stage: "Screening",
       });
@@ -103,7 +103,7 @@ export default function CandidatesPage() {
         [cand.id]: `Added to ${(job.title || "Job").split(" ")[0]} ✓`,
       }));
     } catch (err) {
-      console.error("Failed to add candidate to job:", err);
+      setError(getErrorMessage(err));
     }
   };
 
@@ -175,6 +175,7 @@ export default function CandidatesPage() {
 
         {/* Main Content */}
         <main className="flex-1 p-8 max-w-[1300px] w-full mx-auto space-y-8">
+          {error && <p role="alert" className="text-red-700">{error}</p>}
           {/* Central Search Bar & Mode Selector */}
           <div className="flex flex-col items-center gap-4 max-w-2xl mx-auto pt-2">
             <div className="relative w-full shadow-sm">
@@ -424,7 +425,7 @@ export default function CandidatesPage() {
                           {/* Match Score */}
                           <div className="flex flex-col items-end">
                             <span className="text-xl font-bold tracking-tight text-zinc-950 leading-none">
-                              {cand.matchScore}%
+                              {cand.matchScore === null ? "Pending" : `${cand.matchScore}%`}
                             </span>
                             <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                               MATCH

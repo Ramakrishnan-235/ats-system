@@ -1,6 +1,7 @@
 import logging
 import os
-from typing import List, Dict, Any, Optional
+import re
+from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel, Field
 from openai import OpenAI
 import instructor
@@ -16,7 +17,7 @@ class CriteriaScore(BaseModel):
 
 class EvaluationReport(BaseModel):
     match_score: float = Field(ge=0.0, le=100.0, description="Overall match score from 0.0 to 100.0.")
-    qualification_tier: str = Field(
+    qualification_tier: Literal["Strong Fit", "Potential Fit", "Low Match"] = Field(
         default="Potential Fit",
         description="Fit category: 'Strong Fit', 'Potential Fit', or 'Low Match'."
     )
@@ -40,9 +41,14 @@ def _sanitize_untrusted_prompt_input(text: str) -> str:
     # Strip dangerous role framing tokens and injection payloads
     sanitized = text.replace("```", "'''")
     # Neutralize fake system/role prompts
-    sanitized = sanitized.replace("<|im_start|>", "").replace("<|im_end|>", "")
-    sanitized = sanitized.replace("[INST]", "").replace("[/INST]", "")
-    sanitized = sanitized.replace("System:", "Applicant Note:").replace("SYSTEM:", "Applicant Note:")
+    sanitized = re.sub(r"<\|[^>]*\|>|\[/?INST\]", "", sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(
+        r"</?(?:untrusted_candidate_dossier|job_requisition)[^>]*>",
+        "[escaped_tag]", sanitized, flags=re.IGNORECASE,
+    )
+    sanitized = re.sub(
+        r"(?im)\b(?:system|assistant|user|human|evaluator)\s*:", "Applicant Note:", sanitized
+    )
     return sanitized.strip()
 
 
@@ -95,6 +101,11 @@ class LLMEvaluator:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
+            )
+            report.qualification_tier = (
+                "Strong Fit" if report.match_score >= 80
+                else "Potential Fit" if report.match_score >= 60
+                else "Low Match"
             )
             return report
         except Exception as e:

@@ -12,8 +12,13 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 bearer_scheme = HTTPBearer(auto_error=False)
 
 # Configuration from environment
-ATS_AUTH_ENABLED = os.getenv("ATS_AUTH_ENABLED", "false").lower() in ("true", "1", "yes")
+ATS_AUTH_ENABLED = os.getenv("ATS_AUTH_ENABLED", "true").strip().lower() not in ("false", "0", "no")
 EXPECTED_API_KEY = os.getenv("ATS_API_KEY", "")
+
+
+def validate_auth_configuration() -> None:
+    if ATS_AUTH_ENABLED and not EXPECTED_API_KEY.strip():
+        raise RuntimeError("ATS_API_KEY must be configured when ATS authentication is enabled.")
 
 
 async def verify_api_key(
@@ -23,7 +28,7 @@ async def verify_api_key(
     """
     Validates client authentication via X-API-Key header or Authorization: Bearer token.
     Uses constant-time comparison (secrets.compare_digest) to prevent timing side-channel attacks.
-    If ATS_AUTH_ENABLED is False (development default), requests without keys are allowed.
+    Requests without keys are allowed only when ATS_AUTH_ENABLED is explicitly disabled.
     """
     token = header_key or (bearer_creds.credentials if bearer_creds else None)
 
@@ -31,7 +36,7 @@ async def verify_api_key(
     if not ATS_AUTH_ENABLED:
         return token or "anonymous_dev_user"
 
-    if not EXPECTED_API_KEY:
+    if not EXPECTED_API_KEY.strip():
         logger.error("Authentication is enabled (ATS_AUTH_ENABLED=true) but ATS_API_KEY is not configured.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -47,7 +52,7 @@ async def verify_api_key(
         )
 
     # Constant-time comparison to prevent timing attacks
-    if not secrets.compare_digest(token.strip(), EXPECTED_API_KEY.strip()):
+    if not secrets.compare_digest(token.strip().encode("utf-8"), EXPECTED_API_KEY.strip().encode("utf-8")):
         logger.warning("Unauthorized request with invalid API key attempted")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

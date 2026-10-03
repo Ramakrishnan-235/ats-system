@@ -1,6 +1,7 @@
 import re
+import math
 import logging
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Tuple, Optional
 from rank_bm25 import BM25Okapi
 
 logger = logging.getLogger("ats.search.bm25")
@@ -31,18 +32,22 @@ class BM25LexicalIndex:
         """
         text = text.lower()
         # Matches alphanumeric sequences and tech symbols: c++, .net, tcp/ip, ci/cd
-        tokens = re.findall(r"\b[a-z0-9]+(?:\.[a-z0-9]+)*(?:\+\+|#)?\b|[a-z0-9]+-[a-z0-9]+", text)
-        return [t for t in tokens if t not in TECH_STOPWORDS and len(t) > 1]
+        tokens = re.findall(
+            r"(?<![a-z0-9])(?:\.[a-z][a-z0-9]*|[a-z0-9]+(?:[./-][a-z0-9]+)*(?:\+\+|#)?)(?![a-z0-9])",
+            text,
+        )
+        return [t for t in tokens if t not in TECH_STOPWORDS and (len(t) > 1 or t in {"c", "r"})]
 
     def build_index(self, candidate_ids: List[str], documents: List[str]):
         """Builds or rebuilds the BM25 inverted index from a batch of candidate profiles."""
         if len(candidate_ids) != len(documents):
             raise ValueError("candidate_ids and documents lists must be of identical length.")
-
-        self.candidate_ids = list(candidate_ids)
-        self.raw_documents = list(documents)
+        if len(set(candidate_ids)) != len(candidate_ids):
+            raise ValueError("candidate_ids must be unique")
         
         if not candidate_ids or not documents:
+            self.candidate_ids = []
+            self.raw_documents = []
             self.tokenized_corpus = []
             self.bm25_model = None
             logger.info("Cleared BM25 index (empty input).")
@@ -57,19 +62,31 @@ class BM25LexicalIndex:
                 toks = ["<empty_document>"]
             tokenized.append(toks)
 
+        model = BM25Okapi(tokenized)
+        # Positive Robertson IDF keeps genuine matches in small corpora and for
+        # common terms. Okapi's raw log ratio is zero/negative in these cases,
+        # which previously caused matching candidates to disappear entirely.
+        document_frequency = {}
+        for frequencies in model.doc_freqs:
+            for term in frequencies:
+                document_frequency[term] = document_frequency.get(term, 0) + 1
+        model.idf = {
+            term: math.log1p((len(tokenized) - count + 0.5) / (count + 0.5))
+            for term, count in document_frequency.items()
+        }
+        self.candidate_ids = list(candidate_ids)
+        self.raw_documents = list(documents)
         self.tokenized_corpus = tokenized
-        try:
-            self.bm25_model = BM25Okapi(self.tokenized_corpus)
-            logger.info(f"Built BM25 index over {len(self.candidate_ids)} candidates.")
-        except Exception as err:
-            logger.error(f"Failed to initialize BM25 index: {err}")
-            self.bm25_model = None
+        self.bm25_model = model
+        logger.info(f"Built BM25 index over {len(self.candidate_ids)} candidates.")
 
     def search(self, query: str, top_k: int = 20) -> List[Tuple[str, float]]:
         """
         Searches the BM25 index and returns sorted tuples of (candidate_id, bm25_score).
         """
-        if not self.bm25_model or not self.candidate_ids or not self.tokenized_corpus:
+        if top_k < 0:
+            raise ValueError("top_k must be nonnegative")
+        if top_k == 0 or not self.bm25_model or not self.candidate_ids or not self.tokenized_corpus:
             return []
 
         tokenized_query = self.tokenize(query or "")

@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import List, Optional, Any
 from pydantic import BaseModel, Field, ConfigDict, model_validator, AliasChoices
+from ats_core.schema._normalization import normalization_input
 
 
 class WorkplaceType(str, Enum):
@@ -69,8 +70,9 @@ class WorkExperience(BaseModel):
     @classmethod
     def sanitize_experience(cls, data: Any) -> Any:
         from ats_core.parsers.normalizers import normalize_date, normalize_skills_list
+        data = normalization_input(cls, data)
         if isinstance(data, dict):
-            wpt = data.get("workplace_type") or data.get("location_type")
+            wpt = data.get("workplace_type")
             if wpt and wpt not in [e.value for e in WorkplaceType]:
                 wpt_str = str(wpt).lower()
                 if "remote" in wpt_str:

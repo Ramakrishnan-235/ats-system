@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, status, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 router = APIRouter(prefix="/jobs", tags=["Job Postings & Requisitions"])
 
@@ -774,8 +774,26 @@ class CreateJobRequest(BaseModel):
     location: str = Field(default="Remote", description="Job location")
     job_description: str = Field(..., description="Full text or HTML job description")
     required_skills: List[str] = Field(default_factory=list, description="Extracted required skills")
-    min_years_experience: float = Field(default=3.0, description="Minimum years of experience")
+    min_years_experience: float = Field(default=3.0, ge=0, le=70, description="Minimum years of experience")
     run_ai_match: bool = Field(default=True, description="Whether to trigger candidate matching")
+
+
+class UpdateJobRequest(BaseModel):
+    """Editable requisition fields only; omitted fields keep their current values."""
+    model_config = {"extra": "forbid"}
+
+    title: Optional[str] = None
+    department: Optional[str] = None
+    location: Optional[str] = None
+    job_description: Optional[str] = None
+    required_skills: Optional[List[str]] = None
+
+    @field_validator("title", "department", "location", "job_description", "required_skills")
+    @classmethod
+    def reject_null_fields(cls, value):
+        if value is None:
+            raise ValueError("Editable job fields cannot be null")
+        return value
 
 
 class JobResponse(BaseModel):
@@ -842,14 +860,15 @@ async def get_job(job_id: str):
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 async def create_job(payload: CreateJobRequest):
     new_id = f"job-{uuid.uuid4().hex[:8]}"
-    now_str = datetime.utcnow().strftime("%Y-%m-%d")
-    now_iso = datetime.utcnow().isoformat() + "Z"
+    now = datetime.now(timezone.utc)
+    now_str = now.strftime("%Y-%m-%d")
+    now_iso = now.isoformat().replace("+00:00", "Z")
 
     # Auto-extract skills if none provided
     skills = payload.required_skills
     if not skills:
         common_keywords = ["Python", "FastAPI", "PostgreSQL", "Kubernetes", "AWS", "React", "TypeScript", "Docker", "PyTorch", "LLMs"]
-        skills = [kw for kw in common_keywords if kw.lower() in payload.job_description.lower()] or ["Python", "FastAPI", "PostgreSQL"]
+        skills = [kw for kw in common_keywords if kw.lower() in payload.job_description.lower()]
 
     icon_type = "code"
     dept_lower = payload.department.lower()
@@ -882,10 +901,10 @@ async def create_job(payload: CreateJobRequest):
         "candidates_count": 0,
         "avatars": [],
         "top_match": {
-            "score": 95 if payload.run_ai_match else 0,
-            "label": "95 Top Match" if payload.run_ai_match else "Pending Match",
-            "last_run": "Just now" if payload.run_ai_match else "-",
-            "status": "ACTIVE"
+            "score": None,
+            "label": "Pending Match",
+            "last_run": "-",
+            "status": "PENDING"
         },
         "icon_type": icon_type,
         "job_description": payload.job_description,
@@ -902,6 +921,18 @@ async def create_job(payload: CreateJobRequest):
 
     JOBS_STORE[new_id] = new_job
     return new_job
+
+
+@router.patch("/{job_id}", response_model=JobResponse)
+async def update_job(job_id: str, payload: UpdateJobRequest):
+    if job_id not in JOBS_STORE:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Job not found")
+
+    changes = payload.model_dump(exclude_unset=True)
+    if changes:
+        JOBS_STORE[job_id].update(changes)
+        JOBS_STORE[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return JOBS_STORE[job_id]
 
 
 @router.patch("/{job_id}/status", response_model=JobResponse)
@@ -926,13 +957,13 @@ class JobCandidatePayload(BaseModel):
     headline: str
     avatar: Optional[str] = None
     isImageAvatar: Optional[bool] = False
-    matchScore: int = 85
-    matchLabel: Optional[str] = "Match"
+    matchScore: Optional[int] = Field(default=None, ge=0, le=100)
+    matchLabel: Optional[str] = None
     skills: List[str] = Field(default_factory=list)
     stage: str = "Screening"
     stageBadgeStyle: Optional[str] = "bg-zinc-100 text-zinc-700"
-    technicalDepthScore: Optional[float] = 8.5
-    systemDesignScore: Optional[float] = 8.0
+    technicalDepthScore: Optional[float] = Field(default=None, ge=0, le=10)
+    systemDesignScore: Optional[float] = Field(default=None, ge=0, le=10)
     quote: Optional[str] = ""
     sourceResumeLink: Optional[str] = None
     potentialGap: Optional[str] = None
@@ -943,19 +974,29 @@ JOB_CANDIDATES_STORE: Dict[str, List[Dict[str, Any]]] = {}
 
 
 def get_or_create_job_candidates(job_id: str) -> List[Dict[str, Any]]:
+    if job_id not in JOBS_STORE:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Job not found")
     return JOB_CANDIDATES_STORE.get(job_id, [])
 
 
+def _present_job_candidates(current, include_pii):
+    if include_pii:
+        return current
+    from ats_core.api.v1.candidates import mask_candidate_pii
+    return [mask_candidate_pii(candidate) for candidate in current]
+
+
 @router.get("/{job_id}/candidates", response_model=List[Dict[str, Any]])
-async def get_job_candidates(job_id: str):
-    return get_or_create_job_candidates(job_id)
+async def get_job_candidates(job_id: str, include_pii: bool = Query(False)):
+    current = get_or_create_job_candidates(job_id)
+    return _present_job_candidates(current, include_pii)
 
 
 @router.post("/{job_id}/candidates", response_model=List[Dict[str, Any]])
-async def add_job_candidate(job_id: str, candidate: JobCandidatePayload):
+async def add_job_candidate(job_id: str, candidate: JobCandidatePayload, include_pii: bool = Query(False)):
     current = get_or_create_job_candidates(job_id)
 
-    new_id = candidate.id or f"cand-{job_id}-{int(datetime.utcnow().timestamp() * 1000)}"
+    new_id = candidate.id or f"cand-{uuid.uuid4().hex}"
     initials = candidate.name.split(" ")[0][:1] + (candidate.name.split(" ")[1][:1] if len(candidate.name.split(" ")) > 1 else "")
     avatar = candidate.avatar or initials.upper() or "CD"
 
@@ -971,8 +1012,8 @@ async def add_job_candidate(job_id: str, candidate: JobCandidatePayload):
     # Re-rank by match score descending (with technicalDepth as tiebreaker)
     updated_list.sort(
         key=lambda c: (
-            c.get("matchScore", 0),
-            c.get("technicalDepthScore", 0.0)
+            c.get("matchScore") or 0,
+            c.get("technicalDepthScore") or 0.0
         ),
         reverse=True
     )
@@ -981,29 +1022,18 @@ async def add_job_candidate(job_id: str, candidate: JobCandidatePayload):
     for idx, c in enumerate(updated_list):
         c["rank"] = idx + 1
 
+    # Registration errors must be visible, rather than reporting a partial success.
+    from ats_core.api.v1.candidates import register_candidate_profile
+    job = JOBS_STORE[job_id]
+    register_candidate_profile(cand_obj, job_title=job["title"], department=job["department"])
+
     JOB_CANDIDATES_STORE[job_id] = updated_list
-
-    # Update job requisition candidates_count
-    if job_id in JOBS_STORE:
-        JOBS_STORE[job_id]["candidates_count"] = len(updated_list)
-
-    # Register in CANDIDATES_STORE for immediate profile viewing
-    try:
-        from ats_core.api.v1.candidates import register_candidate_profile
-        job = JOBS_STORE.get(job_id, {})
-        register_candidate_profile(
-            cand_obj,
-            job_title=job.get("title", "Engineering Specialist"),
-            department=job.get("department", "Engineering")
-        )
-    except Exception:
-        pass
-
-    return updated_list
+    JOBS_STORE[job_id]["candidates_count"] = len(updated_list)
+    return _present_job_candidates(updated_list, include_pii)
 
 
 @router.delete("/{job_id}/candidates/{candidate_id}", response_model=List[Dict[str, Any]])
-async def remove_job_candidate(job_id: str, candidate_id: str):
+async def remove_job_candidate(job_id: str, candidate_id: str, include_pii: bool = Query(False)):
     current = get_or_create_job_candidates(job_id)
 
     updated_list = [c for c in current if c.get("id") != candidate_id]
@@ -1017,11 +1047,11 @@ async def remove_job_candidate(job_id: str, candidate_id: str):
     if job_id in JOBS_STORE:
         JOBS_STORE[job_id]["candidates_count"] = max(0, len(updated_list))
 
-    return updated_list
+    return _present_job_candidates(updated_list, include_pii)
 
 
 @router.patch("/{job_id}/candidates/{candidate_id}/stage")
-async def update_job_candidate_stage(job_id: str, candidate_id: str, new_stage: str = Query(...)):
+async def update_job_candidate_stage(job_id: str, candidate_id: str, new_stage: str = Query(...), include_pii: bool = Query(False)):
     current = get_or_create_job_candidates(job_id)
 
     matched_candidate = None
@@ -1041,12 +1071,9 @@ async def update_job_candidate_stage(job_id: str, candidate_id: str, new_stage: 
     if not matched_candidate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidate not found on this job")
 
-    try:
-        from ats_core.api.v1.candidates import CANDIDATES_STORE
-        if candidate_id in CANDIDATES_STORE:
-            CANDIDATES_STORE[candidate_id]["stage"] = new_stage
-            CANDIDATES_STORE[candidate_id]["status"] = new_stage
-    except Exception:
-        pass
+    from ats_core.api.v1.candidates import CANDIDATES_STORE
+    if candidate_id in CANDIDATES_STORE:
+        CANDIDATES_STORE[candidate_id]["stage"] = new_stage
+        CANDIDATES_STORE[candidate_id]["status"] = new_stage
 
-    return matched_candidate
+    return _present_job_candidates([matched_candidate], include_pii)[0]

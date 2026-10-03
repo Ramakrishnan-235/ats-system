@@ -68,13 +68,7 @@ export function IssuesRetriesPanel({
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-200/40">
                 {isFailed ? (
                   <>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs text-zinc-600 hover:text-zinc-900 px-3"
-                    >
-                      View Logs
-                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => onCancel?.(issue.id)}>Dismiss</Button>
                     <Button
                       variant="outline"
                       size="sm"

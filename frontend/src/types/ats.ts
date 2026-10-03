@@ -27,7 +27,7 @@ export interface PipelineCandidateItem {
   name: string;
   role: string;
   avatar: string;
-  match_score: number;
+  match_score: number | null;
   summary: string;
   stage: "Contacted" | "Interview" | "Negotiation" | "Offered" | "Rejected";
   probability?: number | null;
@@ -44,7 +44,7 @@ export interface JobRequisition {
   candidates_count: number;
   avatars: string[];
   top_match: {
-    score: number;
+    score: number | null;
     label: string;
     last_run: string;
     status: "ACTIVE" | "PAUSED" | "PENDING";
@@ -141,7 +141,8 @@ export interface CandidateDetail {
   enriched_skills?: EnrichedSkillEntity[];
   experience: ExperienceItem[];
   scorecard: {
-    overall_match_score: number;
+    overall_match_score: number | null;
+    evaluation_status?: string;
     match_tier: string;
     model_version: string;
     evaluated_at: string;
@@ -164,13 +165,13 @@ export interface RankedCandidate {
   headline: string;
   avatar: string;
   isImageAvatar: boolean;
-  matchScore: number;
+  matchScore: number | null;
   matchLabel?: string;
   skills: string[];
   stage: string;
   stageBadgeStyle?: string;
-  technicalDepthScore?: number;
-  systemDesignScore?: number;
+  technicalDepthScore?: number | null;
+  systemDesignScore?: number | null;
   quote?: string;
   sourceResumeLink?: string;
   potentialGap?: string;
@@ -198,6 +199,7 @@ export interface CompletedUpload {
   taskId: string;
   duration: string;
   candidateId: string;
+  evaluationStatus?: string;
 }
 
 export interface UploadIssue {
@@ -215,13 +217,13 @@ export interface NewCandidatePayload {
   headline?: string;
   avatar?: string;
   isImageAvatar?: boolean;
-  matchScore?: number;
+  matchScore?: number | null;
   matchLabel?: string;
   skills?: string[];
   stage?: string;
   stageBadgeStyle?: string;
-  technicalDepthScore?: number;
-  systemDesignScore?: number;
+  technicalDepthScore?: number | null;
+  systemDesignScore?: number | null;
   quote?: string;
   location?: string;
   email?: string;
@@ -230,7 +232,7 @@ export interface NewCandidatePayload {
   highest_education?: string;
   experienceYears?: number;
   experience?: ExperienceItem[];
-  scorecard?: any;
+  scorecard?: CandidateDetail["scorecard"];
   enriched_skills?: EnrichedSkillEntity[];
   raw_text?: string;
   pdf_blob_url?: string;

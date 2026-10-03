@@ -1,959 +1,136 @@
-import {
-  MOCK_STATS,
-  MOCK_WEEKLY_DATA,
-  MOCK_AI_MATCH_RATE,
-  MOCK_PIPELINE,
-  MOCK_JOBS,
-  MOCK_CANDIDATES_REGISTRY,
-} from "./mock-data";
-import {
-  StatMetric,
-  WeeklyData,
-  AIMatchRate,
-  PipelineCandidateItem,
-  JobRequisition,
-  CandidateDetail,
-  RankedCandidate,
-  NewCandidatePayload,
+import type {
+  StatMetric, WeeklyData, AIMatchRate, PipelineCandidateItem,
+  JobRequisition, CandidateDetail, RankedCandidate, NewCandidatePayload,
+  TeamNote, CitationLocation,
 } from "@/types/ats";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1").replace(/\/$/, "");
+// A user supplies this credential for the current browser session. Never bundle a
+// server credential or persist candidate PII in browser storage.
+let sessionApiKey = "";
+export function setSessionApiKey(key: string) { sessionApiKey = key.trim(); }
+export const requiresApiKey = process.env.NEXT_PUBLIC_REQUIRE_API_KEY !== "false";
+export function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "The request failed. Please try again.";
+}
 
-// Helper for local storage access in SSR-safe environment
-function getStoredItem<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw);
-  } catch {
-    return fallback;
+export class ApiError extends Error {
+  constructor(message: string, public readonly status?: number) {
+    super(message);
+    this.name = "ApiError";
   }
 }
 
-function setStoredItem<T>(key: string, value: T): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (e) {
-    console.warn("localStorage write failed:", e);
+async function request(path: string, options: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(options.headers);
+  if (sessionApiKey) headers.set("X-API-Key", sessionApiKey);
+  if (requiresApiKey && !sessionApiKey) {
+    throw new ApiError("Enter your API key to connect to the backend.", 401);
   }
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers, cache: "no-store" });
+  } catch (error) {
+    if (options.signal?.aborted) throw error;
+    throw new ApiError("Cannot reach the backend. Check the API address and connection.");
+  }
+  if (!response.ok) {
+    let detail: unknown;
+    try { detail = (await response.json()).detail; } catch { /* Non-JSON error response. */ }
+    const message = typeof detail === "string" ? detail : `Request failed (${response.status}).`;
+    throw new ApiError(message, response.status);
+  }
+  return response;
 }
 
-export async function fetchDashboardStats(): Promise<{
+async function json<T>(path: string, options?: RequestInit): Promise<T> {
+  return (await request(path, options)).json();
+}
+function body(payload: unknown): RequestInit {
+  return { headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) };
+}
+function query(params?: Record<string, string | number | undefined>): string {
+  const result = new URLSearchParams();
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== "" && value !== "ALL" && value !== "all") result.set(key, String(value));
+  });
+  return result.size ? `?${result}` : "";
+}
+const id = encodeURIComponent;
+
+export interface DashboardData {
   stats: StatMetric[];
   weekly_candidates: WeeklyData[];
   ai_match_rate: AIMatchRate;
   processing_resumes: number;
   today_evaluations: number;
   pipeline: Record<string, PipelineCandidateItem[]>;
-}> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/dashboard/stats`, {
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error("Failed to fetch dashboard stats");
-    return await res.json();
-  } catch (err) {
-    console.warn(
-      "Backend not reached for dashboard stats, using mock fallback:",
-      err
-    );
-    return {
-      stats: MOCK_STATS,
-      weekly_candidates: MOCK_WEEKLY_DATA,
-      ai_match_rate: MOCK_AI_MATCH_RATE,
-      processing_resumes: 5,
-      today_evaluations: 94,
-      pipeline: MOCK_PIPELINE,
-    };
-  }
 }
-
-export async function fetchJobs(params?: {
-  status?: string;
-  department?: string;
-  search?: string;
-}): Promise<JobRequisition[]> {
-  try {
-    const query = new URLSearchParams();
-    if (params?.status) query.set("status", params.status);
-    if (params?.department) query.set("department", params.department);
-    if (params?.search) query.set("search", params.search);
-
-    const res = await fetch(`${API_BASE_URL}/jobs?${query.toString()}`, {
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error("Failed to fetch jobs");
-    return await res.json();
-  } catch (err) {
-    console.warn("Backend not reached for jobs, using mock fallback:", err);
-    let jobs = [...MOCK_JOBS];
-    if (params?.status && params.status.toUpperCase() !== "ALL") {
-      jobs = jobs.filter(
-        (j) => j.status.toUpperCase() === params.status?.toUpperCase()
-      );
-    }
-    if (params?.department && params.department.toUpperCase() !== "ALL") {
-      jobs = jobs.filter(
-        (j) => j.department.toLowerCase() === params.department?.toLowerCase()
-      );
-    }
-    if (params?.search) {
-      const s = params.search.toLowerCase();
-      jobs = jobs.filter(
-        (j) =>
-          j.title.toLowerCase().includes(s) ||
-          j.department.toLowerCase().includes(s) ||
-          j.location.toLowerCase().includes(s)
-      );
-    }
-    return jobs;
-  }
-}
-
-export async function fetchJobDetail(jobId: string): Promise<JobRequisition | null> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/jobs/${jobId}`, {
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error("Failed to fetch job detail");
-    return await res.json();
-  } catch (err) {
-    console.warn("Backend not reached for job detail, using fallback:", err);
-    return MOCK_JOBS.find((j) => j.id === jobId) || MOCK_JOBS[0];
-  }
-}
-
-export async function createJobRequisition(payload: {
-  title: string;
-  department: string;
-  location: string;
-  job_description: string;
-  required_skills: string[];
-  min_years_experience?: number;
-  run_ai_match?: boolean;
-}): Promise<JobRequisition> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/jobs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new Error("Failed to create job");
-    return await res.json();
-  } catch (err) {
-    console.warn("Backend create job failed, creating local mockup job:", err);
-    const newJob: JobRequisition = {
-      id: `job-${Date.now()}`,
-      title: payload.title,
-      department: payload.department,
-      location: payload.location,
-      status: "OPEN",
-      posted_date: "Just now",
-      candidates_count: 0,
-      avatars: [],
-      top_match: {
-        score: payload.run_ai_match ? 95 : 0,
-        label: payload.run_ai_match ? "95 Top Match" : "Pending Match",
-        last_run: "Just now",
-        status: "ACTIVE",
-      },
-      icon_type: "code",
-      job_description: payload.job_description,
-      min_years_experience: payload.min_years_experience || 3.0,
-      required_skills: payload.required_skills,
-    };
-    return newJob;
-  }
-}
-
-// -------------------------------------------------------------------
-// JOB-SPECIFIC CANDIDATES MANAGEMENT (PERSISTENT)
-// -------------------------------------------------------------------
-
-function getDefaultCandidatesForJob(
-  jobId: string,
-  jobInfo?: Partial<JobRequisition>
-): RankedCandidate[] {
-  return [];
-}
-
-export async function fetchJobCandidates(
-  jobId: string,
-  jobInfo?: Partial<JobRequisition>
-): Promise<RankedCandidate[]> {
-  const storageKey = `ats_job_candidates_${jobId}`;
-
-  try {
-    const res = await fetch(`${API_BASE_URL}/jobs/${jobId}/candidates`, {
-      cache: "no-store",
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setStoredItem(storageKey, data);
-        return data;
-      }
-    }
-  } catch (err) {
-    console.warn(`Backend fetch for job candidates (${jobId}) failed:`, err);
-  }
-
-  // Local storage fallback
-  const stored = getStoredItem<RankedCandidate[] | null>(storageKey, null);
-  if (stored && Array.isArray(stored)) {
-    return stored;
-  }
-
-  return [];
-}
-
-export async function addJobCandidate(
-  jobId: string,
-  payload: NewCandidatePayload
-): Promise<RankedCandidate[]> {
-  const storageKey = `ats_job_candidates_${jobId}`;
-  const candidateId =
-    payload.id ||
-    (payload.sourceResumeLink ? payload.sourceResumeLink.replace("/candidates/", "") : null) ||
-    `cand-${Date.now()}`;
-
-  const initials = payload.name
-    .split(" ")
-    .map((n: string) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() || "CD";
-
-  const newCand: RankedCandidate & Record<string, any> = {
-    id: candidateId,
-    rank: 0,
-    name: payload.name,
-    headline: payload.headline || "Senior Software Specialist",
-    avatar: payload.avatar || initials,
-    isImageAvatar: !!payload.isImageAvatar,
-    matchScore: payload.matchScore ?? 90,
-    matchLabel:
-      payload.matchLabel ||
-      (payload.matchScore && payload.matchScore >= 93
-        ? "Top Match"
-        : payload.matchScore && payload.matchScore >= 87
-        ? "Strong Match"
-        : "Match"),
-    skills: payload.skills && payload.skills.length > 0 ? payload.skills : ["Python", "Cloud"],
-    stage: payload.stage || "Screening",
-    stageBadgeStyle:
-      payload.stage === "Interview"
-        ? "bg-[#ede8dc] text-zinc-800"
-        : payload.stage === "Qualified" || payload.stage === "Offer"
-        ? "bg-emerald-100 text-emerald-900"
-        : "bg-zinc-100 text-zinc-700",
-    technicalDepthScore:
-      payload.technicalDepthScore ||
-      parseFloat(((payload.matchScore ?? 90) / 10.2).toFixed(1)),
-    systemDesignScore:
-      payload.systemDesignScore ||
-      parseFloat((((payload.matchScore ?? 90) - 3.5) / 10.1).toFixed(1)),
-    quote:
-      payload.quote ||
-      `Demonstrated depth and practical achievements in ${(payload.skills || ["systems"]).slice(0, 3).join(", ")}.`,
-    location: payload.location,
-    email: payload.email,
-    phone: payload.phone,
-    linkedin: payload.linkedin,
-    highest_education: payload.highest_education,
-    experienceYears: payload.experienceYears,
-    experience: payload.experience,
-    scorecard: payload.scorecard,
-    enriched_skills: payload.enriched_skills,
-    raw_text: payload.raw_text,
-    pdf_blob_url: payload.pdf_blob_url,
-    pdf_url: payload.pdf_url,
-    sourceResumeLink: `/candidates/${candidateId}`,
-    potentialGap: payload.potentialGap,
-    suggestedImprovements: payload.suggestedImprovements || [
-      `1. Deepen Hands-on Proficiency for this Role: Expand domain depth and production experience in ${(payload.skills || ["core technologies"])[0] || "primary stack"}.`,
-      `2. Quantify Operational Scale: Detail transaction volume, request throughput, and latency improvements in resume milestones.`,
-    ],
-    suggestedQuestions: payload.suggestedQuestions || [
-      `Walk us through the architecture and trade-offs of your most recent engineering project.`,
-      `How do you monitor and debug unexpected performance bottlenecks in production?`,
-    ],
-    jobId,
-  };
-
-  // 1. Try backend
-  try {
-    const res = await fetch(`${API_BASE_URL}/jobs/${jobId}/candidates`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newCand),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setStoredItem(storageKey, data);
-      registerOrSyncCandidateProfile(newCand, payload.headline, jobId);
-      return data;
-    }
-  } catch (err) {
-    console.warn(`Backend add candidate failed, continuing with localStorage:`, err);
-  }
-
-  // 2. Local Storage Update
-  const currentList = getStoredItem<RankedCandidate[]>(storageKey, getDefaultCandidatesForJob(jobId));
-  const filtered = currentList.filter((c) => c.id !== newCand.id);
-  const combined = [newCand, ...filtered];
-
-  // Re-rank by match score descending (with technical depth as tiebreaker)
-  combined.sort((a, b) => {
-    if (b.matchScore !== a.matchScore) {
-      return b.matchScore - a.matchScore;
-    }
-    return (b.technicalDepthScore || 0) - (a.technicalDepthScore || 0);
+export const fetchDashboardStats = () => json<DashboardData>("/dashboard/stats");
+export const fetchJobs = (params?: { status?: string; department?: string; search?: string }) => json<JobRequisition[]>(`/jobs${query(params)}`);
+export const fetchJobDetail = (jobId: string) => json<JobRequisition>(`/jobs/${id(jobId)}`);
+export function createJobRequisition(payload: {
+  title: string; department: string; location: string; job_description: string;
+  required_skills: string[]; min_years_experience?: number; run_ai_match?: boolean;
+}) { return json<JobRequisition>("/jobs", { method: "POST", ...body(payload) }); }
+export function updateJobRequisition(jobId: string, payload: {
+  title: string; department: string; location: string; job_description: string; required_skills: string[];
+}) { return json<JobRequisition>(`/jobs/${id(jobId)}`, { method: "PATCH", ...body(payload) }); }
+export const fetchJobCandidates = (jobId: string) => json<RankedCandidate[]>(`/jobs/${id(jobId)}/candidates`);
+export function addJobCandidate(jobId: string, payload: NewCandidatePayload) {
+  return json<RankedCandidate[]>(`/jobs/${id(jobId)}/candidates`, {
+    method: "POST", ...body({ ...payload, headline: payload.headline || "", matchScore: payload.matchScore ?? null }),
   });
-
-  const reranked = combined.map((c, idx) => ({
-    ...c,
-    rank: idx + 1,
-  }));
-
-  setStoredItem(storageKey, reranked);
-
-  // Register in Candidate Profile Store so viewing /candidates/[id] works seamlessly
-  registerOrSyncCandidateProfile(newCand, payload.headline || "Machine Learning Engineer", jobId);
-
-  // Also sync to global candidates list
-  syncToGlobalCandidates(newCand);
-
-  return reranked;
 }
+export const removeJobCandidate = (jobId: string, candidateId: string) => json<RankedCandidate[]>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}`, { method: "DELETE" });
+export const updateJobCandidateStage = (jobId: string, candidateId: string, stage: string) => json<RankedCandidate>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}/stage${query({ new_stage: stage })}`, { method: "PATCH" });
+export const fetchCandidates = (params?: { search?: string; stage?: string; skill?: string }) => json<CandidateDetail[]>(`/candidates${query(params)}`);
+export const fetchCandidate = (candidateId: string, includePii = false) => json<CandidateDetail>(`/candidates/${id(candidateId)}?include_pii=${includePii}`);
+export const updateCandidateStage = (candidateId: string, stage: string) => json<{ status: string; stage: string }>(`/candidates/${id(candidateId)}/stage${query({ new_stage: stage })}`, { method: "PATCH" });
+export const addCandidateNote = (candidateId: string, content: string, author = "Recruiter") => json<TeamNote>(`/candidates/${id(candidateId)}/notes`, { method: "POST", ...body({ content, author }) });
+export const fetchResumePdf = async (candidateId: string, signal?: AbortSignal) => (await request(`/candidates/${id(candidateId)}/resume-pdf`, { signal })).blob();
+export const locateCandidateCitation = (candidateId: string, phrase: string) => json<{ found: boolean; location: CitationLocation | null }>(`/candidates/${id(candidateId)}/locate-citation`, { method: "POST", ...body({ search_phrase: phrase }) });
 
-export async function removeJobCandidate(
-  jobId: string,
-  candidateId: string
-): Promise<RankedCandidate[]> {
-  const storageKey = `ats_job_candidates_${jobId}`;
-
-  try {
-    const res = await fetch(
-      `${API_BASE_URL}/jobs/${jobId}/candidates/${candidateId}`,
-      { method: "DELETE" }
-    );
-    if (res.ok) {
-      const data = await res.json();
-      setStoredItem(storageKey, data);
-      return data;
-    }
-  } catch (err) {
-    console.warn(`Backend remove candidate failed:`, err);
-  }
-
-  const currentList = getStoredItem<RankedCandidate[]>(storageKey, []);
-  const remaining = currentList.filter((c) => c.id !== candidateId);
-  const reranked = remaining.map((c, idx) => ({
-    ...c,
-    rank: idx + 1,
-  }));
-
-  setStoredItem(storageKey, reranked);
-  return reranked;
+export interface UploadResponse {
+  status: string; task_id: string; candidate_id: string; filename: string;
+  execution_mode: string; evaluation_status: string; match_score: number | null; message: string;
 }
-
-export async function updateJobCandidateStage(
-  jobId: string,
-  candidateId: string,
-  newStage: string
-): Promise<RankedCandidate | null> {
-  const storageKey = `ats_job_candidates_${jobId}`;
-
-  try {
-    const res = await fetch(
-      `${API_BASE_URL}/jobs/${jobId}/candidates/${candidateId}/stage?new_stage=${encodeURIComponent(
-        newStage
-      )}`,
-      { method: "PATCH" }
-    );
-    if (res.ok) {
-      const data = await res.json();
-      const currentList = getStoredItem<RankedCandidate[]>(storageKey, []);
-      const updated = currentList.map((c) => (c.id === candidateId ? { ...c, stage: newStage } : c));
-      setStoredItem(storageKey, updated);
-      return data;
-    }
-  } catch (err) {
-    console.warn(`Backend update candidate stage failed:`, err);
-  }
-
-  const currentList = getStoredItem<RankedCandidate[]>(storageKey, []);
-  let matched: RankedCandidate | null = null;
-  const updated = currentList.map((c) => {
-    if (c.id === candidateId) {
-      const stageStyle =
-        newStage === "Qualified" || newStage === "Offer"
-          ? "bg-emerald-100 text-emerald-900"
-          : newStage === "Interview"
-          ? "bg-[#ede8dc] text-zinc-800"
-          : "bg-zinc-100 text-zinc-700";
-      matched = { ...c, stage: newStage, stageBadgeStyle: stageStyle };
-      return matched;
-    }
-    return c;
-  });
-
-  setStoredItem(storageKey, updated);
-
-  // Sync profile stage
-  const profiles = getStoredItem<Record<string, CandidateDetail>>("ats_candidate_profiles", {});
-  if (profiles[candidateId]) {
-    profiles[candidateId].stage = newStage;
-    profiles[candidateId].status = newStage;
-    setStoredItem("ats_candidate_profiles", profiles);
-  }
-
-  return matched;
+export interface UploadTask {
+  task_id: string; state: string; execution_mode?: string; error?: string;
+  progress?: number; step?: string; result?: { candidate_id: string; evaluation_status?: string };
 }
-
-// -------------------------------------------------------------------
-// GLOBAL CANDIDATES & DETAILED PROFILE PERSISTENCE
-// -------------------------------------------------------------------
-
-function registerOrSyncCandidateProfile(
-  candidate: Partial<RankedCandidate> & { name: string; [key: string]: any },
-  jobTitle = "Cloud Architect",
-  jobId = "job-009"
-): CandidateDetail {
-  const profiles = getStoredItem<Record<string, CandidateDetail>>("ats_candidate_profiles", {});
-  const candId = candidate.id || `cand-${Date.now()}`;
-
-  if (profiles[candId]) {
-    profiles[candId].stage = candidate.stage || profiles[candId].stage;
-    profiles[candId].status = candidate.stage || profiles[candId].status;
-    if (jobTitle) profiles[candId].applied_for_job = jobTitle;
-    if (jobId) profiles[candId].applied_for_job_id = jobId;
-    if (candidate.raw_text) profiles[candId].raw_text = candidate.raw_text;
-    if (candidate.pdf_blob_url) profiles[candId].pdf_blob_url = candidate.pdf_blob_url;
-    if (candidate.pdf_url) profiles[candId].pdf_url = candidate.pdf_url;
-    if (candidate.experience && candidate.experience.length > 0) {
-      profiles[candId].experience = candidate.experience;
-    }
-    if (candidate.location && candidate.location !== "N/A") {
-      profiles[candId].location = candidate.location;
-    }
-    if (candidate.email && candidate.email !== "N/A") {
-      profiles[candId].email = candidate.email;
-    }
-    if (candidate.phone && candidate.phone !== "N/A") {
-      profiles[candId].phone = candidate.phone;
-    }
-    if (candidate.linkedin && candidate.linkedin !== "N/A") {
-      profiles[candId].linkedin = candidate.linkedin;
-    }
-    if (candidate.highest_education && candidate.highest_education !== "N/A") {
-      profiles[candId].highest_education = candidate.highest_education;
-    }
-    if (candidate.scorecard) {
-      profiles[candId].scorecard = candidate.scorecard;
-    }
-    if (candidate.enriched_skills) {
-      profiles[candId].enriched_skills = candidate.enriched_skills;
-    }
-    setStoredItem("ats_candidate_profiles", profiles);
-    return profiles[candId];
-  }
-
-  const skills = candidate.skills || ["Cloud Architecture", "AWS", "Python", "Docker"];
-  const matchScore = candidate.scorecard?.overall_match_score || candidate.matchScore || 92;
-  const techDepth = candidate.technicalDepthScore || parseFloat((matchScore / 10.2).toFixed(1));
-  const sysDesign = candidate.systemDesignScore || parseFloat(((matchScore - 3.5) / 10.1).toFixed(1));
-
-  const candName = candidate.name || "Candidate";
-  const safeInitials = candName.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase() || "CD";
-
-  // Build real experience from headline or actual resume
-  const experienceItems =
-    candidate.experience && candidate.experience.length > 0
-      ? candidate.experience
-      : [
-          {
-            role: candidate.headline?.includes("@") ? candidate.headline.split("@")[0].trim() : (candidate.headline || "Senior Engineer"),
-            company: candidate.headline?.includes("@") ? candidate.headline.split("@")[1].trim() : "Industry Experience",
-            period: "2021 — Present",
-            description:
-              candidate.quote ||
-              `Designed and built core production services, microservices, and technical pipelines utilizing ${skills.slice(0, 4).join(", ")}.`,
-          },
-        ];
-
-  const defaultScorecard = {
-    overall_match_score: matchScore,
-    match_tier:
-      matchScore >= 93
-        ? "Exceptional Match"
-        : matchScore >= 87
-        ? "Strong Match"
-        : "Match",
-    model_version: "Model gemma2:2b (Live Evaluator)",
-    evaluated_at: "Evaluated recently",
-    categories: [
-      {
-        name: "Technical Depth",
-        score: techDepth,
-        max_score: 10.0,
-        quote:
-          candidate.quote ||
-          `Extensive hands-on expertise in ${skills.slice(0, 3).join(", ")}.`,
-        source_ref: "Source Resume",
-      },
-      {
-        name: "System Design",
-        score: sysDesign,
-        max_score: 10.0,
-        quote:
-          "Demonstrated strong understanding of distributed architectures, high availability, and fault-tolerance.",
-        source_ref: "Architecture Review",
-      },
-      {
-        name: "Leadership",
-        score: 7.5,
-        max_score: 10.0,
-        quote:
-          "Proven track record of technical mentorship and cross-functional project execution.",
-        source_ref: "Team Feedback",
-      },
-    ],
-    risk_flags: candidate.potentialGap ? [candidate.potentialGap] : [],
-    suggested_improvements: candidate.suggestedImprovements || [
-      `1. Upskill in Core Architecture for ${jobTitle}: Deepen demonstrated production experience with ${skills[0] || "primary stack"}.`,
-      `2. Quantify Operational Scale: Detail measurable latency and throughput achievements on resume.`,
-    ],
-    suggestedQuestions: candidate.suggestedQuestions || [
-      `Can you describe the system architecture and scaling considerations for your recent ${skills[0] || "core"} project?`,
-      `How do you diagnose and resolve latency bottlenecks across distributed microservices?`,
-    ],
-    team_notes: [
-      {
-        id: `note-${Date.now()}`,
-        author: "Recruiter Admin",
-        initials: "RA",
-        role: "Admin",
-        timestamp: "Just now",
-        content: `Candidate added to ${jobTitle} pipeline with ${matchScore}% AI match score. Ready for technical screening.`,
-      },
-    ],
-  };
-
-  const newProfile: CandidateDetail = {
-    id: candId,
-    name: candName,
-    anonymized_name: `Candidate #${Math.floor(7000 + Math.random() * 2000)}`,
-    avatar: candidate.avatar || safeInitials,
-    target_headline: candidate.headline || "Senior Engineering Specialist",
-    role: candidate.headline || "Senior Engineering Specialist",
-    location: (candidate as any).location || "N/A",
-    email: (candidate as any).email || "N/A",
-    phone: (candidate as any).phone || "N/A",
-    linkedin: (candidate as any).linkedin || "N/A",
-    status: candidate.stage || "Interview",
-    stage: candidate.stage || "Interview",
-    applied_date: "Recently",
-    applied_for_job: jobTitle,
-    applied_for_job_id: jobId,
-    years_of_experience: (candidate as any).experienceYears || (candidate as any).years_of_experience || 3.0,
-    highest_education: (candidate as any).highest_education || "N/A",
-    core_skills: skills,
-    enriched_skills: candidate.enriched_skills,
-    experience: experienceItems,
-    raw_text: candidate.raw_text,
-    pdf_url: candidate.pdf_url || `${API_BASE_URL}/candidates/${candId}/resume-pdf`,
-    pdf_blob_url: candidate.pdf_blob_url,
-    scorecard: candidate.scorecard || defaultScorecard,
-  };
-
-  profiles[candId] = newProfile;
-  setStoredItem("ats_candidate_profiles", profiles);
-  return newProfile;
+export function uploadResumeFile(file: File, jobId?: string, signal?: AbortSignal) {
+  const data = new FormData();
+  data.append("file", file);
+  if (jobId) data.append("job_id", jobId);
+  return json<UploadResponse>("/candidates/upload-async", { method: "POST", body: data, signal });
 }
-
-function syncToGlobalCandidates(candidate: RankedCandidate | Partial<RankedCandidate> & { name: string }) {
-  const globalKey = "ats_global_candidates";
-  const current = getStoredItem<any[]>(globalKey, []);
-  const candId = candidate.id || `cand-${Date.now()}`;
-
-  const exists = current.some((c) => c.id === candId);
-  if (!exists) {
-    const candName = candidate.name || "Candidate";
-    const safeInitials = candName.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase() || "CD";
-
-    const newGlobalItem = {
-      id: candId,
-      name: candName,
-      role: candidate.headline || "Software Specialist",
-      location: "San Francisco, CA",
-      matchScore: candidate.matchScore || 90,
-      skills: candidate.skills || ["Python", "Cloud"],
-      avatar: candidate.avatar || safeInitials,
-      experienceYears: 6,
-      status: "Active",
-    };
-    setStoredItem(globalKey, [newGlobalItem, ...current]);
-  }
+export const fetchUploadTask = (taskId: string, signal?: AbortSignal) => json<UploadTask>(`/candidates/tasks/${id(taskId)}`, { signal });
+// Current backend processes inline. Verify the terminal task before showing success.
+export async function uploadAndWait(file: File, jobId?: string, signal?: AbortSignal) {
+  const uploaded = await uploadResumeFile(file, jobId, signal);
+  const task = await fetchUploadTask(uploaded.task_id, signal);
+  if (task.state !== "SUCCESS") throw new ApiError(task.error || uploaded.message || `Upload task is ${task.state}.`);
+  if (!uploaded.candidate_id) throw new ApiError("Backend did not return a candidate ID.");
+  return uploaded;
 }
-
-export function saveCandidateProfile(profile: CandidateDetail): void {
-  const profiles = getStoredItem<Record<string, CandidateDetail>>("ats_candidate_profiles", {});
-  profiles[profile.id] = profile;
-  setStoredItem("ats_candidate_profiles", profiles);
-}
-
-export async function fetchCandidates(params?: {
-  search?: string;
-  stage?: string;
-  skill?: string;
-}): Promise<any[]> {
-  let backendCandidates: any[] = [];
-  try {
-    const query = new URLSearchParams();
-    if (params?.search) query.set("search", params.search);
-    if (params?.stage) query.set("stage", params.stage);
-    if (params?.skill) query.set("skill", params.skill);
-
-    const res = await fetch(`${API_BASE_URL}/candidates?${query.toString()}`, {
-      cache: "no-store",
-    });
-    if (res.ok) {
-      backendCandidates = await res.json();
-    }
-  } catch (err) {
-    console.warn("Backend not reached for candidates list:", err);
-  }
-
-  // Combine with stored local candidates
-  const storedGlobals = getStoredItem<any[]>("ats_global_candidates", []);
-  const map = new Map<string, any>();
-
-  backendCandidates.forEach((c) => map.set(c.id, c));
-  storedGlobals.forEach((c) => {
-    if (!map.has(c.id)) map.set(c.id, c);
-  });
-
-  return Array.from(map.values());
-}
-
-export async function fetchCandidate(id: string, includePii: boolean = false): Promise<CandidateDetail | null> {
-  // 1. Try local storage cache
-  const cacheKey = includePii ? `ats_candidate_profile_pii_${id}` : `ats_candidate_profile_${id}`;
-  const profiles = getStoredItem<Record<string, CandidateDetail>>("ats_candidate_profiles", {});
-  if (profiles[cacheKey]) {
-    return profiles[cacheKey];
-  }
-
-  // 2. Try backend
-  try {
-    const res = await fetch(`${API_BASE_URL}/candidates/${id}?include_pii=${includePii}`, {
-      cache: "no-store",
-    });
-    if (res.ok) {
-      const data = await res.json();
-      profiles[cacheKey] = data;
-      setStoredItem("ats_candidate_profiles", profiles);
-      return data;
-    }
-  } catch (err) {
-    console.warn(`Backend fetch for candidate ${id} failed:`, err);
-  }
-
-  // 3. Check Mock Candidates Registry
-  if (MOCK_CANDIDATES_REGISTRY[id]) {
-    return { ...MOCK_CANDIDATES_REGISTRY[id], id };
-  }
-
-  return null;
-}
-
-export async function updateCandidateStage(
-  candidateId: string,
-  newStage: string
-) {
-  try {
-    const res = await fetch(
-      `${API_BASE_URL}/candidates/${candidateId}/stage?new_stage=${encodeURIComponent(
-        newStage
-      )}`,
-      {
-        method: "PATCH",
-      }
-    );
-    if (!res.ok) throw new Error("Failed to update stage");
-    return await res.json();
-  } catch (err) {
-    console.warn("Backend not reached for stage update:", err);
-    // Update local profile
-    const profiles = getStoredItem<Record<string, CandidateDetail>>("ats_candidate_profiles", {});
-    if (profiles[candidateId]) {
-      profiles[candidateId].stage = newStage;
-      profiles[candidateId].status = newStage;
-      setStoredItem("ats_candidate_profiles", profiles);
-    }
-    return { status: "SUCCESS", candidate_id: candidateId, stage: newStage };
-  }
-}
-
-export async function addCandidateNote(
-  candidateId: string,
-  content: string,
-  author = "Recruiter Admin"
-) {
-  const newNote = {
-    id: `note-${Date.now()}`,
-    author,
-    initials: author
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase(),
-    role: "Recruiter",
-    timestamp: "Just now",
-    content,
-  };
-
-  // Update local storage profile note
-  const profiles = getStoredItem<Record<string, CandidateDetail>>("ats_candidate_profiles", {});
-  if (profiles[candidateId]) {
-    profiles[candidateId].scorecard.team_notes = [
-      ...(profiles[candidateId].scorecard.team_notes || []),
-      newNote,
-    ];
-    setStoredItem("ats_candidate_profiles", profiles);
-  }
-
-  try {
-    const res = await fetch(`${API_BASE_URL}/candidates/${candidateId}/notes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content, author }),
-    });
-    if (!res.ok) throw new Error("Failed to add note");
-    return await res.json();
-  } catch (err) {
-    console.warn("Backend not reached for note, returning local note:", err);
-    return newNote;
-  }
-}
-
-export async function uploadResumeFile(file: File, jobId?: string) {
-  const localPdfBlobUrl = typeof window !== "undefined" ? URL.createObjectURL(file) : undefined;
-
-  try {
-    const formData = new FormData();
-    formData.append("file", file);
-    if (jobId) {
-      formData.append("job_id", jobId);
-    }
-    const res = await fetch(`${API_BASE_URL}/candidates/upload-async`, {
-      method: "POST",
-      body: formData,
-    });
-    if (!res.ok) throw new Error("Failed to upload resume");
-    const data = await res.json();
-
-    // Cache the real uploaded PDF blob URL & PDF URL for candidate profile
-    const candId = data.candidate_id;
-    const profiles = getStoredItem<Record<string, CandidateDetail>>("ats_candidate_profiles", {});
-    
-    try {
-      const candRes = await fetch(`${API_BASE_URL}/candidates/${candId}`);
-      if (candRes.ok) {
-        const fullCandidate: CandidateDetail = await candRes.json();
-        fullCandidate.pdf_blob_url = localPdfBlobUrl;
-        fullCandidate.pdf_url = `${API_BASE_URL}/candidates/${candId}/resume-pdf`;
-        fullCandidate.is_real_pdf = true;
-        profiles[candId] = fullCandidate;
-        setStoredItem("ats_candidate_profiles", profiles);
-      }
-    } catch (e) {
-      console.warn("Could not load backend parsed profile:", e);
-    }
-
-    return {
-      ...data,
-      pdf_blob_url: localPdfBlobUrl,
-    };
-  } catch (err) {
-    console.warn(
-      "Backend not reached for upload, simulating success response:",
-      err
-    );
-    const candId = `cand-${Math.floor(1000 + Math.random() * 9000)}`;
-    return {
-      status: "ACCEPTED",
-      task_id: `TSK-${Math.floor(1000 + Math.random() * 9000)}`,
-      candidate_id: candId,
-      filename: file.name,
-      job_id: jobId,
-      match_score: 94,
-      message: "Resume queued for processing.",
-      pdf_blob_url: localPdfBlobUrl,
-    };
-  }
-}
-
-export async function evaluateJobMatching(payload: {
-  job_title: string;
-  job_description: string;
-  stage1_retrieve_limit?: number;
-  stage2_rerank_limit?: number;
-}) {
-  try {
-    const res = await fetch(`${API_BASE_URL}/match/evaluate-job`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new Error("Failed to run matching evaluation");
-    return await res.json();
-  } catch (err) {
-    console.warn("Backend matching call failed:", err);
-    return null;
-  }
-}
-
-// -------------------------------------------------------------------
-// SKILL TAXONOMY & FLYWHEEL QUEUE API
-// -------------------------------------------------------------------
+export function evaluateJobMatching(payload: {
+  job_title: string; job_description: string; stage1_retrieve_limit?: number; stage2_rerank_limit?: number;
+}) { return json<{ status?: string }>("/match/evaluate-job", { method: "POST", ...body(payload) }); }
 
 export interface TaxonomySkillItem {
-  id: string;
-  canonical_name: string;
-  category: string;
-  aliases: string[];
-  is_ambiguous: boolean;
-  status: "approved" | "pending" | "rejected";
-  source: string;
-  occurrence_count: number;
-  taxonomy_version: string;
-  created_at: string;
-  updated_at: string;
-  context_sample?: string;
+  id: string; canonical_name: string; category: string; aliases: string[];
+  is_ambiguous: boolean; status: "approved" | "pending" | "rejected";
+  source: string; occurrence_count: number; taxonomy_version: string;
+  created_at: string; updated_at: string; context_sample?: string;
 }
-
 export interface TaxonomyStats {
-  version: string;
-  total_skills: number;
-  approved_count: number;
-  pending_count: number;
-  rejected_count: number;
-  categories: Record<string, number>;
+  version: string; total_skills: number; approved_count: number;
+  pending_count: number; rejected_count: number; categories: Record<string, number>;
 }
-
-export async function fetchTaxonomyStats(): Promise<TaxonomyStats> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/taxonomy/version`, { cache: "no-store" });
-    if (!res.ok) throw new Error("Failed to fetch taxonomy version");
-    return await res.json();
-  } catch (err) {
-    console.warn("Backend taxonomy stats failed, returning fallback:", err);
-    return {
-      version: "2026.08.1",
-      total_skills: 55,
-      approved_count: 55,
-      pending_count: 0,
-      rejected_count: 0,
-      categories: { language: 15, framework: 12, database: 10, platform: 8, tool: 10 },
-    };
-  }
-}
-
-export async function fetchTaxonomySkills(params?: {
-  category?: string;
-  status?: string;
-  search?: string;
-  page?: number;
-  limit?: number;
-}): Promise<{ items: TaxonomySkillItem[]; total: number; version: string }> {
-  try {
-    const query = new URLSearchParams();
-    if (params?.category && params.category !== "all") query.set("category", params.category);
-    if (params?.status && params.status !== "all") query.set("status", params.status);
-    if (params?.search) query.set("search", params.search);
-    if (params?.page) query.set("page", String(params.page));
-    if (params?.limit) query.set("limit", String(params.limit));
-
-    const res = await fetch(`${API_BASE_URL}/taxonomy/skills?${query.toString()}`, { cache: "no-store" });
-    if (!res.ok) throw new Error("Failed to fetch taxonomy skills");
-    return await res.json();
-  } catch (err) {
-    console.warn("Backend taxonomy skills failed:", err);
-    return { items: [], total: 0, version: "2026.08.1" };
-  }
-}
-
-export async function approveTaxonomySkill(
-  skillId: string,
-  payload?: { canonical_name?: string; category?: string; aliases?: string[] }
-): Promise<TaxonomySkillItem | null> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/taxonomy/skills/${skillId}/approve`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload || {}),
-    });
-    if (!res.ok) throw new Error("Failed to approve taxonomy skill");
-    return await res.json();
-  } catch (err) {
-    console.warn("Approve skill failed:", err);
-    return null;
-  }
-}
-
-export async function rejectTaxonomySkill(skillId: string): Promise<TaxonomySkillItem | null> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/taxonomy/skills/${skillId}/reject`, {
-      method: "PATCH",
-    });
-    if (!res.ok) throw new Error("Failed to reject taxonomy skill");
-    return await res.json();
-  } catch (err) {
-    console.warn("Reject skill failed:", err);
-    return null;
-  }
-}
-
-export async function addAliasToTaxonomySkill(skillId: string, alias: string): Promise<TaxonomySkillItem | null> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/taxonomy/skills/${skillId}/aliases`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ alias }),
-    });
-    if (!res.ok) throw new Error("Failed to add alias");
-    return await res.json();
-  } catch (err) {
-    console.warn("Add alias failed:", err);
-    return null;
-  }
-}
-
-export async function createTaxonomySkill(payload: {
-  canonical_name: string;
-  category: string;
-  aliases: string[];
-  is_ambiguous?: boolean;
-  source?: string;
-}): Promise<TaxonomySkillItem | null> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/taxonomy/skills`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new Error("Failed to create taxonomy skill");
-    return await res.json();
-  } catch (err) {
-    console.warn("Create skill failed:", err);
-    return null;
-  }
-}
-
+export const fetchTaxonomyStats = () => json<TaxonomyStats>("/taxonomy/version");
+export const fetchTaxonomySkills = (params?: { category?: string; status?: string; search?: string; page?: number; limit?: number }) => json<{ items: TaxonomySkillItem[]; total: number; version: string }>(`/taxonomy/skills${query(params)}`);
+export const approveTaxonomySkill = (skillId: string, payload?: { canonical_name?: string; category?: string; aliases?: string[] }) => json<TaxonomySkillItem>(`/taxonomy/skills/${id(skillId)}/approve`, { method: "PATCH", ...body(payload || {}) });
+export const rejectTaxonomySkill = (skillId: string) => json<TaxonomySkillItem>(`/taxonomy/skills/${id(skillId)}/reject`, { method: "PATCH" });
+export const addAliasToTaxonomySkill = (skillId: string, alias: string) => json<TaxonomySkillItem>(`/taxonomy/skills/${id(skillId)}/aliases`, { method: "POST", ...body({ alias }) });
+export const createTaxonomySkill = (payload: { canonical_name: string; category: string; aliases: string[]; is_ambiguous?: boolean; source?: string }) => json<TaxonomySkillItem>("/taxonomy/skills", { method: "POST", ...body(payload) });

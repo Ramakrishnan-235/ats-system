@@ -122,7 +122,7 @@ export function JobCard({ job }: JobCardProps) {
 
           {/* Match Metric */}
           <div className="text-right min-w-[110px]">
-            {isOpen && job.top_match && job.top_match.score > 0 ? (
+            {isOpen && job.top_match && job.top_match.score !== null ? (
               <div className="flex flex-col items-end">
                 <div className="flex items-center gap-1 text-xs font-bold text-zinc-950">
                   <Sparkles className="w-3.5 h-3.5 text-indigo-600" />

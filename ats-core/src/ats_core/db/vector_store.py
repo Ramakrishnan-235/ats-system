@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, func, and_, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from ats_core.models.db import Candidate, JobPosting, Application, ScoringAudit
+from ats_core.search.embedding_config import validate_embedding
 
 logger = logging.getLogger("ats.db.vector_store")
 
@@ -64,7 +65,7 @@ class VectorStore:
             raw_anonymized_text=raw_anonymized_text,
             structured_profile=structured_profile or {},
             parsing_engine=parsing_engine,
-            embedding=embedding,
+            embedding=validate_embedding(embedding) if embedding is not None else None,
         )
         async with self.session_factory() as session:
             async with session.begin():
@@ -80,6 +81,8 @@ class VectorStore:
         """Perform HNSW cosine distance vector similarity search combined with payload filters."""
         if params is None:
             params = CandidateSearchParams()
+
+        query_embedding = validate_embedding(query_embedding)
 
         # Cosine distance via pgvector: distance = embedding <=> query_vector
         # Cosine similarity = 1 - distance

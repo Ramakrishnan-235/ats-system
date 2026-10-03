@@ -14,13 +14,14 @@ import { AuditTrailTab } from "@/components/candidate/audit-trail-tab";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { fetchCandidate, updateCandidateStage } from "@/lib/api";
+import { fetchCandidate, updateCandidateStage, getErrorMessage } from "@/lib/api";
 import { CandidateDetail, CitationLocation } from "@/types/ats";
 
 export default function CandidateDetailPage() {
   const params = useParams();
   const candidateId = (params?.id as string) || "";
   const [candidate, setCandidate] = useState<CandidateDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("ai-scorecard");
   const [activeCitation, setActiveCitation] = useState<CitationLocation | null>(null);
@@ -37,7 +38,7 @@ export default function CandidateDetailPage() {
         const data = await fetchCandidate(candidateId);
         setCandidate(data);
       } catch (err) {
-        console.error("Failed to load candidate:", err);
+        setError(getErrorMessage(err));
       } finally {
         setLoading(false);
       }
@@ -72,6 +73,7 @@ export default function CandidateDetailPage() {
         <main className={`flex-1 p-8 w-full mx-auto space-y-6 transition-all ${
           splitView ? "max-w-[1700px]" : "max-w-6xl"
         }`}>
+          {error && <p role="alert" className="text-red-700">{error}</p>}
           {loading ? (
             <div className="bg-white rounded-2xl border border-zinc-200 p-12 text-center text-zinc-500 font-medium text-xs">
               Loading candidate profile...
@@ -121,7 +123,7 @@ export default function CandidateDetailPage() {
                       </span>
                     </h3>
                     <p className="text-[11px] text-zinc-500 font-medium">
-                      Click any quote in the AI Scorecard on the left to instantly highlight its exact bounding box in the PDF on the right.
+                      Locate supported quotes in the resume using backend citation evidence.
                     </p>
                   </div>
                 </div>

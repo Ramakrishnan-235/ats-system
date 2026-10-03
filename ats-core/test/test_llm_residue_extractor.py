@@ -8,6 +8,15 @@ from ats_core.parsers.llm_residue_extractor import (
 from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
 
 
+@pytest.fixture(autouse=True)
+def offline_residue_extractor(monkeypatch):
+    """Keep legacy evidence tests isolated from redaction models and live clients."""
+    extractor = LLMResidueExtractor(model_name="offline-test")
+    extractor._client = MagicMock()
+    monkeypatch.setattr(LLMResidueExtractor, "_instance", extractor)
+    monkeypatch.setattr(extractor, "_redact_for_llm", lambda text: text)
+
+
 def test_anti_hallucination_containment_filter():
     """
     Verify that LLM-extracted skills whose evidence fails exact verbatim containment

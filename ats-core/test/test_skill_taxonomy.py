@@ -4,9 +4,18 @@ from ats_core.taxonomy.seed_data import SEED_SKILLS, TAXONOMY_VERSION
 from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
 from ats_core.parsers.normalizers import normalize_skill, normalize_skills_list
 from ats_core.schema.skills import SkillsTaxonomy, ExtractedSkill
+from ats_core.api import auth
 from main import app
 
-client = TestClient(app, headers={"X-API-Key": "ats_secret_dev_key_2026"})
+TEST_API_KEY = "test-only-api-key"
+client = TestClient(app, headers={"X-API-Key": TEST_API_KEY})
+
+
+@pytest.fixture(autouse=True)
+def configured_test_auth(monkeypatch):
+    """Exercise protected taxonomy routes with an isolated test credential."""
+    monkeypatch.setattr(auth, "ATS_AUTH_ENABLED", True)
+    monkeypatch.setattr(auth, "EXPECTED_API_KEY", TEST_API_KEY)
 
 
 # =========================================================================

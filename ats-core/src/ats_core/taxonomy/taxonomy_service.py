@@ -119,6 +119,15 @@ class SkillTaxonomyService:
             if record.get("is_ambiguous") and len(canonical_key) <= 3:
                 self._ambiguous_tokens.add(canonical_key)
 
+    def _remove_lookup_entries(self, record: Dict[str, Any]) -> None:
+        """Remove a record's old resolution entries before renaming or rejecting it."""
+        for key, value in list(self._canonical_index.items()):
+            if value["id"] == record["id"]:
+                del self._canonical_index[key]
+        for key, canonical_name in list(self._alias_index.items()):
+            if canonical_name == record["canonical_name"]:
+                del self._alias_index[key]
+
     def _normalize_key(self, token: str) -> str:
         if not token:
             return ""
@@ -181,7 +190,8 @@ class SkillTaxonomyService:
 
     def get_skill_by_canonical(self, canonical_name: str) -> Optional[Dict[str, Any]]:
         key = self._normalize_key(canonical_name)
-        return self._canonical_index.get(key)
+        record = self._canonical_index.get(key)
+        return record if record and record.get("status") == "approved" else None
 
     def get_skill_by_id(self, skill_id: str) -> Optional[Dict[str, Any]]:
         return self._skills_by_id.get(skill_id)
@@ -260,18 +270,15 @@ class SkillTaxonomyService:
         if not record:
             return None
 
+        self._remove_lookup_entries(record)
         if canonical_name:
-            # Re-index canonical name
-            old_key = self._normalize_key(record["canonical_name"])
-            if old_key in self._canonical_index:
-                del self._canonical_index[old_key]
             record["canonical_name"] = canonical_name
 
         if category:
             record["category"] = category
 
         if aliases is not None:
-            record["aliases"] = list(set(record.get("aliases", []) + aliases))
+            record["aliases"] = list(dict.fromkeys(record.get("aliases", []) + aliases))
 
         record["status"] = "approved"
         record["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -286,6 +293,7 @@ class SkillTaxonomyService:
         if not record:
             return None
 
+        self._remove_lookup_entries(record)
         record["status"] = "rejected"
         record["updated_at"] = datetime.now(timezone.utc).isoformat()
         return record

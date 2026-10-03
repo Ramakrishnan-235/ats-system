@@ -1,5 +1,6 @@
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter
+from datetime import datetime, timedelta, timezone
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard & Metrics"])
@@ -26,7 +27,7 @@ class PipelineCandidate(BaseModel):
     name: str
     role: str
     avatar: str
-    match_score: int
+    match_score: Optional[int]
     summary: str
     stage: str
     probability: Optional[int] = None
@@ -43,11 +44,40 @@ class DashboardStatsResponse(BaseModel):
 
 
 @router.get("/stats", response_model=DashboardStatsResponse)
-async def get_dashboard_stats():
-    from ats_core.api.v1.candidates import CANDIDATES_STORE
+async def get_dashboard_stats(include_pii: bool = Query(False)):
+    from ats_core.api.v1.candidates import CANDIDATES_STORE, mask_candidate_pii
+    from ats_core.api.v1.jobs import JOBS_STORE
 
     cand_list = list(CANDIDATES_STORE.values())
     total_candidates = len(cand_list)
+    active_jobs = sum(job.get("status") == "OPEN" for job in JOBS_STORE.values())
+    evaluated_scores = [c.get("scorecard", {}).get("overall_match_score") for c in cand_list
+                        if c.get("scorecard", {}).get("evaluation_status") not in ("FAILED", "PENDING")]
+    evaluated_scores = [score for score in evaluated_scores if isinstance(score, (int, float))]
+    matched_percent = round(100 * sum(score >= 70 for score in evaluated_scores) / len(evaluated_scores)) if evaluated_scores else 0
+    now = datetime.now(timezone.utc)
+
+    def timestamp(value):
+        try:
+            date = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return date.replace(tzinfo=timezone.utc) if date.tzinfo is None else date
+        except (ValueError, TypeError, AttributeError):
+            return None
+
+    today_evaluations = sum(
+        date is not None and date.date() == now.date()
+        for date in [timestamp(c.get("scorecard", {}).get("evaluated_at")) for c in cand_list]
+    )
+    current_week_start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())
+    weekly_candidates = []
+    for week in range(8):
+        start = current_week_start - timedelta(weeks=7 - week)
+        end = start + timedelta(weeks=1)
+        count = sum(date is not None and start <= date < end for date in [timestamp(c.get("created_at")) for c in cand_list])
+        weekly_candidates.append({"week": f"W{week + 1}", "count": count, "is_peak": False})
+    peak = max(item["count"] for item in weekly_candidates)
+    for item in weekly_candidates:
+        item["is_peak"] = peak > 0 and item["count"] == peak
 
     pipeline: Dict[str, List[Dict[str, Any]]] = {
         "Contacted": [],
@@ -55,7 +85,9 @@ async def get_dashboard_stats():
         "Negotiation": []
     }
 
-    for c in cand_list:
+    for candidate in cand_list:
+        c = candidate if include_pii else mask_candidate_pii(candidate)
+        categories = c.get("scorecard", {}).get("categories") or []
         stage = c.get("stage", "Contacted")
         stage_key = "Interview" if "interview" in stage.lower() else ("Negotiation" if "negotiat" in stage.lower() or "offer" in stage.lower() else "Contacted")
         if stage_key not in pipeline:
@@ -65,10 +97,10 @@ async def get_dashboard_stats():
             "name": c.get("name", "Candidate"),
             "role": c.get("target_headline", c.get("role", "Candidate")),
             "avatar": c.get("avatar", "CD"),
-            "match_score": c.get("scorecard", {}).get("overall_match_score", 90),
-            "summary": c.get("scorecard", {}).get("categories", [{}])[0].get("quote", "Candidate profile evaluated"),
+            "match_score": c.get("scorecard", {}).get("overall_match_score"),
+            "summary": categories[0].get("quote", "Candidate profile") if categories else "Awaiting evaluation",
             "stage": stage,
-            "probability": 80 if stage_key == "Negotiation" else None,
+            "probability": None,
             "applied_time": c.get("applied_date", "Recently")
         })
 
@@ -77,8 +109,8 @@ async def get_dashboard_stats():
             {
                 "id": "active_jobs",
                 "label": "ACTIVE JOBS",
-                "value": "50",
-                "change": "50 active positions",
+                "value": str(active_jobs),
+                "change": f"{active_jobs} active positions",
                 "trend": "positive",
                 "icon": "briefcase",
                 "style": "default"
@@ -95,10 +127,10 @@ async def get_dashboard_stats():
             {
                 "id": "avg_time_to_hire",
                 "label": "AVG TIME-TO-HIRE",
-                "value": "18",
+                "value": "—",
                 "unit": "days",
-                "change": "Target benchmark",
-                "trend": "positive",
+                "change": "Hire dates not recorded",
+                "trend": "neutral",
                 "icon": "clock",
                 "style": "default"
             },
@@ -112,23 +144,15 @@ async def get_dashboard_stats():
                 "style": "highlighted_dark"
             }
         ],
-        "weekly_candidates": [
-            {"week": "W1", "count": 0, "is_peak": False},
-            {"week": "W2", "count": 0, "is_peak": False},
-            {"week": "W3", "count": 0, "is_peak": False},
-            {"week": "W4", "count": 0, "is_peak": False},
-            {"week": "W5", "count": 0, "is_peak": False},
-            {"week": "W6", "count": 0, "is_peak": False},
-            {"week": "W7", "count": 0, "is_peak": False},
-            {"week": "W8", "count": total_candidates, "is_peak": total_candidates > 0},
-        ],
+        "weekly_candidates": weekly_candidates,
         "ai_match_rate": {
-            "rate": 0 if total_candidates == 0 else 85,
-            "precision_label": "Candidate fit score precision",
-            "matched_percent": 0 if total_candidates == 0 else 85,
-            "not_matched_percent": 100 if total_candidates == 0 else 15,
+            "rate": matched_percent,
+            "precision_label": "Evaluated candidates scoring at least 70",
+            "matched_percent": matched_percent,
+            "not_matched_percent": 100 - matched_percent if evaluated_scores else 0,
+            "evaluated_count": len(evaluated_scores),
         },
         "processing_resumes": 0,
-        "today_evaluations": total_candidates,
+        "today_evaluations": today_evaluations,
         "pipeline": pipeline
     }

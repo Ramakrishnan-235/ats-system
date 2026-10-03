@@ -11,6 +11,7 @@ if src_dir not in sys.path:
 
 from ats_core.db.vector_store import VectorStore, CandidateSearchParams
 from ats_core.db.init_db import provision_database
+from ats_core.search.embedding_config import EMBEDDING_DIMENSION
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -18,7 +19,7 @@ DATABASE_URL = os.getenv(
 )
 
 
-def generate_mock_embedding(dim: int = 1536, seed: int = 42) -> list[float]:
+def generate_mock_embedding(dim: int = EMBEDDING_DIMENSION, seed: int = 42) -> list[float]:
     """Generates a normalized random embedding vector for deterministic testing."""
     rng = random.Random(seed)
     vec = [rng.uniform(-1.0, 1.0) for _ in range(dim)]
@@ -35,7 +36,7 @@ async def run_vector_search_test():
     store = VectorStore(DATABASE_URL)
 
     print("\n" + "=" * 70)
-    print("📥 2. Inserting Test Candidates with 1536-dim Embeddings & Metadata...")
+    print(f"📥 2. Inserting Test Candidates with {EMBEDDING_DIMENSION}-dim Embeddings & Metadata...")
     print("=" * 70)
 
     # Base query vector (target domain: Python / Backend Engineer)

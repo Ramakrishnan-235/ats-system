@@ -18,22 +18,22 @@ async def provision_database():
     logger.info("Connecting to PostgreSQL 16...")
     engine = create_async_engine(DATABASE_URL, echo=False)
 
-    schema_file = Path(__file__).parent / "schema.sql"
+    schema_file = Path(__file__).resolve().parent / "schema.sql"
     if not schema_file.exists():
-        # Fallback to root or current directory
-        schema_file = Path("schema.sql")
+        # Resolve the source checkout independently of the caller's cwd.
+        schema_file = Path(__file__).resolve().parents[3] / "schema.sql"
 
     logger.info(f"Loading DDL schema from: {schema_file.resolve()}")
-    sql_script = schema_file.read_text()
-
-    async with engine.begin() as conn:
-        logger.info("Executing DDL migration script...")
-        # Use raw connection to execute multi-statement DDL script cleanly
-        raw_conn = await conn.get_raw_connection()
-        await raw_conn.driver_connection.execute(sql_script)
-        logger.info("✓ Tables, Indexes, Triggers, and pgvector HNSW indexes successfully created!")
-
-    await engine.dispose()
+    try:
+        sql_script = schema_file.read_text(encoding="utf-8")
+        async with engine.begin() as conn:
+            logger.info("Executing DDL migration script...")
+            # Use raw connection to execute multi-statement DDL script cleanly
+            raw_conn = await conn.get_raw_connection()
+            await raw_conn.driver_connection.execute(sql_script)
+            logger.info("✓ Tables, Indexes, Triggers, and pgvector HNSW indexes successfully created!")
+    finally:
+        await engine.dispose()
 
 if __name__ == "__main__":
     asyncio.run(provision_database())

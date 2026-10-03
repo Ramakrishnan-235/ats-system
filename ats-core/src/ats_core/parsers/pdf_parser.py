@@ -1,9 +1,10 @@
 import io
 import logging
-from typing import Tuple, List, Dict, Any, Optional
+from typing import Tuple, List, Dict, Any, Optional, TYPE_CHECKING
 import fitz  # PyMuPDF
-from docling.document_converter import DocumentConverter
-from docling.datamodel.base_models import DocumentStream
+
+if TYPE_CHECKING:
+    from docling.document_converter import DocumentConverter
 
 logger = logging.getLogger("ats.parsers.pdf")
 
@@ -13,7 +14,7 @@ class PDFLayoutAnalyzer:
     @staticmethod
     def is_multi_column_or_complex(page: fitz.Page) -> bool:
         """
-        Detects if a PDF page contains multi-column layouts by analyzing 
+        Detects if a PDF page contains multi-column layouts by analyzing
         horizontal bounding box overlap across the vertical axis.
         """
         rect = page.rect
@@ -61,8 +62,10 @@ class HybridPDFParser:
         self._docling_converter: DocumentConverter | None = None
 
     @property
-    def docling_converter(self) -> DocumentConverter:
+    def docling_converter(self) -> "DocumentConverter":
         if self._docling_converter is None:
+            from docling.document_converter import DocumentConverter
+
             logger.info("Initializing Docling DocumentConverter...")
             self._docling_converter = DocumentConverter()
         return self._docling_converter
@@ -85,6 +88,8 @@ class HybridPDFParser:
 
     def _extract_with_docling(self, file_bytes: bytes, filename: str = "resume.pdf") -> str:
         """Deep layout analysis using Docling."""
+        from docling.datamodel.base_models import DocumentStream
+
         logger.info("Executing Docling deep layout analysis...")
         doc_stream = DocumentStream(name=filename, stream=io.BytesIO(file_bytes))
         conversion_result = self.docling_converter.convert(doc_stream)
@@ -104,41 +109,42 @@ class HybridPDFParser:
             logger.error(f"PyMuPDF failed to open byte stream: {e}")
             raise ValueError(f"Corrupted or invalid PDF file: {e}")
 
-        # Check total pages
-        total_pages = len(doc)
-        if total_pages == 0:
-            raise ValueError("PDF document contains 0 pages.")
+        with doc:
+            # Check total pages
+            total_pages = len(doc)
+            if total_pages == 0:
+                raise ValueError("PDF document contains 0 pages.")
 
-        # Step 1: Layout Complexity Analysis
-        is_complex = False
-        for page_index in range(min(total_pages, 3)):  # Sample up to first 3 pages
-            page = doc[page_index]
-            if PDFLayoutAnalyzer.is_multi_column_or_complex(page):
-                logger.info(f"Complex / multi-column layout detected on page {page_index + 1}.")
-                is_complex = True
-                break
+            # Step 1: Layout Complexity Analysis
+            is_complex = False
+            for page_index in range(min(total_pages, 3)):  # Sample up to first 3 pages
+                page = doc[page_index]
+                if PDFLayoutAnalyzer.is_multi_column_or_complex(page):
+                    logger.info(f"Complex / multi-column layout detected on page {page_index + 1}.")
+                    is_complex = True
+                    break
 
-        # Step 2: Route to appropriate extraction engine
-        if is_complex:
-            try:
-                markdown_text = self._extract_with_docling(file_bytes, filename=filename)
-                return markdown_text, "docling"
-            except Exception as e:
-                logger.warning(f"Docling parsing failed: {e}. Falling back to PyMuPDF.")
-                return self._extract_with_pymupdf(doc), "pymupdf_fallback"
-        else:
-            logger.info("Single-column simple layout detected. Using fast PyMuPDF extraction.")
-            extracted_text = self._extract_with_pymupdf(doc)
-            
-            # Sanity check: If extracted text is suspiciously sparse, fallback to Docling
-            if len(extracted_text.strip()) < 50:
-                logger.warning("PyMuPDF produced sparse output. Rerouting to Docling.")
+            # Step 2: Route to appropriate extraction engine
+            if is_complex:
                 try:
-                    return self._extract_with_docling(file_bytes, filename=filename), "docling"
-                except Exception:
-                    return extracted_text, "pymupdf"
+                    markdown_text = self._extract_with_docling(file_bytes, filename=filename)
+                    return markdown_text, "docling"
+                except Exception as e:
+                    logger.warning(f"Docling parsing failed: {e}. Falling back to PyMuPDF.")
+                    return self._extract_with_pymupdf(doc), "pymupdf_fallback"
+            else:
+                logger.info("Single-column simple layout detected. Using fast PyMuPDF extraction.")
+                extracted_text = self._extract_with_pymupdf(doc)
 
-            return extracted_text, "pymupdf"
+                # Sanity check: If extracted text is suspiciously sparse, fallback to Docling
+                if len(extracted_text.strip()) < 50:
+                    logger.warning("PyMuPDF produced sparse output. Rerouting to Docling.")
+                    try:
+                        return self._extract_with_docling(file_bytes, filename=filename), "docling"
+                    except Exception:
+                        return extracted_text, "pymupdf"
+
+                return extracted_text, "pymupdf"
 
     def locate_citation_in_pdf(self, file_bytes: bytes, search_phrase: str) -> Optional[Dict[str, Any]]:
         """
@@ -149,7 +155,6 @@ class HybridPDFParser:
             return None
 
         clean_phrase = search_phrase.strip().strip('"').strip("'").strip()
-        clean_phrase = clean_phrase.replace("...", "").replace("…", "").strip()
         if not clean_phrase:
             return None
 
@@ -159,44 +164,46 @@ class HybridPDFParser:
             logger.warning(f"Could not open PDF for citation grounding: {e}")
             return None
 
-        for page_idx in range(len(doc)):
-            page = doc[page_idx]
-            page_rect = page.rect
-            width = max(1.0, float(page_rect.width))
-            height = max(1.0, float(page_rect.height))
+        with doc:
+            for page_idx in range(len(doc)):
+                page = doc[page_idx]
+                page_rect = page.rect
+                width = max(1.0, float(page_rect.width))
+                height = max(1.0, float(page_rect.height))
 
-            rects = page.search_for(clean_phrase)
-            if not rects and len(clean_phrase) > 30:
-                # Try search with first 6-8 words
-                sub_phrase = " ".join(clean_phrase.split()[:8])
-                rects = page.search_for(sub_phrase)
+                rects = page.search_for(clean_phrase)
+                if not rects:
+                    # Built-in PDF fonts may encode an en/em dash as a middle
+                    # dot or hyphen. Retry the entire phrase with only those
+                    # separators normalized; never verify merely its prefix.
+                    for separator in ("·", "-"):
+                        normalized = clean_phrase.replace("—", separator).replace("–", separator)
+                        if normalized != clean_phrase:
+                            rects = page.search_for(normalized)
+                            if rects:
+                                break
 
-            if not rects and len(clean_phrase.split()) > 4:
-                # Try search with first 4 words
-                sub_phrase = " ".join(clean_phrase.split()[:4])
-                rects = page.search_for(sub_phrase)
+                if rects:
+                    x0 = min(r.x0 for r in rects)
+                    y0 = min(r.y0 for r in rects)
+                    x1 = max(r.x1 for r in rects)
+                    y1 = max(r.y1 for r in rects)
 
-            if rects:
-                x0 = min(r.x0 for r in rects)
-                y0 = min(r.y0 for r in rects)
-                x1 = max(r.x1 for r in rects)
-                y1 = max(r.y1 for r in rects)
+                    norm_x = round((x0 / width) * 100.0, 2)
+                    norm_y = round((y0 / height) * 100.0, 2)
+                    norm_w = round(((x1 - x0) / width) * 100.0, 2)
+                    norm_h = round(((y1 - y0) / height) * 100.0, 2)
 
-                norm_x = round((x0 / width) * 100.0, 2)
-                norm_y = round((y0 / height) * 100.0, 2)
-                norm_w = round(((x1 - x0) / width) * 100.0, 2)
-                norm_h = round(((y1 - y0) / height) * 100.0, 2)
+                    return {
+                        "page": page_idx + 1,
+                        "text_snippet": clean_phrase,
+                        "bbox": {
+                            "x": norm_x,
+                            "y": norm_y,
+                            "width": norm_w,
+                            "height": norm_h,
+                        },
+                        "raw_rect": [round(x0, 2), round(y0, 2), round(x1, 2), round(y1, 2)],
+                    }
 
-                return {
-                    "page": page_idx + 1,
-                    "text_snippet": clean_phrase,
-                    "bbox": {
-                        "x": norm_x,
-                        "y": norm_y,
-                        "width": norm_w,
-                        "height": norm_h,
-                    },
-                    "raw_rect": [round(x0, 2), round(y0, 2), round(x1, 2), round(y1, 2)],
-                }
-
-        return None
+            return None

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopNav } from "@/components/layout/top-nav";
 import { JobCard } from "@/components/jobs/job-card";
@@ -16,9 +16,8 @@ import {
   CheckCircle2,
   TrendingUp,
 } from "lucide-react";
-import { fetchJobs } from "@/lib/api";
+import { fetchJobs, getErrorMessage } from "@/lib/api";
 import { JobRequisition } from "@/types/ats";
-import { MOCK_JOBS } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 const DOMAIN_TABS = [
@@ -34,34 +33,31 @@ const DOMAIN_TABS = [
 ];
 
 export default function JobsPage() {
-  const [allJobs, setAllJobs] = useState<JobRequisition[]>(MOCK_JOBS);
+  const [allJobs, setAllJobs] = useState<JobRequisition[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [departmentFilter, setDepartmentFilter] = useState("ALL");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const loadJobs = async () => {
-    setIsLoading(true);
+  const loadJobs = useCallback(async () => {
     try {
       const data = await fetchJobs({
         status: statusFilter,
         department: departmentFilter,
         search,
       });
-      if (data && data.length > 0) {
-        setAllJobs(data);
-      }
-    } catch {
-      // Fallback
+      setAllJobs(data);
+      setError(null);
+    } catch (reason) {
+      setError(getErrorMessage(reason));
     } finally {
       setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadJobs();
   }, [statusFilter, departmentFilter, search]);
+
+  useEffect(() => { void loadJobs(); }, [loadJobs]);
 
   const handleJobCreated = (newJob: JobRequisition) => {
     setAllJobs([newJob, ...allJobs]);
@@ -119,6 +115,7 @@ export default function JobsPage() {
         <TopNav showDateFilter={false} searchPlaceholder="Search platform..." />
 
         <main className="flex-1 p-8 max-w-6xl w-full mx-auto space-y-6">
+          {error && <p role="alert" className="text-red-700">{error}</p>}
           {/* Header Banner */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">

@@ -1,7 +1,7 @@
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from starlette.concurrency import run_in_threadpool
 
 logger = logging.getLogger("ats.api.match")
@@ -29,10 +29,16 @@ def get_reranker():
 
 
 class MatchRequest(BaseModel):
-    job_title: str
-    job_description: str
-    stage1_retrieve_limit: int = Field(default=100, description="Number of candidates from hybrid search")
-    stage2_rerank_limit: int = Field(default=20, description="Candidates sent to deep LLM evaluation")
+    job_title: str = Field(min_length=1, max_length=255)
+    job_description: str = Field(min_length=1, max_length=50000)
+    stage1_retrieve_limit: int = Field(default=100, ge=1, le=500, description="Number of candidates from hybrid search")
+    stage2_rerank_limit: int = Field(default=20, ge=1, le=50, description="Candidates sent to deep LLM evaluation")
+
+    @model_validator(mode="after")
+    def validate_stage_limits(self):
+        if self.stage2_rerank_limit > self.stage1_retrieve_limit:
+            raise ValueError("stage2_rerank_limit cannot exceed stage1_retrieve_limit")
+        return self
 
 
 class MatchResponse(BaseModel):
@@ -40,6 +46,7 @@ class MatchResponse(BaseModel):
     total_retrieved_stage1: int
     total_reranked_stage2: int
     final_evaluations: List[Dict[str, Any]]
+    failed_candidate_ids: List[str] = Field(default_factory=list)
     reranker_fallback: bool = Field(default=False, description="True if reranker encountered error and fell back to hybrid search")
 
 
@@ -52,7 +59,7 @@ async def match_and_evaluate_candidates(request: MatchRequest):
     # STAGE 1: Hybrid Retrieval -> Top 100 (Non-blocking worker thread)
     # -------------------------------------------------------------------------
     try:
-        retriever = get_retriever()
+        retriever = await run_in_threadpool(get_retriever)
         stage1_candidates = await run_in_threadpool(
             retriever.hybrid_search,
             query=query_text,
@@ -62,8 +69,8 @@ async def match_and_evaluate_candidates(request: MatchRequest):
         logger.exception(f"Stage 1 hybrid retrieval failed for job '{request.job_title}': {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Candidate retrieval failure: {str(e)}"
-        )
+            detail="Candidate retrieval failed."
+        ) from None
 
     if not stage1_candidates:
         logger.info(f"No candidate records retrieved for job '{request.job_title}'.")
@@ -79,7 +86,7 @@ async def match_and_evaluate_candidates(request: MatchRequest):
     # STAGE 2: Cross-Encoder Re-Ranking -> Top 20 (Non-blocking worker thread)
     # -------------------------------------------------------------------------
     try:
-        reranker = get_reranker()
+        reranker = await run_in_threadpool(get_reranker)
         stage2_candidates = await run_in_threadpool(
             reranker.rerank,
             query=query_text,
@@ -100,7 +107,8 @@ async def match_and_evaluate_candidates(request: MatchRequest):
     # -------------------------------------------------------------------------
     from ats_core.evaluator.llm_evaluator import evaluate_candidate, EvaluationReport
     final_results = []
-    for cand in stage2_candidates:
+    failed_candidate_ids = []
+    for rank, cand in enumerate(stage2_candidates, start=1):
         cand_id = cand.get("candidate_id", "unknown")
         cand_text = cand.get("text", cand.get("summary_text", ""))
         try:
@@ -111,11 +119,12 @@ async def match_and_evaluate_candidates(request: MatchRequest):
             )
             final_results.append({
                 "candidate_id": cand_id,
-                "rerank_score": cand.get("rerank_score", 0.95),
-                "rerank_rank": cand.get("rerank_rank", 1),
+                "rerank_score": cand.get("rerank_score"),
+                "rerank_rank": cand.get("rerank_rank", rank),
                 "evaluation": report.model_dump()
             })
         except Exception as cand_err:
+            failed_candidate_ids.append(cand_id)
             logger.error(
                 f"Stage 3 LLM evaluation failed for candidate '{cand_id}': {cand_err}",
                 exc_info=True
@@ -125,6 +134,7 @@ async def match_and_evaluate_candidates(request: MatchRequest):
         logger.error(
             f"Stage 3 failed to evaluate any of the {len(stage2_candidates)} candidates for job '{request.job_title}'."
         )
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Candidate evaluation failed for all retrieved candidates.")
 
     # Sort final output by LLM overall match score
     final_results.sort(key=lambda x: x["evaluation"]["match_score"], reverse=True)
@@ -134,5 +144,6 @@ async def match_and_evaluate_candidates(request: MatchRequest):
         total_retrieved_stage1=len(stage1_candidates),
         total_reranked_stage2=len(stage2_candidates),
         final_evaluations=final_results,
+        failed_candidate_ids=failed_candidate_ids,
         reranker_fallback=reranker_fallback
     )

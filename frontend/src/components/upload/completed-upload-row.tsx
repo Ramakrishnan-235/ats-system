@@ -27,7 +27,7 @@ export function CompletedUploadRow({ item }: CompletedUploadRowProps) {
             </span>
           </div>
           <p className="text-[11px] text-zinc-500 font-mono mt-0.5">
-            {item.taskId} • Processed in {item.duration}
+            {item.taskId} • Processed in {item.duration} • Evaluation: {item.evaluationStatus || "Pending"}
           </p>
         </div>
       </div>

@@ -1,6 +1,8 @@
 from enum import Enum
+import math
 from typing import List, Optional, Any
 from pydantic import BaseModel, Field, ConfigDict, model_validator
+from ats_core.schema._normalization import normalization_input
 
 
 class QualificationTier(str, Enum):
@@ -18,10 +20,10 @@ class CriterionCategory(str, Enum):
 
 
 class CitationBoundingBox(BaseModel):
-    x: float = Field(default=0.0, description="Relative horizontal start position (0-100% of page width).")
-    y: float = Field(default=0.0, description="Relative vertical start position (0-100% of page height).")
-    width: float = Field(default=100.0, description="Relative width (0-100% of page width).")
-    height: float = Field(default=5.0, description="Relative height (0-100% of page height).")
+    x: float = Field(default=0.0, ge=0.0, le=100.0, description="Relative horizontal start position (0-100% of page width).")
+    y: float = Field(default=0.0, ge=0.0, le=100.0, description="Relative vertical start position (0-100% of page height).")
+    width: float = Field(default=100.0, ge=0.0, le=100.0, description="Relative width (0-100% of page width).")
+    height: float = Field(default=5.0, ge=0.0, le=100.0, description="Relative height (0-100% of page height).")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -67,6 +69,7 @@ class CriterionScore(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def coerce_category_and_score(cls, data: Any) -> Any:
+        data = normalization_input(cls, data)
         if isinstance(data, dict):
             cat = data.get("category")
             if cat and cat not in [e.value for e in CriterionCategory]:
@@ -86,6 +89,12 @@ class CriterionScore(BaseModel):
 
             score = data.get("score")
             if score is not None:
+                try:
+                    numeric_score = float(score)
+                except (ValueError, TypeError):
+                    numeric_score = 3.0
+                if not math.isfinite(numeric_score):
+                    raise ValueError("Criterion scores must be finite")
                 try:
                     s_int = int(score)
                     data["score"] = max(1, min(5, s_int))
@@ -121,6 +130,7 @@ class SuggestedInterviewQuestion(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def coerce_question_category(cls, data: Any) -> Any:
+        data = normalization_input(cls, data)
         if isinstance(data, dict):
             cat = data.get("category")
             if cat and cat not in [e.value for e in QuestionCategory]:
@@ -181,6 +191,7 @@ class DeepCandidateEvaluationReport(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def coerce_tier_and_scores(cls, data: Any) -> Any:
+        data = normalization_input(cls, data)
         if isinstance(data, dict):
             tier = data.get("qualification_tier")
             if tier and tier not in [e.value for e in QualificationTier]:
@@ -196,7 +207,9 @@ class DeepCandidateEvaluationReport(BaseModel):
             if score is not None:
                 try:
                     s_flt = float(score)
-                    data["overall_match_score"] = max(0.0, min(100.0, s_flt))
                 except (ValueError, TypeError):
-                    data["overall_match_score"] = 50.0
+                    s_flt = 50.0
+                if not math.isfinite(s_flt):
+                    raise ValueError("Overall match scores must be finite")
+                data["overall_match_score"] = max(0.0, min(100.0, s_flt))
         return data

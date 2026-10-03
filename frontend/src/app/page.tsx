@@ -7,29 +7,24 @@ import { StatCard } from "@/components/dashboard/stat-card";
 import { AcquisitionChart } from "@/components/dashboard/acquisition-chart";
 import { MatchRateDonut } from "@/components/dashboard/match-rate-donut";
 import { PipelineKanban } from "@/components/dashboard/pipeline-kanban";
-import { fetchDashboardStats } from "@/lib/api";
+import { fetchDashboardStats, getErrorMessage } from "@/lib/api";
 import {
   StatMetric,
   WeeklyData,
   AIMatchRate,
   PipelineCandidateItem,
 } from "@/types/ats";
-import {
-  MOCK_STATS,
-  MOCK_WEEKLY_DATA,
-  MOCK_AI_MATCH_RATE,
-  MOCK_PIPELINE,
-} from "@/lib/mock-data";
 import { AddCandidateModal } from "@/components/candidate/add-candidate-modal";
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<StatMetric[]>(MOCK_STATS);
-  const [weeklyData, setWeeklyData] = useState<WeeklyData[]>(MOCK_WEEKLY_DATA);
-  const [matchRate, setMatchRate] = useState<AIMatchRate>(MOCK_AI_MATCH_RATE);
+  const [stats, setStats] = useState<StatMetric[]>([]);
+  const [weeklyData, setWeeklyData] = useState<WeeklyData[]>([]);
+  const [matchRate, setMatchRate] = useState<AIMatchRate | null>(null);
   const [processingResumes, setProcessingResumes] = useState(0);
   const [todayEvaluations, setTodayEvaluations] = useState(0);
   const [pipeline, setPipeline] =
-    useState<Record<string, PipelineCandidateItem[]>>(MOCK_PIPELINE);
+    useState<Record<string, PipelineCandidateItem[]>>({});
+  const [error, setError] = useState<string | null>(null);
   const [isAddCandidateOpen, setIsAddCandidateOpen] = useState(false);
 
   useEffect(() => {
@@ -46,19 +41,8 @@ export default function DashboardPage() {
         if (data.pipeline) setPipeline(data.pipeline);
       }
     }
-    loadData();
+    loadData().catch(reason => setError(getErrorMessage(reason)));
   }, []);
-
-  const handleCandidateAdded = (candidate: PipelineCandidateItem) => {
-    setPipeline((prev) => {
-      const stage = candidate.stage || "Contacted";
-      const currentList = prev[stage] || [];
-      return {
-        ...prev,
-        [stage]: [candidate, ...currentList],
-      };
-    });
-  };
 
   return (
     <div className="min-h-screen flex bg-[#faf9f6] text-zinc-900 font-sans antialiased">
@@ -70,6 +54,7 @@ export default function DashboardPage() {
         <TopNav title="Dashboard" showDateFilter={true} />
 
         <main className="flex-1 px-8 pb-12 max-w-[1400px] w-full space-y-6">
+          {error && <p role="alert" className="text-red-700">{error}</p>}
           {/* Top 4 Stat Metric Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {stats.map((metric) => (
@@ -83,11 +68,11 @@ export default function DashboardPage() {
               <AcquisitionChart data={weeklyData} />
             </div>
             <div className="lg:col-span-5">
-              <MatchRateDonut
+              {matchRate && <MatchRateDonut
                 data={matchRate}
                 processingCount={processingResumes}
                 todayEvaluations={todayEvaluations}
-              />
+              />}
             </div>
           </div>
 
@@ -103,7 +88,6 @@ export default function DashboardPage() {
       <AddCandidateModal
         open={isAddCandidateOpen}
         onOpenChange={setIsAddCandidateOpen}
-        onCandidateAdded={handleCandidateAdded}
       />
     </div>
   );

@@ -2,12 +2,13 @@ import uuid
 from datetime import datetime
 from typing import List, Optional, Any, Dict
 from sqlalchemy import (
-    String, Text, Numeric, Integer, Boolean, DateTime, ForeignKey, 
+    String, Text, Numeric, Integer, Boolean, DateTime, ForeignKey,
     UniqueConstraint, func
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
+from ats_core.search.embedding_config import EMBEDDING_DIMENSION
 
 
 class Base(DeclarativeBase):
@@ -28,7 +29,7 @@ class Candidate(Base):
     raw_anonymized_text: Mapped[str] = mapped_column(Text, nullable=False)
     structured_profile: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     parsing_engine: Mapped[str] = mapped_column(String(50), default="hybrid-pymupdf-docling")
-    embedding: Mapped[Optional[List[float]]] = mapped_column(Vector(1536), nullable=True)
+    embedding: Mapped[Optional[List[float]]] = mapped_column(Vector(EMBEDDING_DIMENSION), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -49,7 +50,7 @@ class JobPosting(Base):
     required_skills: Mapped[List[str]] = mapped_column(ARRAY(String), default=list, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="OPEN", nullable=False)
     structured_criteria: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
-    embedding: Mapped[Optional[List[float]]] = mapped_column(Vector(1536), nullable=True)
+    embedding: Mapped[Optional[List[float]]] = mapped_column(Vector(EMBEDDING_DIMENSION), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -176,4 +177,4 @@ class CandidateSkill(Base):
 
     # Relationships
     taxonomy_skill: Mapped["SkillTaxonomy"] = relationship(back_populates="candidate_skills")
-
+

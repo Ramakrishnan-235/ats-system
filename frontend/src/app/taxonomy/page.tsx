@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Layers,
   Sparkles,
@@ -42,6 +42,7 @@ import {
   createTaxonomySkill,
   TaxonomySkillItem,
   TaxonomyStats,
+  getErrorMessage,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +59,7 @@ const CATEGORIES = [
 ];
 
 export default function TaxonomyPage() {
+  const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<TaxonomyStats | null>(null);
   const [skills, setSkills] = useState<TaxonomySkillItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -78,8 +80,7 @@ export default function TaxonomyPage() {
   const [aliasModalTarget, setAliasModalTarget] = useState<TaxonomySkillItem | null>(null);
   const [newAliasInput, setNewAliasInput] = useState("");
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = useCallback(async () => {
     try {
       const [statsData, skillsData] = await Promise.all([
         fetchTaxonomyStats(),
@@ -90,6 +91,7 @@ export default function TaxonomyPage() {
           limit: 100,
         }),
       ]);
+      setError(null);
       setStats(statsData);
       setSkills(skillsData.items);
       setTotalCount(skillsData.total);
@@ -99,24 +101,22 @@ export default function TaxonomyPage() {
         setActiveTab("approved");
       }
     } catch (e) {
-      console.error("Failed to load taxonomy data:", e);
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadData();
   }, [activeTab, selectedCategory, searchQuery]);
 
+  useEffect(() => { void loadData(); }, [loadData]);
+
   const handleApprove = async (skill: TaxonomySkillItem) => {
-    await approveTaxonomySkill(skill.id);
-    loadData();
+    try { await approveTaxonomySkill(skill.id); await loadData(); }
+    catch (reason) { setError(getErrorMessage(reason)); }
   };
 
   const handleReject = async (skill: TaxonomySkillItem) => {
-    await rejectTaxonomySkill(skill.id);
-    loadData();
+    try { await rejectTaxonomySkill(skill.id); await loadData(); }
+    catch (reason) { setError(getErrorMessage(reason)); }
   };
 
   const handleCreateSkill = async (e: React.FormEvent) => {
@@ -128,6 +128,7 @@ export default function TaxonomyPage() {
       .map((a) => a.trim())
       .filter(Boolean);
 
+    try {
     await createTaxonomySkill({
       canonical_name: newCanonicalName.trim(),
       category: newCategory,
@@ -140,17 +141,20 @@ export default function TaxonomyPage() {
     setNewCanonicalName("");
     setNewAliases("");
     setNewIsAmbiguous(false);
-    loadData();
+    await loadData();
+    } catch (reason) { setError(getErrorMessage(reason)); }
   };
 
   const handleAddAliasSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!aliasModalTarget || !newAliasInput.trim()) return;
 
+    try {
     await addAliasToTaxonomySkill(aliasModalTarget.id, newAliasInput.trim());
     setAliasModalTarget(null);
     setNewAliasInput("");
-    loadData();
+    await loadData();
+    } catch (reason) { setError(getErrorMessage(reason)); }
   };
 
   const getCategoryBadgeColor = (category: string) => {
@@ -182,6 +186,7 @@ export default function TaxonomyPage() {
         <TopNav showDateFilter={false} searchPlaceholder="Search skills, aliases, categories..." />
 
         <main className="flex-1 p-8 max-w-7xl w-full mx-auto space-y-7">
+          {error && <p role="alert" className="text-red-700">{error}</p>}
           {/* Header & Title */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>

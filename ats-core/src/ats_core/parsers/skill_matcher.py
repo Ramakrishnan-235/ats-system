@@ -12,8 +12,6 @@ Uses spaCy's PhraseMatcher for token-boundary accurate gazetteer matching:
 
 import logging
 from typing import Dict, Any, List, Optional, Tuple, Set
-import spacy
-from spacy.matcher import PhraseMatcher
 
 from ats_core.parsers.section_anchor import anchor_sections
 from ats_core.parsers.disambiguation import is_valid_mention
@@ -28,6 +26,9 @@ class SkillMatcher:
     _instance: Optional["SkillMatcher"] = None
 
     def __init__(self, taxonomy_rows: Optional[List[Dict[str, Any]]] = None):
+        import spacy
+        from spacy.matcher import PhraseMatcher
+
         self.nlp = spacy.blank("en")
         self.matcher = PhraseMatcher(self.nlp.vocab, attr="LOWER")
         self.row_by_id: Dict[str, Dict[str, Any]] = {}
@@ -48,6 +49,8 @@ class SkillMatcher:
 
     def reload(self, taxonomy_rows: Optional[List[Dict[str, Any]]] = None):
         """Re-indexes PhraseMatcher patterns with updated taxonomy rows."""
+        from spacy.matcher import PhraseMatcher
+
         self.matcher = PhraseMatcher(self.nlp.vocab, attr="LOWER")
         self.row_by_id = {}
         self.id_by_key = {}

@@ -67,7 +67,7 @@ export function ResumeDropzone({ onFilesSelected }: ResumeDropzoneProps) {
         multiple
         accept=".pdf,application/pdf"
         className="hidden"
-        onChange={handleFileChange}
+        onChange={event => { handleFileChange(event); event.target.value = ""; }}
       />
 
       <div className="w-12 h-12 rounded-2xl bg-zinc-100 flex items-center justify-center text-zinc-800 mb-3 shadow-xs">
@@ -81,14 +81,14 @@ export function ResumeDropzone({ onFilesSelected }: ResumeDropzoneProps) {
         <span className="font-semibold underline decoration-zinc-400 underline-offset-2">
           Browse Files
         </span>{" "}
-        • Supports multi-file background batch ingestion
+        • Upload multiple PDF files
       </p>
 
       {/* Format Supported Badge */}
       <div className="flex items-center gap-2 mt-4 pt-3 border-t border-zinc-100 flex-wrap justify-center">
         <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 border border-red-200/60 text-[10px] font-bold px-2.5 py-0.5 rounded-md">
           <FileText className="w-3 h-3" />
-          <span>PDF Documents (Layout & Table Parsing + Presidio PII Masking)</span>
+          <span>PDF documents</span>
         </span>
       </div>
     </div>

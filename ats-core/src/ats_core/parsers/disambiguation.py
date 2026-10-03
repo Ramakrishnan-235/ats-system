@@ -8,11 +8,13 @@ Gives deterministic context rules for short, single-letter, or polysemous techni
 """
 
 import re
-from typing import Dict, Any, Optional
-import spacy
+from typing import Dict, Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from spacy.tokens import Doc
 
 
-def is_valid_mention(row: Dict[str, Any], doc: spacy.tokens.Doc, tok_start: int, tok_end: int) -> bool:
+def is_valid_mention(row: Dict[str, Any], doc: "Doc", tok_start: int, tok_end: int) -> bool:
     """
     Evaluates whether a phrase match in `doc[tok_start:tok_end]` is a valid technical skill mention
     or a non-technical false positive.

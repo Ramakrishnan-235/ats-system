@@ -28,10 +28,18 @@ def evaluate_candidate_skills_coverage(
     - breakdown: list of detailed compliance items with human-readable explanations
     - overall_skill_score: calibrated 0-100 score based on coverage, depth, and evidence tier
     """
+    # Requirements and matrix keys are canonical names. Substring matching is
+    # unsafe here: JavaScript is not Java, and NoSQL is not SQL.
+    display_names = {
+        skill.strip().casefold(): skill.strip()
+        for skill in required_skills if skill and skill.strip()
+    }
+    required_skills = list(display_names)
+    normalized_matrix = {key.strip().casefold(): value for key, value in skill_matrix.items()}
     if not required_skills:
         return {
             "coverage_ratio": 1.0,
-            "overall_skill_score": 90.0,
+            "overall_skill_score": None,
             "matched_count": 0,
             "total_required": 0,
             "breakdown": [],
@@ -55,17 +63,14 @@ def evaluate_candidate_skills_coverage(
     }
 
     for req in required_skills:
-        req_clean = req.strip()
+        req_clean = display_names[req]
         req_lower = req_clean.lower()
 
         # Check in matrix
-        stat = skill_matrix.get(req_lower)
-        if not stat:
-            # Check for partial key match
-            stat = next((v for k, v in skill_matrix.items() if req_lower in k or k in req_lower), None)
+        stat = normalized_matrix.get(req_lower)
 
         if stat:
-            years = stat.get("years", 0.0)
+            years = stat.get("years") or 0.0
             is_current = stat.get("current", False)
             months_stale = stat.get("months_since_last_use")
             evidence = stat.get("evidence", "skills_bar")

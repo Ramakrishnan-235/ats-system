@@ -115,7 +115,7 @@ export function PipelineKanban({ pipeline, onAddCandidate }: PipelineKanbanProps
                                   isNegotiation ? "text-white" : "text-zinc-700"
                                 )}
                               />
-                              <span>{candidate.match_score}</span>
+                              <span>{candidate.match_score ?? "Pending"}</span>
                             </div>
                           </div>
 

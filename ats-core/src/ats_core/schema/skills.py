@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import List, Optional, Any
 from pydantic import BaseModel, Field, ConfigDict, model_validator, AliasChoices
+from ats_core.schema._normalization import normalization_input
 
 
 class SkillCategory(str, Enum):
@@ -58,17 +59,18 @@ class ExtractedSkill(BaseModel):
     @classmethod
     def sanitize_skill(cls, data: Any) -> Any:
         from ats_core.parsers.normalizers import normalize_skill
+        data = normalization_input(cls, data)
         if isinstance(data, str):
             return {"name": normalize_skill(data)}
         if isinstance(data, dict):
-            raw_name = data.get("name") or data.get("skill") or data.get("skill_name") or "Unknown Skill"
+            raw_name = data.get("name") or "Unknown Skill"
             data["name"] = normalize_skill(str(raw_name))
 
             cat = data.get("category")
             if cat and cat not in [e.value for e in SkillCategory]:
                 # Attempt soft mapping or fallback
                 data["category"] = SkillCategory.TOOLING_PLATFORM.value
-            prof = data.get("proficiency") or data.get("level")
+            prof = data.get("proficiency")
             if prof and prof not in [e.value for e in SkillProficiency]:
                 prof_str = str(prof).lower()
                 if "exp" in prof_str or "lead" in prof_str:
@@ -117,15 +119,12 @@ class SkillsTaxonomy(BaseModel):
                 if isinstance(item, str):
                     detailed.append({"name": normalize_skill(item), "category": SkillCategory.TOOLING_PLATFORM.value})
                 elif isinstance(item, dict):
-                    name = item.get("name") or item.get("skill") or item.get("skill_name") or "Unknown"
-                    level = item.get("proficiency") or item.get("level") or SkillProficiency.INTERMEDIATE.value
-                    detailed.append({
-                        "name": normalize_skill(str(name)),
-                        "proficiency": level,
-                        "category": SkillCategory.TOOLING_PLATFORM.value
-                    })
+                    # Let ExtractedSkill resolve aliases while preserving evidence,
+                    # category, proficiency, and experience supplied by the parser.
+                    detailed.append(dict(item))
             return {"detailed_skills": detailed}
         elif isinstance(data, dict):
+            data = normalization_input(cls, data)
             if "core_languages" in data and isinstance(data["core_languages"], list):
                 data["core_languages"] = normalize_skills_list(data["core_languages"])
             if "frameworks_and_tools" in data and isinstance(data["frameworks_and_tools"], list):
