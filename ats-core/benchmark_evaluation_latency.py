@@ -279,6 +279,7 @@ def run_benchmark(
 
 
 if __name__ == "__main__":
-    results = run_benchmark(target_latency_seconds=3.0, model_name="gemma4:e2b")
+    model = os.getenv("OLLAMA_MODEL", "qwen3.5:2b")
+    results = run_benchmark(target_latency_seconds=3.0, model_name=model)
     if not results["passed"]:
         sys.exit(1)

@@ -1,7 +1,12 @@
+import os
 import json
 import logging
 import sys
 from pathlib import Path
+from dotenv import load_dotenv
+
+sys.stdout.reconfigure(encoding="utf-8")
+load_dotenv()
 
 # Add src to sys.path
 src_dir = str(Path(__file__).resolve().parent / "src")
@@ -35,8 +40,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 def run_test():
     # Configure evaluator with local Ollama model gemma4:e2b
     evaluator = LocalDeepEvaluator(
-        base_url="http://localhost:11434/v1",
-        model_name="gemma4:e2b",
+        base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
+        model_name=os.getenv("OLLAMA_MODEL", "qwen3.5:2b"),
         temperature=0.1
     )
 
@@ -72,7 +77,7 @@ def run_test():
     Rust, C++, Go, Raft, Paxos, RocksDB, Linux Internals, eBPF, Distributed Storage, gRPC, Docker.
     """
 
-    print("\n--- Running Stage 3 Deep LLM Candidate Evaluation (Ollama: gemma4:e2b) ---")
+    print(f"\n--- Running Stage 3 Deep LLM Candidate Evaluation (Ollama: {evaluator.model_name}) ---")
     result = evaluator.evaluate(
         candidate_id=candidate_id,
         candidate_profile_text=candidate_profile,
@@ -168,7 +173,7 @@ def run_test():
         print(f"   Q: {q.question}")
         print(f"   Expected Signal: {q.expected_positive_signal}\n")
     print("=" * 80)
-    print("✓ Stage 3 Deep Evaluator verification passed successfully!\n")
+    print("[SUCCESS] Stage 3 Deep Evaluator verification passed successfully!\n")
 
 
 if __name__ == "__main__":
