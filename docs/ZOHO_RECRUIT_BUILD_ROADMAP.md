@@ -1,13 +1,16 @@
 # ATS improvement roadmap toward Zoho Recruit capability
 
 Prepared: 3 October 2026  
+Current micro-SaaS priorities and fresh audit: [micro-SaaS improvement plan](MICRO_SAAS_IMPROVEMENT_PLAN.md), prepared 4 October 2026 against HEAD `91c4fa8`. Use that plan for first paid release priorities and validation; this document remains the broader capability roadmap.
+
+Architecture updated: 4 October 2026 — Rust core backend and Python AI services. Detailed boundaries and file changes: [migration plan](<D:/Projects/Applicant Tracking System/ats-system/docs/RUST_CORE_PYTHON_AI_MIGRATION_PLAN.md>).
 Project: D:/Projects/Applicant Tracking System/ats-system  
 Inspected Git HEAD: b470acd, plus substantial existing uncommitted changes  
 Status: proposed implementation plan; source inspection completed, implementation and runtime verification not performed in this planning pass.
 
 ## Decision and scope
 
-Evolve the existing application into a recruitment SaaS with a shared ATS core and two first-release workflows: corporate hiring and recruitment agencies. Preserve the useful parsing, evidence extraction, retrieval, scorecard and recruiter-interface work. Rebuild persistence, identity, authorization and application workflow around it.
+Evolve the existing application into a recruitment SaaS with a shared ATS core and two first-release workflows: corporate hiring and recruitment agencies. Rust will own the public business backend and authoritative persistence; Python will retain parsing, evidence extraction, embeddings, reranking and LLM evaluation behind private service contracts. Preserve the useful AI algorithms and recruiter interface. Build identity, authorization and application workflow in the Rust core.
 
 The user's confirmed requirement is **both corporate hiring teams and agencies from the first release**. The supplied research assumes corporate employers; this plan expands that scope explicitly. Both paths must pass the first-release acceptance gates. Intermediate developer milestones are not releases for only one segment.
 
@@ -23,7 +26,7 @@ These findings are based on current source files, not screenshots or README clai
 
 | Area | Current evidence | Required change | Priority |
 | --- | --- | --- | --- |
-| Frontend and backend foundation | Next.js/React/TypeScript frontend; FastAPI/Pydantic/SQLAlchemy backend | Retain these technologies; organize backend by business domain and replace loose response dictionaries with explicit contracts | Retain |
+| Frontend and backend foundation | Next.js/React/TypeScript frontend; FastAPI/Pydantic/SQLAlchemy backend | Retain frontend and Python AI components; migrate public ATS domains to Rust with explicit contracts | Retain/migrate |
 | Candidate and job persistence | HTTP routes use CANDIDATES_STORE, JOBS_STORE and JOB_CANDIDATES_STORE; task state also lives in memory | Use PostgreSQL repositories for every business read/write; restart and multi-process consistency | P0 |
 | Resume ingestion | upload-async parses during the request and records execution_mode=inline; a separate Celery path writes Candidate rows | One durable ingestion service and task lifecycle, shared by recruiter uploads, career applications and bulk imports | P0 |
 | Login and access | One shared API key; no verified user/organization membership model; include_pii is a client-requested query flag | User sessions, tenant membership, role/object/field policy; server decides permission to reveal PII | P0 |
@@ -75,18 +78,18 @@ Provide accessible, responsive recruiting and application pages. Start with one 
 | Layer | Decision now | Expansion trigger |
 | --- | --- | --- |
 | Web | Keep Next.js/TypeScript and current reusable UI components | Improve module structure and accessible UX as workflows stabilize |
-| API | Keep FastAPI as a modular monolith; thin routers, domain services, repositories | Extract a service only for measured scaling, isolation or ownership needs |
-| Database | PostgreSQL as system of record; SQLAlchemy plus Alembic migrations | Read replica or dedicated tenant database when measured/customer requirements justify it |
+| API | Rust/Axum modular core for public ATS endpoints; private Python/FastAPI service for AI dispatch/results | Extract additional business services only for measured scaling, isolation or ownership needs |
+| Database | PostgreSQL as system of record; Rust/SQLx owns business transactions and one reviewed migration set | Read replica or dedicated tenant database when measured/customer requirements justify it |
 | Search | Start with indexed SQL/full-text filtering plus existing pgvector capabilities; tenant-scope all retrieval | Evaluate OpenSearch when representative load, faceting or relevance requirements exceed this approach |
-| Background work | Retain Celery/Redis, add DB-backed jobs and transactional outbox | Consider Temporal for long-running, versioned human workflows after simple persisted rules prove insufficient |
+| Background work | Rust owns durable jobs/outbox; private Python bridge dispatches AI tasks through Celery/Redis and returns results for Rust to persist | Consider Temporal for long-running, versioned human workflows after simple persisted rules prove insufficient |
 | Files | S3-compatible object storage; quarantine, scanning, document versions and authorized downloads | Regional buckets or stronger customer-specific isolation when required |
 | Identity | Integrate a managed identity provider; keep authorization inside the ATS | Enterprise SSO when required by first enterprise pilots; SCIM/delegation in the enterprise phase |
 | Parsing | Benchmark existing parser and a commercial parser behind the same interface | Choose per quality, language, privacy and cost evidence |
-| AI | Optional asynchronous evaluation, model/prompt versions, evidence links and human review | Better models only after evaluation shows measurable benefit |
+| AI | Python/Instructor/Pydantic for optional asynchronous extraction/evaluation, versioned results and evidence; Rust validates and persists authorized outputs | Better models only after evaluation shows measurable benefit |
 | Reporting | Indexed SQL and bounded/materialized summaries based on real events | Warehouse when historical/custom reports interfere with transactional latency |
 | Hosting | Managed application containers, managed PostgreSQL, Redis and object storage in one region | Kubernetes/multiple regions only when operational or contractual requirements warrant them |
 
-The research's Kotlin/Spring recommendation is an alternative technology choice for a greenfield team. This code review does not establish a reason to rewrite the transactional backend in another language.
+The selected Rust/Python split reflects the user's architecture decision on 4 October 2026. Keep the Rust business core modular and preserve Python AI algorithms. Re-estimate the timeline after implementing the first Rust slice; another service and cross-language contracts add migration and operational work.
 
 FastAPI's deployment guidance discusses worker processes and separate memory, which reinforces the need to remove business records from process-local dictionaries. [FastAPI deployment concepts](https://fastapi.tiangolo.com/deployment/concepts/)
 
@@ -94,7 +97,7 @@ PostgreSQL RLS provides another enforcement layer, but table owners and privileg
 
 Celery task retries require idempotent business effects; a queue alone does not establish exactly-once processing. Use stable job IDs, uniqueness constraints and retry-safe writes. [Celery task guidance](https://docs.celeryq.dev/en/stable/userguide/tasks.html)
 
-Alembic supplies a versioned migration environment suited to the existing SQLAlchemy stack. Review generated changes and test upgrades against both empty and representative existing databases. [Alembic tutorial](https://alembic.sqlalchemy.org/en/latest/tutorial.html)
+SQLx is the selected database layer for the Rust core, including one reviewed migration set. Baseline the existing SQLAlchemy-era schema and test upgrades against both empty and representative existing databases. Python AI services must not run an independent production migration history. [SQLx documentation](https://docs.rs/sqlx/latest/sqlx/)
 
 Temporal is a later candidate for durable long-running workflow execution; first-release stages, approvals and reminders can use persisted state plus workers. Adoption should follow concrete workflow requirements. [Temporal documentation](https://docs.temporal.io/)
 
@@ -157,7 +160,7 @@ All items below are proposed and not yet implemented. BE = backend/full-stack ow
 | --- | --- | --- | --- | --- |
 | ATS-001 | Establish clean baseline and update the unfinished review record | None | Lead/QA | Record current lint, type, build, offline and integration outcomes separately; preserve existing work |
 | ATS-002 | Replace misleading demo output | None | FE | No fixed analytics export or unverifiable audit/compliance badges; demo data cannot appear as customer records |
-| ATS-003 | Domain schema and migration baseline | ATS-001 | BE | Reviewed tenant/user/application/client schema; Alembic baseline; upgrade and restore rehearsal |
+| ATS-003 | Rust core, domain schema and migration baseline | ATS-001 | BE | Axum/SQLx foundation; reviewed tenant/user/application/client schema; one Rust-managed migration baseline; upgrade and restore rehearsal |
 | ATS-004 | Identity, membership and permission matrix | ATS-003 | BE/FE | Real login/invite/revoke; roles and job/client scopes enforced server-side; PII reveal logged |
 | ATS-005 | Shared repositories and application service | ATS-003/004 | BE | Candidate/job/application routes use PostgreSQL; same candidate can have independent application stages |
 | ATS-006 | Durable document storage | ATS-003/004 | BE/Platform | Tenant-scoped object access, quarantine/scanning, document versions and verified original-PDF retrieval |
@@ -177,18 +180,18 @@ First two weeks: ATS-001/002, discovery with both segments, and design for ATS-0
 
 | File or area | Planned change |
 | --- | --- |
-| [Database models](<D:/Projects/Applicant Tracking System/ats-system/ats-core/src/ats_core/models/db.py>) | Tenant-safe schema, separate application state, documents, task/outbox/audit entities; split modules once needed |
-| [API authentication](<D:/Projects/Applicant Tracking System/ats-system/ats-core/src/ats_core/api/auth.py>) | Replace shared human API-key access with identity/membership dependencies and policy checks |
-| [Candidate routes](<D:/Projects/Applicant Tracking System/ats-system/ats-core/src/ats_core/api/v1/candidates.py>) | Remove process-local records, use ingestion service, authorize PII/files/tasks |
-| [Job routes](<D:/Projects/Applicant Tracking System/ats-system/ats-core/src/ats_core/api/v1/jobs.py>) | Remove seeded production data and dictionary state; route stage changes through application service |
-| [Worker tasks](<D:/Projects/Applicant Tracking System/ats-system/ats-core/src/ats_core/workers/tasks.py>) | Process tenant/document/job IDs, preserve originals, use idempotent service writes and durable states |
-| [Matching route](<D:/Projects/Applicant Tracking System/ats-system/ats-core/src/ats_core/api/v1/match.py>) | Tenant-filter corpus, scope to job/application, enqueue expensive evaluation and persist versioned results |
-| [Frontend API client](<D:/Projects/Applicant Tracking System/ats-system/frontend/src/lib/api.ts>) | Identity-aware API access, generated/checked contracts, real asynchronous polling and cancellation |
+| [Database models](<D:/Projects/Applicant Tracking System/ats-system/ats-core/src/ats_core/models/db.py>) | Use as reference for tenant-safe Rust/SQLx schema, separate application state, documents, task/outbox/audit entities |
+| [API authentication](<D:/Projects/Applicant Tracking System/ats-system/ats-core/src/ats_core/api/auth.py>) | Migrate human identity/membership policies to Rust; use private service identity for Python AI |
+| [Candidate routes](<D:/Projects/Applicant Tracking System/ats-system/ats-core/src/ats_core/api/v1/candidates.py>) | Move CRUD, PII/files/task permissions to Rust; use private Python ingestion through durable jobs |
+| [Job routes](<D:/Projects/Applicant Tracking System/ats-system/ats-core/src/ats_core/api/v1/jobs.py>) | Move jobs and application transitions to Rust/PostgreSQL; retire dictionary and seeded production state |
+| [Worker tasks](<D:/Projects/Applicant Tracking System/ats-system/ats-core/src/ats_core/workers/tasks.py>) | Process scoped tenant/document/job inputs, preserve originals, return recoverable results to Rust; remove direct business-table commits |
+| [Matching route](<D:/Projects/Applicant Tracking System/ats-system/ats-core/src/ats_core/api/v1/match.py>) | Rust authorizes retrieval and evaluation jobs; Python computes embeddings/reranking/evaluation; Rust saves versioned results |
+| [Frontend API client](<D:/Projects/Applicant Tracking System/ats-system/frontend/src/lib/api.ts>) | Rust public API access with real sessions, generated/checked contracts, asynchronous polling and cancellation |
 | [Settings page](<D:/Projects/Applicant Tracking System/ats-system/frontend/src/app/settings/page.tsx>) | Connect tenant, team, privacy and provider configuration to real authorized endpoints |
 | [Analytics page](<D:/Projects/Applicant Tracking System/ats-system/frontend/src/app/analytics/page.tsx>) | Fetch bounded, filterable reporting data; export the same underlying query |
 | [Audit page](<D:/Projects/Applicant Tracking System/ats-system/frontend/src/app/audit-log/page.tsx>) | Display real business and evaluation events with field permissions and retention behavior |
 
-Add domain service/repository packages under the backend, an Alembic migration directory, application/worker build definitions, CI workflows and browser integration tests. These are proposed additions, not existing capabilities.
+Add a Rust core backend with domain/repository modules and SQLx migrations, private Python AI endpoints, shared versioned contracts, application/worker build definitions, CI workflows and browser integration tests. These are proposed additions, not existing capabilities. See the [Rust/Python migration plan](<D:/Projects/Applicant Tracking System/ats-system/docs/RUST_CORE_PYTHON_AI_MIGRATION_PLAN.md>) for exact ownership and migration steps.
 
 Before editing frontend code, follow its local AGENTS.md requirement to consult the installed Next.js documentation for the relevant APIs.
 
@@ -200,7 +203,7 @@ Before editing frontend code, follow its local AGENTS.md requirement to consult 
 4. Map legacy string identifiers such as cand-prefixed IDs to canonical UUIDs; preserve a migration map for resume links and references. Resolve job/application duplicates explicitly.
 5. Assign imported data to a verified tenant; stop on ambiguous ownership. Only after backfill and validation make ownership mandatory and enforce tenant foreign keys/RLS.
 6. Copy original resumes to durable object storage and verify hashes/access before retiring local-file assumptions. Preserve restricted identity/contact fields separately from anonymized extraction.
-7. Replace API and worker writes with the same domain/repository contract. Use one authoritative write path; avoid indefinite dual writes. Save task/outbox intent in the same transaction as the relevant business state.
+7. Make Rust the authoritative writer for business and saved AI results. Python workers deliver versioned results through an authenticated internal Rust endpoint. Save task/outbox intent in the same transaction as the relevant business state and make dispatch/result delivery idempotent.
 8. Inspect existing embedding model and column dimensions, regenerate incompatible embeddings, rebuild indexes and test tenant-scoped retrieval. Record parser/model/prompt versions.
 9. Update the frontend for durable processing states, independent application stages and explicit permission failures.
 10. Rehearse migration, count reconciliation, rollback/restore and end-to-end journeys. Switch traffic only after agreed gates; preserve rollback assets until the validation window ends.
@@ -301,4 +304,3 @@ Confirm:
 Track activation (first job and application), active recruiters, percentage of workflow completed in-product, feedback delay, stage aging, failed imports, support burden and willingness to pay separately for each segment. Establish customer baselines before promising hiring-speed improvements.
 
 The first implementation milestone is **a tenant-isolated job and candidate/application flow that survives restarts, processes a resume through one durable pipeline, and returns the original PDF under authorization**. That milestone unlocks the corporate and agency modules without amplifying the present persistence and permission gaps.
-
