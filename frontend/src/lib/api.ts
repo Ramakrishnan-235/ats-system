@@ -97,8 +97,38 @@ export interface UploadResponse {
 }
 export interface UploadTask {
   task_id: string; state: string; execution_mode?: string; error?: string;
-  progress?: number; step?: string; result?: { candidate_id: string; evaluation_status?: string };
+  progress?: number; step?: string;
+  result?: { candidate_id: string; evaluation_status?: string; match_score?: number | null; status?: string };
 }
+export interface UploadWaitOptions {
+  signal?: AbortSignal;
+  pollIntervalMs?: number;
+  timeoutMs?: number;
+  onProgress?: (task: UploadTask) => void;
+}
+
+function sleepWithSignal(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (signal) {
+        signal.removeEventListener("abort", onAbort);
+      }
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    if (signal) {
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  });
+}
+
 export function uploadResumeFile(file: File, jobId?: string, signal?: AbortSignal) {
   const data = new FormData();
   data.append("file", file);
@@ -106,13 +136,94 @@ export function uploadResumeFile(file: File, jobId?: string, signal?: AbortSigna
   return json<UploadResponse>("/candidates/upload-async", { method: "POST", body: data, signal });
 }
 export const fetchUploadTask = (taskId: string, signal?: AbortSignal) => json<UploadTask>(`/candidates/tasks/${id(taskId)}`, { signal });
-// Current backend processes inline. Verify the terminal task before showing success.
-export async function uploadAndWait(file: File, jobId?: string, signal?: AbortSignal) {
+
+export async function uploadAndWait(
+  file: File,
+  jobId?: string,
+  signalOrOptions?: AbortSignal | UploadWaitOptions,
+  onProgressCallback?: (task: UploadTask) => void
+): Promise<UploadResponse> {
+  let signal: AbortSignal | undefined;
+  let pollIntervalMs = 500;
+  let timeoutMs = 120000;
+  let onProgress = onProgressCallback;
+
+  if (signalOrOptions instanceof AbortSignal) {
+    signal = signalOrOptions;
+  } else if (signalOrOptions && typeof signalOrOptions === "object") {
+    signal = signalOrOptions.signal;
+    if (typeof signalOrOptions.pollIntervalMs === "number") {
+      pollIntervalMs = signalOrOptions.pollIntervalMs;
+    }
+    if (typeof signalOrOptions.timeoutMs === "number") {
+      timeoutMs = signalOrOptions.timeoutMs;
+    }
+    if (signalOrOptions.onProgress) {
+      onProgress = signalOrOptions.onProgress;
+    }
+  }
+
   const uploaded = await uploadResumeFile(file, jobId, signal);
-  const task = await fetchUploadTask(uploaded.task_id, signal);
-  if (task.state !== "SUCCESS") throw new ApiError(task.error || uploaded.message || `Upload task is ${task.state}.`);
-  if (!uploaded.candidate_id) throw new ApiError("Backend did not return a candidate ID.");
-  return uploaded;
+
+  if (!uploaded.task_id) {
+    if (!uploaded.candidate_id) {
+      throw new ApiError("Backend did not return a candidate ID or task ID.");
+    }
+    return uploaded;
+  }
+
+  const startTime = Date.now();
+  let consecutiveErrors = 0;
+
+  while (true) {
+    if (signal?.aborted) {
+      throw signal.reason ?? new DOMException("Aborted", "AbortError");
+    }
+
+    let task: UploadTask;
+    try {
+      task = await fetchUploadTask(uploaded.task_id, signal);
+      consecutiveErrors = 0;
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      consecutiveErrors++;
+      if (consecutiveErrors >= 5 || Date.now() - startTime >= timeoutMs) {
+        throw err;
+      }
+      await sleepWithSignal(pollIntervalMs, signal);
+      continue;
+    }
+
+    try {
+      onProgress?.(task);
+    } catch {
+      // Ignore progress listener errors
+    }
+
+    if (task.state === "SUCCESS") {
+      const candidateId = task.result?.candidate_id || uploaded.candidate_id;
+      if (!candidateId) {
+        throw new ApiError("Backend did not return a candidate ID.");
+      }
+      return {
+        ...uploaded,
+        candidate_id: candidateId,
+        status: task.result?.status || uploaded.status,
+        evaluation_status: task.result?.evaluation_status || uploaded.evaluation_status,
+        match_score: task.result?.match_score !== undefined ? task.result.match_score : (uploaded.match_score ?? null),
+      };
+    }
+
+    if (task.state === "FAILURE") {
+      throw new ApiError(task.error || uploaded.message || "Resume processing failed.");
+    }
+
+    if (Date.now() - startTime >= timeoutMs) {
+      throw new ApiError(`Upload task timed out after ${Math.round(timeoutMs / 1000)}s while in state ${task.state}.`);
+    }
+
+    await sleepWithSignal(pollIntervalMs, signal);
+  }
 }
 export interface MatchResponse {
   status: string;

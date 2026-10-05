@@ -30,7 +30,25 @@ export default function UploadResumesPage() {
     setActiveUploads(previous => [{ id: uploadId, filename: file.name, taskId: "Awaiting backend", statusLabel: "Uploading and processing", progress: 0, currentStep: "Parsing" }, ...previous]);
     const started = performance.now();
     try {
-      const result = await uploadAndWait(file, undefined, controller.signal);
+      const result = await uploadAndWait(file, undefined, controller.signal, (task) => {
+        setActiveUploads(previous => previous.map(upload => {
+          if (upload.id !== uploadId) return upload;
+          let step: ActiveUpload["currentStep"] = "Parsing";
+          const rawStep = task.step?.toLowerCase() || "";
+          if (rawStep.includes("pii") || rawStep.includes("scrub") || rawStep.includes("redact")) step = "PII Scrub";
+          else if (rawStep.includes("evaluat") || rawStep.includes("llm") || rawStep.includes("score")) step = "LLM Extract";
+          else if (rawStep.includes("index") || rawStep.includes("retriev")) step = "Indexing";
+          else if (task.state === "SUCCESS") step = "Done";
+
+          return {
+            ...upload,
+            taskId: task.task_id || upload.taskId,
+            statusLabel: task.step ? `${task.step}...` : (task.state === "PROGRESS" ? "Processing resume..." : upload.statusLabel),
+            progress: task.progress ?? (task.state === "SUCCESS" ? 100 : upload.progress),
+            currentStep: step,
+          };
+        }));
+      });
       if (controller.signal.aborted) return;
       setCompletedUploads(previous => [{ id: uploadId, filename: file.name, taskId: result.task_id, duration: `${((performance.now() - started) / 1000).toFixed(1)}s`, candidateId: result.candidate_id, evaluationStatus: result.evaluation_status }, ...previous]);
       originals.current.delete(uploadId);

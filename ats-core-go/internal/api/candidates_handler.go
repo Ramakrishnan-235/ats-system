@@ -213,6 +213,7 @@ func (h *CandidatesHandler) processUpload(taskID, candidateID, filename, pdfPath
 	}
 	scorecard := &models.Scorecard{EvaluationStatus: "PENDING", MatchTier: "Not Evaluated", Categories: []models.CategoryScore{}, TeamNotes: []models.Note{}}
 	if job != nil {
+		h.store.SaveTask(&models.UploadTask{TaskID: taskID, State: "PROGRESS", Progress: 40, Step: "Evaluating Match", ExecutionMode: "async_goroutine"})
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 		name := strings.TrimSuffix(filename, filepath.Ext(filename))
@@ -228,6 +229,7 @@ func (h *CandidatesHandler) processUpload(taskID, candidateID, filename, pdfPath
 	candidate := &models.Candidate{ID: candidateID, Name: name, AnonymizedName: anonymous, Avatar: "CD", Stage: "Screening", Status: "Screening", CreatedAt: models.NowUTC(), AppliedDate: time.Now().UTC().Format("2006-01-02"), CoreSkills: []string{}, Experience: []any{}, Scorecard: *scorecard, ResumeFilename: filename, RawText: text}
 	if job != nil {
 		candidate.AppliedForJob = job.Title
+		candidate.AppliedForJobID = job.ID
 	}
 	h.store.SaveCandidate(candidate)
 	if job != nil {

@@ -224,11 +224,32 @@ func (h *JobsHandler) AddJobCandidate(w http.ResponseWriter, r *http.Request) {
 	jc.Name = candidate.Name
 	jc.Headline = candidate.TargetHeadline
 	jc.Skills = candidate.CoreSkills
-	jc.MatchScore = nil
-	jc.MatchLabel = "Not Evaluated"
-	jc.TechnicalDepthScore = nil
-	jc.SystemDesignScore = nil
-	jc.Quote = ""
+	if candidate.Scorecard.EvaluationStatus == "COMPLETED" && (candidate.AppliedForJobID == "" || candidate.AppliedForJobID == jobID) {
+		if candidate.Scorecard.OverallMatchScore != nil {
+			val := int(*candidate.Scorecard.OverallMatchScore)
+			jc.MatchScore = &val
+		}
+		jc.MatchLabel = candidate.Scorecard.MatchTier
+		for _, cat := range candidate.Scorecard.Categories {
+			catLower := strings.ToLower(cat.Name)
+			if strings.Contains(catLower, "technical") && jc.TechnicalDepthScore == nil {
+				score := cat.Score
+				jc.TechnicalDepthScore = &score
+			} else if strings.Contains(catLower, "system") && jc.SystemDesignScore == nil {
+				score := cat.Score
+				jc.SystemDesignScore = &score
+			}
+			if jc.Quote == "" && cat.Quote != "" {
+				jc.Quote = cat.Quote
+			}
+		}
+	} else {
+		jc.MatchScore = nil
+		jc.MatchLabel = "Not Evaluated"
+		jc.TechnicalDepthScore = nil
+		jc.SystemDesignScore = nil
+		jc.Quote = ""
+	}
 	if jc.Stage != "" && !validStage(jc.Stage) {
 		writeError(w, http.StatusBadRequest, "Invalid candidate stage")
 		return

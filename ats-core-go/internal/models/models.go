@@ -49,6 +49,7 @@ type Candidate struct {
 	AppliedDate       string    `json:"applied_date"`
 	CreatedAt         string    `json:"created_at"`
 	AppliedForJob     string    `json:"applied_for_job"`
+	AppliedForJobID   string    `json:"applied_for_job_id,omitempty"`
 	YearsOfExperience *float64  `json:"years_of_experience"`
 	CoreSkills        []string  `json:"core_skills"`
 	Experience        []any     `json:"experience"`

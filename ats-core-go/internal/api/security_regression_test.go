@@ -38,10 +38,11 @@ func (s stubParser) ExtractText(_ []byte) (string, error) {
 func (s stubParser) LocateCitation(_ []byte, _ string) *models.PDFLocation { return nil }
 
 type stubEvaluator struct {
-	called  chan error
-	summary chan string
-	err     error
-	panic   bool
+	called    chan error
+	summary   chan string
+	scorecard *models.Scorecard
+	err       error
+	panic     bool
 }
 
 func (s stubEvaluator) EvaluateCandidate(ctx context.Context, summary, _ string) (*models.Scorecard, error) {
@@ -53,6 +54,9 @@ func (s stubEvaluator) EvaluateCandidate(ctx context.Context, summary, _ string)
 	}
 	if s.panic {
 		panic("sensitive details")
+	}
+	if s.scorecard != nil {
+		return s.scorecard, nil
 	}
 	return nil, s.err
 }
@@ -368,3 +372,96 @@ func TestUploadRedactsKnownIdentifiersBeforeEvaluator(t *testing.T) {
 	_ = json.Unmarshal(rr.Body.Bytes(), &response)
 	waitTask(t, h, response["task_id"])
 }
+
+func TestUploadAsyncWithJobCompletesAndPreservesAppliedForJobID(t *testing.T) {
+	h := testCandidateHandler(t)
+	score := 85.0
+	h.evaluator = stubEvaluator{
+		scorecard: &models.Scorecard{
+			OverallMatchScore: &score,
+			MatchTier:         "Strong Match",
+			EvaluationStatus:  "COMPLETED",
+			Categories:        []models.CategoryScore{{Name: "Technical Depth", Score: 9.0, MaxScore: 10.0, Quote: "Expert Go knowledge"}},
+		},
+	}
+	jobID := "job-" + uuid.NewString()
+	h.store.SaveJob(&models.Job{ID: jobID, Title: "Senior Go Engineer", JobDescription: "Go microservices"})
+
+	rr := httptest.NewRecorder()
+	h.UploadResumeAsync(rr, uploadRequest(t, "Bob_Builder.pdf", "%PDF-valid-data", jobID))
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body)
+	}
+
+	var uploadResp map[string]any
+	_ = json.Unmarshal(rr.Body.Bytes(), &uploadResp)
+	taskID, _ := uploadResp["task_id"].(string)
+	candidateID, _ := uploadResp["candidate_id"].(string)
+	if taskID == "" || candidateID == "" {
+		t.Fatalf("missing task_id or candidate_id in upload response: %v", uploadResp)
+	}
+
+	task := waitTask(t, h, taskID)
+	if task.State != "SUCCESS" {
+		t.Fatalf("expected SUCCESS, got %s (error: %s)", task.State, task.Error)
+	}
+	if task.Progress != 100 {
+		t.Fatalf("expected progress 100, got %d", task.Progress)
+	}
+
+	candidate, ok := h.store.GetCandidate(candidateID, true)
+	if !ok {
+		t.Fatalf("candidate not found in store: %s", candidateID)
+	}
+	if candidate.AppliedForJobID != jobID {
+		t.Fatalf("expected AppliedForJobID %q, got %q", jobID, candidate.AppliedForJobID)
+	}
+	if candidate.AppliedForJob != "Senior Go Engineer" {
+		t.Fatalf("expected AppliedForJob %q, got %q", "Senior Go Engineer", candidate.AppliedForJob)
+	}
+	if candidate.Scorecard.OverallMatchScore == nil || *candidate.Scorecard.OverallMatchScore != 85.0 {
+		t.Fatalf("expected scorecard score 85.0, got %v", candidate.Scorecard.OverallMatchScore)
+	}
+
+	// Verify JobsHandler.AddJobCandidate preserves evaluation when added to the same job
+	jh := NewJobsHandler(h.store)
+	rrAdd := httptest.NewRecorder()
+	jh.AddJobCandidate(rrAdd, requestParam("POST", "/jobs/candidates", "job_id", jobID, strings.NewReader(fmt.Sprintf(`{"id":%q}`, candidateID))))
+	if rrAdd.Code != http.StatusOK {
+		t.Fatalf("AddJobCandidate failed: %d %s", rrAdd.Code, rrAdd.Body)
+	}
+	jobCands := h.store.GetJobCandidates(jobID, true)
+	var found *models.JobCandidate
+	for _, jc := range jobCands {
+		if jc.ID == candidateID {
+			found = jc
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("candidate %s not in job candidates: %+v", candidateID, jobCands)
+	}
+	if found.MatchScore == nil || *found.MatchScore != 85 {
+		t.Fatalf("expected MatchScore 85, got %v", found.MatchScore)
+	}
+	if found.MatchLabel != "Strong Match" {
+		t.Fatalf("expected MatchLabel 'Strong Match', got %q", found.MatchLabel)
+	}
+	if found.TechnicalDepthScore == nil || *found.TechnicalDepthScore != 9.0 {
+		t.Fatalf("expected TechnicalDepthScore 9.0, got %v", found.TechnicalDepthScore)
+	}
+
+	// Verify adding to an unrelated job does NOT copy scores
+	otherJobID := "job-" + uuid.NewString()
+	h.store.SaveJob(&models.Job{ID: otherJobID, Title: "Product Manager", JobDescription: "Roadmaps"})
+	rrAddOther := httptest.NewRecorder()
+	jh.AddJobCandidate(rrAddOther, requestParam("POST", "/jobs/candidates", "job_id", otherJobID, strings.NewReader(fmt.Sprintf(`{"id":%q}`, candidateID))))
+	if rrAddOther.Code != http.StatusOK {
+		t.Fatalf("AddJobCandidate other job failed: %d %s", rrAddOther.Code, rrAddOther.Body)
+	}
+	otherJobCands := h.store.GetJobCandidates(otherJobID, true)
+	if len(otherJobCands) != 1 || otherJobCands[0].MatchScore != nil || otherJobCands[0].MatchLabel != "Not Evaluated" {
+		t.Fatalf("expected un-evaluated for other job, got: %+v", otherJobCands[0])
+	}
+}
+
