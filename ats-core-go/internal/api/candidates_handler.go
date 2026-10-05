@@ -211,6 +211,7 @@ func (h *CandidatesHandler) processUpload(taskID, candidateID, filename, pdfPath
 	if err != nil || strings.TrimSpace(text) == "" {
 		return
 	}
+	profile := services.ExtractCandidateProfile(text)
 	scorecard := &models.Scorecard{EvaluationStatus: "PENDING", MatchTier: "Not Evaluated", Categories: []models.CategoryScore{}, TeamNotes: []models.Note{}}
 	if job != nil {
 		h.store.SaveTask(&models.UploadTask{TaskID: taskID, State: "PROGRESS", Progress: 40, Step: "Evaluating Match", ExecutionMode: "async_goroutine"})
@@ -218,15 +219,16 @@ func (h *CandidatesHandler) processUpload(taskID, candidateID, filename, pdfPath
 		defer cancel()
 		name := strings.TrimSuffix(filename, filepath.Ext(filename))
 		normalizedName := strings.NewReplacer("_", " ", "-", " ").Replace(name)
-		summary := services.RedactKnownPII(text, name, normalizedName)
+		identifiers := append(services.ProfileIdentifiers(profile), name, normalizedName)
+		summary := services.RedactKnownPII(text, identifiers...)
 		scorecard, err = h.evaluator.EvaluateCandidate(ctx, summary, job.JobDescription)
 		if err != nil || scorecard == nil {
 			return
 		}
 	}
-	name := strings.TrimSuffix(filename, filepath.Ext(filename))
+	name := profile.Name
 	anonymous := "Candidate #" + candidateID[len(candidateID)-6:]
-	candidate := &models.Candidate{ID: candidateID, Name: name, AnonymizedName: anonymous, Avatar: "CD", Stage: "Screening", Status: "Screening", CreatedAt: models.NowUTC(), AppliedDate: time.Now().UTC().Format("2006-01-02"), CoreSkills: []string{}, Experience: []any{}, Scorecard: *scorecard, ResumeFilename: filename, RawText: text}
+	candidate := &models.Candidate{ID: candidateID, Name: name, AnonymizedName: anonymous, Avatar: "CD", Stage: "Screening", Status: "Screening", CreatedAt: models.NowUTC(), AppliedDate: time.Now().UTC().Format("2006-01-02"), CoreSkills: profile.CoreSkills, Experience: profile.Experience, TargetHeadline: profile.TargetHeadline, Role: profile.Role, Email: profile.Email, Phone: profile.Phone, Location: profile.Location, LinkedIn: profile.LinkedIn, Scorecard: *scorecard, ResumeFilename: filename, RawText: text}
 	if job != nil {
 		candidate.AppliedForJob = job.Title
 		candidate.AppliedForJobID = job.ID
@@ -238,12 +240,12 @@ func (h *CandidatesHandler) processUpload(taskID, candidateID, filename, pdfPath
 			value := int(*scorecard.OverallMatchScore)
 			score = &value
 		}
-		h.store.AddJobCandidate(job.ID, &models.JobCandidate{ID: candidateID, Name: name, Avatar: "CD", MatchScore: score, MatchLabel: scorecard.MatchTier, Skills: []string{}, Stage: "Screening", SourceResumeLink: fmt.Sprintf("/candidates/%s", candidateID)})
+		h.store.AddJobCandidate(job.ID, &models.JobCandidate{ID: candidateID, Name: name, Avatar: "CD", MatchScore: score, MatchLabel: scorecard.MatchTier, Skills: profile.CoreSkills, Stage: "Screening", SourceResumeLink: fmt.Sprintf("/candidates/%s", candidateID)})
 	}
 	resultMap := map[string]any{
-		"status": "COMPLETED",
-		"candidate_id": candidateID,
-		"match_score": scorecard.OverallMatchScore,
+		"status":            "COMPLETED",
+		"candidate_id":      candidateID,
+		"match_score":       scorecard.OverallMatchScore,
 		"evaluation_status": scorecard.EvaluationStatus,
 	}
 	if job != nil {
