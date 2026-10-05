@@ -27,16 +27,38 @@ export function AddCandidateJobModal({ open, onOpenChange, jobTitle, jobId, exis
   useEffect(() => {
     if (!open) return;
     let disposed = false;
-    fetchCandidates().then(data => { if (!disposed) setPool(data); }).catch(reason => { if (!disposed) setError(getErrorMessage(reason)); });
+    fetchCandidates({ include_pii: true })
+      .then(data => { if (!disposed) setPool(data); })
+      .catch(() => {
+        fetchCandidates()
+          .then(data => { if (!disposed) setPool(data); })
+          .catch(reason => { if (!disposed) setError(getErrorMessage(reason)); });
+      });
     return () => { disposed = true; };
   }, [open]);
   const assign = async (candidate: CandidateDetail) => {
+    let candidateToAssign = candidate;
+    if (candidate.is_pii_masked && candidate.id) {
+      try {
+        const unmasked = await fetchCandidate(candidate.id, true);
+        if (unmasked && !unmasked.is_pii_masked) {
+          candidateToAssign = unmasked;
+        }
+      } catch {
+        // Fallback to current candidate if unmasking request fails
+      }
+    }
+
     await onAddCandidate({
-      id: candidate.id, name: candidate.name, headline: candidate.target_headline || candidate.role,
-      avatar: candidate.avatar, skills: candidate.core_skills, stage: "Screening",
+      id: candidateToAssign.id,
+      name: candidateToAssign.name,
+      headline: candidateToAssign.target_headline || candidateToAssign.role,
+      avatar: candidateToAssign.avatar,
+      skills: candidateToAssign.core_skills,
+      stage: "Screening",
       // Match scores belong to the job they were evaluated against.
-      matchScore: candidate.applied_for_job_id === jobId ? candidate.scorecard.overall_match_score : null,
-      sourceResumeLink: `/candidates/${candidate.id}`,
+      matchScore: candidateToAssign.applied_for_job_id === jobId ? candidateToAssign.scorecard?.overall_match_score : null,
+      sourceResumeLink: `/candidates/${candidateToAssign.id}`,
     });
   };
   const select = async (candidate: CandidateDetail) => {
@@ -52,7 +74,7 @@ export function AddCandidateJobModal({ open, onOpenChange, jobTitle, jobId, exis
     try {
       const result = await uploadAndWait(file, jobId, pending.signal);
       if (pending.signal.aborted) return;
-      const candidate = await fetchCandidate(result.candidate_id);
+      const candidate = await fetchCandidate(result.candidate_id, true);
       if (pending.signal.aborted) return;
       await assign(candidate);
       onOpenChange(false);

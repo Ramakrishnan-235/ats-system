@@ -425,3 +425,41 @@ def test_rerun_ai_match_syncs_candidates_and_updates_pipeline(api, monkeypatch):
     assert data["candidates"][0]["matchScore"] == 92
     assert jobs.JOBS_STORE["job-open"]["candidates_count"] >= 1
     assert jobs.JOB_CANDIDATES_STORE["job-open"][0]["id"] == cand_id
+
+
+def test_add_existing_candidate_to_job_does_not_overwrite_real_name_with_masked(api):
+    cand_id = "cand-real-name-test"
+    candidates.CANDIDATES_STORE[cand_id] = {
+        "id": cand_id,
+        "name": "Alice Wonderland",
+        "anonymized_name": "Candidate #999",
+        "target_headline": "Principal Architect",
+        "avatar": "AW",
+        "core_skills": ["Architecture", "Python"],
+        "stage": "Screening",
+        "scorecard": {"overall_match_score": 88},
+    }
+
+    # Simulate frontend submitting the masked candidate representation to a job
+    response = api.post("/api/v1/jobs/job-open/candidates", json={
+        "id": cand_id,
+        "name": "Candidate #999",
+        "headline": "Software Engineer",
+        "skills": ["Architecture"],
+        "avatar": "CD",
+        "stage": "Screening",
+    })
+    assert response.status_code == 200
+
+    # Verify that in CANDIDATES_STORE, the real name and headline are preserved!
+    cand_in_store = candidates.CANDIDATES_STORE[cand_id]
+    assert cand_in_store["name"] == "Alice Wonderland"
+    assert cand_in_store["target_headline"] == "Principal Architect"
+
+    # Verify that in JOB_CANDIDATES_STORE, the candidate has their real unmasked name when queried with include_pii=True
+    resp_unmasked = api.get("/api/v1/jobs/job-open/candidates?include_pii=true")
+    assert resp_unmasked.status_code == 200
+    job_cands = resp_unmasked.json()
+    assert len(job_cands) >= 1
+    assert job_cands[0]["name"] == "Alice Wonderland"
+    assert job_cands[0]["headline"] == "Principal Architect"

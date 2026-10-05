@@ -997,11 +997,43 @@ async def add_job_candidate(job_id: str, candidate: JobCandidatePayload, include
     current = get_or_create_job_candidates(job_id)
 
     new_id = candidate.id or f"cand-{uuid.uuid4().hex}"
-    initials = candidate.name.split(" ")[0][:1] + (candidate.name.split(" ")[1][:1] if len(candidate.name.split(" ")) > 1 else "")
-    avatar = candidate.avatar or initials.upper() or "CD"
-
     cand_obj = candidate.model_dump()
     cand_obj["id"] = new_id
+
+    from ats_core.api.v1.candidates import (
+        CANDIDATES_STORE,
+        register_candidate_profile,
+        is_masked_or_anonymous_name,
+        is_generic_or_error_headline,
+    )
+
+    cand_rec = CANDIDATES_STORE.get(new_id)
+    if cand_rec:
+        # Candidate already exists in repository — inherit and preserve real identity
+        stored_name = cand_rec.get("name")
+        if stored_name and not is_masked_or_anonymous_name(stored_name):
+            cand_obj["name"] = stored_name
+        elif candidate.name and not is_masked_or_anonymous_name(candidate.name):
+            cand_obj["name"] = candidate.name
+        else:
+            cand_obj["name"] = stored_name or candidate.name
+
+        stored_headline = cand_rec.get("target_headline")
+        if stored_headline and not is_generic_or_error_headline(stored_headline):
+            cand_obj["headline"] = stored_headline
+        elif candidate.headline and not is_generic_or_error_headline(candidate.headline):
+            cand_obj["headline"] = candidate.headline
+        else:
+            cand_obj["headline"] = stored_headline or candidate.headline
+
+        if cand_rec.get("avatar") and cand_rec["avatar"] != "CD":
+            cand_obj["avatar"] = cand_rec["avatar"]
+        if cand_rec.get("core_skills"):
+            cand_obj["skills"] = cand_rec["core_skills"]
+        cand_obj["isImageAvatar"] = cand_rec.get("isImageAvatar", False)
+
+    initials = cand_obj["name"].split(" ")[0][:1] + (cand_obj["name"].split(" ")[1][:1] if len(cand_obj["name"].split(" ")) > 1 else "")
+    avatar = cand_obj.get("avatar") or initials.upper() or "CD"
     cand_obj["avatar"] = avatar
     cand_obj["sourceResumeLink"] = f"/candidates/{new_id}"
 
@@ -1023,7 +1055,6 @@ async def add_job_candidate(job_id: str, candidate: JobCandidatePayload, include
         c["rank"] = idx + 1
 
     # Registration errors must be visible, rather than reporting a partial success.
-    from ats_core.api.v1.candidates import register_candidate_profile
     job = JOBS_STORE[job_id]
     register_candidate_profile(cand_obj, job_title=job["title"], department=job["department"])
 

@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"fmt"
 	"context"
 	"encoding/json"
 	"errors"
@@ -291,6 +292,28 @@ func TestJobsValidateWritesAndUpdateSkills(t *testing.T) {
 	h.AddJobCandidate(rr, requestParam("POST", "/jobs/candidates", "job_id", id, strings.NewReader(`{"id":"missing-candidate"}`)))
 	if rr.Code != 404 {
 		t.Fatal(rr.Code)
+	}
+
+	candID := "cand-" + uuid.NewString()
+	h.store.SaveCandidate(&models.Candidate{
+		ID:             candID,
+		Name:           "Alice Smith",
+		AnonymizedName: "Candidate #999",
+		TargetHeadline: "Principal Architect",
+		CoreSkills:     []string{"Go"},
+	})
+	rr = httptest.NewRecorder()
+	h.AddJobCandidate(rr, requestParam("POST", "/jobs/candidates", "job_id", id, strings.NewReader(fmt.Sprintf(`{"id":"%s","name":"Candidate #999","headline":"Software Engineer"}`, candID))))
+	if rr.Code != 200 {
+		t.Fatal(rr.Code, rr.Body)
+	}
+	storedCand, ok := h.store.GetCandidate(candID, true)
+	if !ok || storedCand.Name != "Alice Smith" || storedCand.TargetHeadline != "Principal Architect" {
+		t.Fatalf("stored candidate identity overwritten: %+v", storedCand)
+	}
+	jobCands := h.store.GetJobCandidates(id, true)
+	if len(jobCands) != 1 || jobCands[0].Name != "Alice Smith" || jobCands[0].Headline != "Principal Architect" {
+		t.Fatalf("job candidate identity overwritten: %+v", jobCands)
 	}
 }
 

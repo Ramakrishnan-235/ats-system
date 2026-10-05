@@ -59,6 +59,26 @@ def mask_candidate_pii(cand_dict: Dict[str, Any]) -> Dict[str, Any]:
     return masked
 
 
+def is_masked_or_anonymous_name(name: Optional[str]) -> bool:
+    if not name or not isinstance(name, str):
+        return True
+    s = name.strip()
+    return (
+        s == ""
+        or s.lower() == "candidate"
+        or s.startswith("Candidate #")
+        or s.startswith("[REDACTED")
+        or s == "[REDACTED_NAME]"
+    )
+
+
+def is_generic_or_error_headline(headline: Optional[str]) -> bool:
+    if not headline or not isinstance(headline, str):
+        return True
+    s = headline.strip().lower()
+    return s in ("", "candidate", "pending extraction", "document parse error")
+
+
 def register_candidate_profile(
     cand_dict: Dict[str, Any], job_title: str = "Software Engineer", department: str = "Engineering"
 ) -> Dict[str, Any]:
@@ -66,12 +86,30 @@ def register_candidate_profile(
     cand_id = cand_dict.get("id") or f"cand-{uuid.uuid4().hex}"
     existing = CANDIDATES_STORE.get(cand_id, {})
     if existing:
-        # Linking an extracted profile to a job must preserve its evidence and evaluation.
-        for key, source_key in (("name", "name"), ("target_headline", "headline"), ("stage", "stage"), ("status", "stage")):
-            if cand_dict.get(source_key) is not None:
-                existing[key] = cand_dict[source_key]
+        # Linking an extracted profile to a job must preserve its evidence, real name, and evaluation.
+        # NEVER overwrite an existing candidate's real name with a masked or anonymous placeholder.
+        incoming_name = cand_dict.get("name")
+        if incoming_name and not is_masked_or_anonymous_name(incoming_name):
+            if not existing.get("name") or is_masked_or_anonymous_name(existing.get("name")):
+                existing["name"] = incoming_name
+
+        incoming_headline = cand_dict.get("headline") or cand_dict.get("target_headline")
+        if incoming_headline and not is_generic_or_error_headline(incoming_headline):
+            if not existing.get("target_headline") or is_generic_or_error_headline(existing.get("target_headline")):
+                existing["target_headline"] = incoming_headline
+
+        if cand_dict.get("stage") is not None:
+            existing["stage"] = cand_dict["stage"]
+            existing["status"] = cand_dict["stage"]
+
+        if cand_dict.get("applied_for_job_id"):
+            existing["applied_for_job_id"] = cand_dict["applied_for_job_id"]
+        if cand_dict.get("applied_for_job"):
+            existing["applied_for_job"] = cand_dict["applied_for_job"]
         return existing
-    name = cand_dict.get("name") or existing.get("name", "Candidate")
+
+    incoming_name = cand_dict.get("name")
+    name = incoming_name if (incoming_name and not is_masked_or_anonymous_name(incoming_name)) else existing.get("name", "Candidate")
     headline = cand_dict.get("headline") or existing.get("target_headline", job_title)
     skills = cand_dict.get("skills") or existing.get("core_skills", [])
     match_score = cand_dict.get("matchScore")

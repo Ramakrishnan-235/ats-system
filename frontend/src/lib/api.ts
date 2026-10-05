@@ -49,7 +49,7 @@ async function json<T>(path: string, options?: RequestInit): Promise<T> {
 function body(payload: unknown): RequestInit {
   return { headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) };
 }
-function query(params?: Record<string, string | number | undefined>): string {
+function query(params?: Record<string, string | number | boolean | undefined>): string {
   const result = new URLSearchParams();
   Object.entries(params || {}).forEach(([key, value]) => {
     if (value !== undefined && value !== "" && value !== "ALL" && value !== "all") result.set(key, String(value));
@@ -84,7 +84,7 @@ export function addJobCandidate(jobId: string, payload: NewCandidatePayload) {
 }
 export const removeJobCandidate = (jobId: string, candidateId: string) => json<RankedCandidate[]>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}`, { method: "DELETE" });
 export const updateJobCandidateStage = (jobId: string, candidateId: string, stage: string) => json<RankedCandidate>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}/stage${query({ new_stage: stage })}`, { method: "PATCH" });
-export const fetchCandidates = (params?: { search?: string; stage?: string; skill?: string }) => json<CandidateDetail[]>(`/candidates${query(params)}`);
+export const fetchCandidates = (params?: { search?: string; stage?: string; skill?: string; include_pii?: boolean }) => json<CandidateDetail[]>(`/candidates${query(params)}`);
 export const fetchCandidate = (candidateId: string, includePii = false) => json<CandidateDetail>(`/candidates/${id(candidateId)}?include_pii=${includePii}`);
 export const updateCandidateStage = (candidateId: string, stage: string) => json<{ status: string; stage: string }>(`/candidates/${id(candidateId)}/stage${query({ new_stage: stage })}`, { method: "PATCH" });
 export const addCandidateNote = (candidateId: string, content: string, author = "Recruiter") => json<TeamNote>(`/candidates/${id(candidateId)}/notes`, { method: "POST", ...body({ content, author }) });

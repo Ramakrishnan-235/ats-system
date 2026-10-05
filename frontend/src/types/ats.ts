@@ -123,6 +123,7 @@ export interface CandidateDetail {
   id: string;
   name: string;
   anonymized_name: string;
+  is_pii_masked?: boolean;
   avatar: string;
   target_headline: string;
   role: string;
