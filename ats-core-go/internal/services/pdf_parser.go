@@ -1,103 +1,53 @@
 package services
 
 import (
-	"fmt"
-	"strings"
-
 	"ats-core-go/internal/models"
+	"errors"
+	"regexp"
+	"strings"
 )
 
 type PDFParser struct{}
 
-func NewPDFParser() *PDFParser {
-	return &PDFParser{}
+func NewPDFParser() *PDFParser { return &PDFParser{} }
+
+var literalText = regexp.MustCompile(`\(((?:\\.|[^()\\])*)\)\s*(?:Tj|'|")`)
+var streamPattern = regexp.MustCompile(`(?s)stream\r?\n(.*?)\r?\nendstream`)
+var arrayText = regexp.MustCompile(`(?s)\[(.*?)\]\s*TJ`)
+var arrayLiteral = regexp.MustCompile(`\(((?:\\.|[^()\\])*)\)`)
+
+// ExtractText handles only uncompressed literal PDF text. Unsupported PDFs fail
+// explicitly instead of turning binary metadata into candidate evidence.
+func (p *PDFParser) ExtractText(pdf []byte) (string, error) {
+	content := string(pdf)
+	if !strings.HasPrefix(content, "%PDF-") {
+		return "", errors.New("invalid PDF signature")
+	}
+	if strings.Contains(content, "/Filter") || strings.Contains(content, "/Encrypt") {
+		return "", errors.New("compressed or encrypted PDF requires a full PDF extraction service")
+	}
+	var chunks []string
+	for _, stream := range streamPattern.FindAllStringSubmatch(content, -1) {
+		for _, match := range literalText.FindAllStringSubmatch(stream[1], -1) {
+			chunks = append(chunks, decodeLiteral(match[1]))
+		}
+		for _, array := range arrayText.FindAllStringSubmatch(stream[1], -1) {
+			var text strings.Builder
+			for _, match := range arrayLiteral.FindAllStringSubmatch(array[1], -1) {
+				text.WriteString(decodeLiteral(match[1]))
+			}
+			chunks = append(chunks, text.String())
+		}
+	}
+	text := strings.TrimSpace(strings.Join(chunks, "\n"))
+	if text == "" {
+		return "", errors.New("no supported text found; OCR and encoded text require a full PDF parser")
+	}
+	return text, nil
+}
+func decodeLiteral(text string) string {
+	return strings.NewReplacer(`\n`, "\n", `\r`, "\r", `\t`, "\t", `\(`, "(", `\)`, ")", `\\`, `\`).Replace(text)
 }
 
-// ExtractText extracts plain text from PDF stream
-func (p *PDFParser) ExtractText(pdfBytes []byte) (string, error) {
-	// Simple text extraction from PDF content streams
-	var sb strings.Builder
-	content := string(pdfBytes)
-
-	// Scan for stream text or raw text chunks
-	inStream := false
-	lines := strings.Split(content, "\n")
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "stream" {
-			inStream = true
-			continue
-		} else if trimmed == "endstream" {
-			inStream = false
-			continue
-		}
-
-		if inStream {
-			// Extract literal strings inside parentheses (Tj or TJ)
-			start := strings.Index(line, "(")
-			for start != -1 {
-				end := strings.Index(line[start:], ")")
-				if end != -1 {
-					sb.WriteString(line[start+1 : start+end])
-					sb.WriteString(" ")
-					line = line[start+end+1:]
-					start = strings.Index(line, "(")
-				} else {
-					break
-				}
-			}
-		}
-	}
-
-	result := sb.String()
-	if len(strings.TrimSpace(result)) < 20 {
-		// Fallback to printable ascii scanner
-		var ascii strings.Builder
-		for _, b := range pdfBytes {
-			if (b >= 32 && b <= 126) || b == '\n' || b == '\t' {
-				ascii.WriteByte(b)
-			}
-		}
-		result = ascii.String()
-	}
-
-	return result, nil
-}
-
-// LocateCitation finds bounding box coordinates for a search phrase
-func (p *PDFParser) LocateCitation(pdfBytes []byte, phrase string) *models.PDFLocation {
-	text := string(pdfBytes)
-	phraseLower := strings.ToLower(strings.TrimSpace(phrase))
-
-	if strings.Contains(strings.ToLower(text), phraseLower) {
-		// Found in PDF stream
-		snippet := phrase
-		if len(snippet) > 80 {
-			snippet = snippet[:80] + "..."
-		}
-		return &models.PDFLocation{
-			PageNumber: 1,
-			BBox:       []float64{72.0, 150.0, 520.0, 180.0},
-			Snippet:    snippet,
-		}
-	}
-
-	// Fuzzy match first few words
-	words := strings.Fields(phraseLower)
-	if len(words) > 3 {
-		shortPhrase := strings.Join(words[:3], " ")
-		if strings.Contains(strings.ToLower(text), shortPhrase) {
-			return &models.PDFLocation{
-				PageNumber: 1,
-				BBox:       []float64{72.0, 200.0, 520.0, 230.0},
-				Snippet:    shortPhrase + "...",
-			}
-		}
-	}
-
-	return &models.PDFLocation{
-		PageNumber: 1,
-		BBox:       []float64{72.0, 100.0, 500.0, 130.0},
-		Snippet:    fmt.Sprintf("Cited text: %s", phrase),
-	}
-}
+// This parser has no page geometry. Never fabricate citation coordinates.
+func (p *PDFParser) LocateCitation(_ []byte, _ string) *models.PDFLocation { return nil }

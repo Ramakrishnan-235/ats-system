@@ -1,12 +1,16 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -18,60 +22,49 @@ import (
 	"github.com/google/uuid"
 )
 
+type candidateEvaluator interface {
+	EvaluateCandidate(context.Context, string, string) (*models.Scorecard, error)
+}
+type resumeParser interface {
+	ExtractText([]byte) (string, error)
+	LocateCitation([]byte, string) *models.PDFLocation
+}
+
 type CandidatesHandler struct {
 	store     *store.Store
-	evaluator *services.LLMEvaluator
-	parser    *services.PDFParser
+	evaluator candidateEvaluator
+	parser    resumeParser
 	cfg       *config.Config
 }
 
 func NewCandidatesHandler(st *store.Store, eval *services.LLMEvaluator, parser *services.PDFParser, cfg *config.Config) *CandidatesHandler {
-	return &CandidatesHandler{
-		store:     st,
-		evaluator: eval,
-		parser:    parser,
-		cfg:       cfg,
-	}
+	return &CandidatesHandler{store: st, evaluator: eval, parser: parser, cfg: cfg}
 }
-
 func (h *CandidatesHandler) ListCandidates(w http.ResponseWriter, r *http.Request) {
-	search := r.URL.Query().Get("search")
-	stage := r.URL.Query().Get("stage")
-	skill := r.URL.Query().Get("skill")
-	includePII := strings.ToLower(r.URL.Query().Get("include_pii")) == "true"
-
-	candidates := h.store.ListCandidates(search, stage, skill, includePII)
-	w.Header().Set("Content-Type", "application/json")
+	candidates := h.store.ListCandidates(r.URL.Query().Get("search"), r.URL.Query().Get("stage"), r.URL.Query().Get("skill"), r.URL.Query().Get("include_pii") == "true")
 	if candidates == nil {
 		candidates = []*models.Candidate{}
 	}
-	json.NewEncoder(w).Encode(candidates)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(candidates)
 }
-
 func (h *CandidatesHandler) GetCandidate(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "candidate_id")
-	includePII := strings.ToLower(r.URL.Query().Get("include_pii")) == "true"
-
-	cand, ok := h.store.GetCandidate(id, includePII)
+	cand, ok := h.store.GetCandidate(chi.URLParam(r, "candidate_id"), r.URL.Query().Get("include_pii") == "true")
 	if !ok {
-		http.Error(w, fmt.Sprintf(`{"detail": "Candidate with ID '%s' not found."}`, id), http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "Candidate not found")
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cand)
+	_ = json.NewEncoder(w).Encode(cand)
 }
-
 func (h *CandidatesHandler) GetScorecard(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "candidate_id")
-	cand, ok := h.store.GetCandidate(id, false)
+	cand, ok := h.store.GetCandidate(chi.URLParam(r, "candidate_id"), false)
 	if !ok {
-		http.Error(w, fmt.Sprintf(`{"detail": "Candidate with ID '%s' not found."}`, id), http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "Candidate not found")
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(cand.Scorecard)
+	_ = json.NewEncoder(w).Encode(cand.Scorecard)
 }
 
 type NoteRequest struct {
@@ -80,262 +73,237 @@ type NoteRequest struct {
 }
 
 func (h *CandidatesHandler) AddNote(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "candidate_id")
 	var req NoteRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"detail": "Invalid JSON body"}`, http.StatusBadRequest)
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if strings.TrimSpace(req.Content) == "" {
+		writeError(w, http.StatusBadRequest, "Note content is required")
 		return
 	}
 	if req.Author == "" {
-		req.Author = "Recruiter Admin"
+		req.Author = "Recruiter"
 	}
-
-	note, err := h.store.AddCandidateNote(id, req.Author, req.Content)
+	note, err := h.store.AddCandidateNote(chi.URLParam(r, "candidate_id"), req.Author, req.Content)
 	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"detail": "%s"}`, err.Error()), http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "Candidate not found")
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(note)
+	_ = json.NewEncoder(w).Encode(note)
 }
-
 func (h *CandidatesHandler) UpdateStage(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "candidate_id")
-	newStage := r.URL.Query().Get("new_stage")
-	if newStage == "" {
-		http.Error(w, `{"detail": "Missing new_stage query parameter"}`, http.StatusBadRequest)
+	id, stage := chi.URLParam(r, "candidate_id"), r.URL.Query().Get("new_stage")
+	if !validStage(stage) {
+		writeError(w, http.StatusBadRequest, "Invalid candidate stage")
 		return
 	}
-
-	if !h.store.UpdateCandidateStage(id, newStage) {
-		http.Error(w, fmt.Sprintf(`{"detail": "Candidate with ID '%s' not found."}`, id), http.StatusNotFound)
+	if !h.store.UpdateCandidateStage(id, stage) {
+		writeError(w, http.StatusNotFound, "Candidate not found")
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"status":       "SUCCESS",
-		"candidate_id": id,
-		"stage":        newStage,
-	})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "SUCCESS", "candidate_id": id, "stage": stage})
 }
 
-// UploadResumeAsync handles multipart PDF uploads with concurrent background processing
+var uploadSlots = make(chan struct{}, 8)
+
+// UploadResumeAsync validates and persists a bounded PDF before starting processing.
+// Tasks and profiles are process-local; a restart cannot resume this work.
 func (h *CandidatesHandler) UploadResumeAsync(w http.ResponseWriter, r *http.Request) {
-	// Parse 20MB max memory
-	if err := r.ParseMultipartForm(20 << 20); err != nil {
-		http.Error(w, `{"detail": "Failed to parse form"}`, http.StatusBadRequest)
+	select {
+	case uploadSlots <- struct{}{}:
+	default:
+		writeError(w, http.StatusTooManyRequests, "Upload processing capacity is full")
 		return
 	}
-
+	transferred := false
+	defer func() {
+		if !transferred {
+			<-uploadSlots
+		}
+	}()
+	limit := h.cfg.MaxUploadBytes
+	if limit <= 0 {
+		limit = 10 << 20
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, limit+(1<<20))
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeError(w, http.StatusRequestEntityTooLarge, "Upload exceeds size limit")
+		} else {
+			writeError(w, http.StatusBadRequest, "Invalid multipart form")
+		}
+		return
+	}
+	defer r.MultipartForm.RemoveAll()
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		http.Error(w, `{"detail": "No resume file provided"}`, http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "No resume file provided")
 		return
 	}
 	defer file.Close()
-
-	jobID := r.FormValue("job_id")
-	candidateID := fmt.Sprintf("cand-%s", uuid.New().String()[:12])
-	taskID := uuid.New().String()
-	safeFilename := filepath.Base(header.Filename)
-
-	// Read file bytes
-	fileBytes, err := io.ReadAll(file)
-	if err != nil {
-		http.Error(w, `{"detail": "Failed to read file"}`, http.StatusInternalServerError)
+	filename := filepath.Base(strings.ReplaceAll(header.Filename, "\\", "/"))
+	if !strings.EqualFold(filepath.Ext(filename), ".pdf") {
+		writeError(w, http.StatusBadRequest, "A PDF file is required")
 		return
 	}
-
-	// Persist uploaded PDF to disk
-	pdfPath := filepath.Join(h.cfg.UploadDir, fmt.Sprintf("%s.pdf", candidateID))
-	_ = os.WriteFile(pdfPath, fileBytes, 0644)
-
-	// Save task in progress
-	task := &models.UploadTask{
-		TaskID:        taskID,
-		State:         "PROGRESS",
-		ExecutionMode: "async_goroutine",
-		Progress:      10,
-		Step:          "PDF Extraction & Text Layout Analysis",
+	data, err := io.ReadAll(io.LimitReader(file, limit+1))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Failed to read upload")
+		return
 	}
-	h.store.SaveTask(task)
-
-	// Non-blocking Goroutine for AI processing
+	if int64(len(data)) > limit {
+		writeError(w, http.StatusRequestEntityTooLarge, "PDF exceeds size limit")
+		return
+	}
+	if len(data) < 5 || string(data[:5]) != "%PDF-" {
+		writeError(w, http.StatusBadRequest, "Invalid PDF signature")
+		return
+	}
+	jobID := r.FormValue("job_id")
+	var job *models.Job
+	if jobID != "" {
+		var ok bool
+		job, ok = h.store.GetJob(jobID)
+		if !ok {
+			writeError(w, http.StatusNotFound, "Job not found")
+			return
+		}
+	}
+	candidateID, taskID := "cand-"+uuid.New().String(), uuid.New().String()
+	pdfPath := filepath.Join(h.cfg.UploadDir, candidateID+".pdf")
+	output, err := os.OpenFile(pdfPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Unable to persist PDF")
+		return
+	}
+	_, writeErr := output.Write(data)
+	closeErr := output.Close()
+	if writeErr != nil || closeErr != nil {
+		_ = os.Remove(pdfPath)
+		writeError(w, http.StatusInternalServerError, "Unable to persist PDF")
+		return
+	}
+	h.store.SaveTask(&models.UploadTask{TaskID: taskID, State: "PROGRESS", ExecutionMode: "async_goroutine", Step: "Extracting PDF"})
+	transferred = true
 	go func() {
-		// Step 1: Text extraction
-		rawText, _ := h.parser.ExtractText(fileBytes)
-
-		// Step 2: Extract candidate name and details
-		name := strings.TrimSuffix(safeFilename, filepath.Ext(safeFilename))
-		name = strings.ReplaceAll(name, "_", " ")
-		name = strings.ReplaceAll(name, "-", " ")
-		name = strings.Title(name)
-
-		headline := "Software Engineer"
-		yearsExp := 4.5
-		skills := []string{"Go", "PostgreSQL", "Docker", "REST APIs", "Microservices"}
-
-		// If target job exists, tailor initial evaluation
-		jobDesc := "Senior Software Engineer"
-		if jobID != "" {
-			if j, ok := h.store.GetJob(jobID); ok {
-				jobDesc = j.JobDescription
-				headline = j.Title
-				if len(j.RequiredSkills) > 0 {
-					skills = j.RequiredSkills
-				}
-			}
-		}
-
-		// Step 3: Run AI evaluation
-		scorecard, _ := h.evaluator.EvaluateCandidate(r.Context(), rawText, jobDesc)
-
-		finalScore := 85.0
-		if scorecard != nil && scorecard.OverallMatchScore != nil {
-			finalScore = *scorecard.OverallMatchScore
-		}
-
-		candidate := &models.Candidate{
-			ID:                candidateID,
-			Name:              name,
-			AnonymizedName:    fmt.Sprintf("Candidate #%s", candidateID[len(candidateID)-6:]),
-			Avatar:            "CD",
-			IsImageAvatar:     false,
-			TargetHeadline:    headline,
-			Role:              headline,
-			Status:            "Screening",
-			Stage:             "Screening",
-			AppliedDate:       "Just now",
-			CreatedAt:         time.Now().UTC().Format(time.RFC3339),
-			AppliedForJob:     headline,
-			YearsOfExperience: &yearsExp,
-			CoreSkills:        skills,
-			Experience:        []any{},
-			Scorecard:         *scorecard,
-			Email:             "candidate@example.com",
-			Phone:             "+1-555-0199",
-			Location:          "Remote",
-			HighestEducation:  "B.S. in Computer Science",
-			IsPIIMasked:       false,
-			ResumeFilename:    safeFilename,
-			RawText:           rawText,
-		}
-
-		h.store.SaveCandidate(candidate)
-
-		// Link to job candidates if jobID is provided
-		if jobID != "" {
-			scoreInt := int(finalScore)
-			h.store.AddJobCandidate(jobID, &models.JobCandidate{
-				ID:                  candidateID,
-				Name:                name,
-				Headline:            headline,
-				Avatar:              "CD",
-				MatchScore:          &scoreInt,
-				MatchLabel:          scorecard.MatchTier,
-				Skills:              skills,
-				Stage:               "Screening",
-				StageBadgeStyle:     "bg-zinc-100 text-zinc-700",
-				TechnicalDepthScore: &finalScore,
-				Quote:               "Ingested and parsed via Go Core Engine",
-				SourceResumeLink:    fmt.Sprintf("/candidates/%s", candidateID),
-			})
-		}
-
-		// Update task state to SUCCESS
-		task.State = "SUCCESS"
-		task.Progress = 100
-		task.Step = "Completed"
-		task.Result = map[string]any{
-			"status":            "COMPLETED",
-			"candidate_id":      candidateID,
-			"match_score":       finalScore,
-			"evaluation_status": scorecard.EvaluationStatus,
-		}
-		h.store.SaveTask(task)
+		defer func() { <-uploadSlots }()
+		h.processUpload(taskID, candidateID, filename, pdfPath, data, job)
 	}()
-
-	// Respond immediately with 202 Accepted
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]any{
-		"status":            "ACCEPTED",
-		"task_id":           taskID,
-		"candidate_id":      candidateID,
-		"filename":          safeFilename,
-		"name":              strings.TrimSuffix(safeFilename, filepath.Ext(safeFilename)),
-		"job_id":            jobID,
-		"execution_mode":    "async_goroutine",
-		"evaluation_status": "PROCESSING",
-		"message":           "Resume accepted for asynchronous processing by Go core engine.",
-	})
+	_ = json.NewEncoder(w).Encode(map[string]any{"status": "ACCEPTED", "task_id": taskID, "candidate_id": candidateID, "filename": filename, "job_id": jobID, "execution_mode": "async_goroutine", "evaluation_status": "PROCESSING"})
 }
-
-func (h *CandidatesHandler) GetTaskStatus(w http.ResponseWriter, r *http.Request) {
-	taskID := chi.URLParam(r, "task_id")
-	task, ok := h.store.GetTask(taskID)
-	if !ok {
-		// Return pending or finished fallback
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"task_id": taskID,
-			"state":   "SUCCESS",
-			"message": "Task completed.",
-		})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(task)
-}
-
-func (h *CandidatesHandler) LocateCitation(w http.ResponseWriter, r *http.Request) {
-	candidateID := chi.URLParam(r, "candidate_id")
-	var req models.LocateCitationRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"detail": "Invalid JSON"}`, http.StatusBadRequest)
-		return
-	}
-
-	pdfPath := filepath.Join(h.cfg.UploadDir, fmt.Sprintf("%s.pdf", candidateID))
-	pdfBytes, err := os.ReadFile(pdfPath)
-	if err != nil {
-		// Mock PDF citation location
-		location := &models.PDFLocation{
-			PageNumber: 1,
-			BBox:       []float64{72.0, 150.0, 520.0, 180.0},
-			Snippet:    req.SearchPhrase,
+func (h *CandidatesHandler) processUpload(taskID, candidateID, filename, pdfPath string, data []byte, job *models.Job) {
+	complete := false
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf("Upload processing panic for task %s", taskID)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"found":         true,
-			"candidate_id":  candidateID,
-			"search_phrase": req.SearchPhrase,
-			"location":      location,
-		})
+		if !complete {
+			_ = os.Remove(pdfPath)
+			h.store.SaveTask(&models.UploadTask{TaskID: taskID, State: "FAILURE", ExecutionMode: "async_goroutine", Error: "Resume processing failed"})
+		}
+	}()
+	text, err := h.parser.ExtractText(data)
+	if err != nil || strings.TrimSpace(text) == "" {
 		return
 	}
-
-	loc := h.parser.LocateCitation(pdfBytes, req.SearchPhrase)
+	scorecard := &models.Scorecard{EvaluationStatus: "PENDING", MatchTier: "Not Evaluated", Categories: []models.CategoryScore{}, TeamNotes: []models.Note{}}
+	if job != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		name := strings.TrimSuffix(filename, filepath.Ext(filename))
+		normalizedName := strings.NewReplacer("_", " ", "-", " ").Replace(name)
+		summary := services.RedactKnownPII(text, name, normalizedName)
+		scorecard, err = h.evaluator.EvaluateCandidate(ctx, summary, job.JobDescription)
+		if err != nil || scorecard == nil {
+			return
+		}
+	}
+	name := strings.TrimSuffix(filename, filepath.Ext(filename))
+	anonymous := "Candidate #" + candidateID[len(candidateID)-6:]
+	candidate := &models.Candidate{ID: candidateID, Name: name, AnonymizedName: anonymous, Avatar: "CD", Stage: "Screening", Status: "Screening", CreatedAt: models.NowUTC(), AppliedDate: time.Now().UTC().Format("2006-01-02"), CoreSkills: []string{}, Experience: []any{}, Scorecard: *scorecard, ResumeFilename: filename, RawText: text}
+	if job != nil {
+		candidate.AppliedForJob = job.Title
+	}
+	h.store.SaveCandidate(candidate)
+	if job != nil {
+		var score *int
+		if scorecard.OverallMatchScore != nil {
+			value := int(*scorecard.OverallMatchScore)
+			score = &value
+		}
+		h.store.AddJobCandidate(job.ID, &models.JobCandidate{ID: candidateID, Name: name, Avatar: "CD", MatchScore: score, MatchLabel: scorecard.MatchTier, Skills: []string{}, Stage: "Screening", SourceResumeLink: fmt.Sprintf("/candidates/%s", candidateID)})
+	}
+	h.store.SaveTask(&models.UploadTask{TaskID: taskID, State: "SUCCESS", Progress: 100, Step: "Completed", ExecutionMode: "async_goroutine", Result: map[string]any{"status": "COMPLETED", "candidate_id": candidateID, "match_score": scorecard.OverallMatchScore, "evaluation_status": scorecard.EvaluationStatus}})
+	complete = true
+}
+func (h *CandidatesHandler) GetTaskStatus(w http.ResponseWriter, r *http.Request) {
+	task, ok := h.store.GetTask(chi.URLParam(r, "task_id"))
+	if !ok {
+		writeError(w, http.StatusNotFound, "Task not found")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"found":         loc != nil,
-		"candidate_id":  candidateID,
-		"search_phrase": req.SearchPhrase,
-		"location":      loc,
-	})
+	_ = json.NewEncoder(w).Encode(task)
 }
 
-func (h *CandidatesHandler) ServeResumePDF(w http.ResponseWriter, r *http.Request) {
-	candidateID := chi.URLParam(r, "candidate_id")
-	pdfPath := filepath.Join(h.cfg.UploadDir, fmt.Sprintf("%s.pdf", candidateID))
-	if _, err := os.Stat(pdfPath); os.IsNotExist(err) {
-		http.Error(w, `{"detail": "PDF not found on server"}`, http.StatusNotFound)
+var safeCandidateID = regexp.MustCompile(`^cand-[A-Za-z0-9-]+$`)
+
+func (h *CandidatesHandler) candidatePDFPath(w http.ResponseWriter, candidateID string) (string, bool) {
+	if !safeCandidateID.MatchString(candidateID) {
+		writeError(w, http.StatusBadRequest, "Invalid candidate ID")
+		return "", false
+	}
+	if _, ok := h.store.GetCandidate(candidateID, false); !ok {
+		writeError(w, http.StatusNotFound, "Candidate not found")
+		return "", false
+	}
+	return filepath.Join(h.cfg.UploadDir, candidateID+".pdf"), true
+}
+func (h *CandidatesHandler) LocateCitation(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "candidate_id")
+	path, ok := h.candidatePDFPath(w, id)
+	if !ok {
 		return
 	}
-
+	var req models.LocateCitationRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if strings.TrimSpace(req.SearchPhrase) == "" {
+		writeError(w, http.StatusBadRequest, "Search phrase is required")
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "PDF not found")
+		return
+	}
+	location := h.parser.LocateCitation(data, req.SearchPhrase)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"found": location != nil, "candidate_id": id, "search_phrase": req.SearchPhrase, "location": location})
+}
+func (h *CandidatesHandler) ServeResumePDF(w http.ResponseWriter, r *http.Request) {
+	path, ok := h.candidatePDFPath(w, chi.URLParam(r, "candidate_id"))
+	if !ok {
+		return
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "PDF not found")
+		return
+	}
+	defer file.Close()
+	stat, err := file.Stat()
+	if err != nil || !stat.Mode().IsRegular() {
+		writeError(w, http.StatusNotFound, "PDF not found")
+		return
+	}
 	w.Header().Set("Content-Type", "application/pdf")
-	http.ServeFile(w, r, pdfPath)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	http.ServeContent(w, r, "resume.pdf", stat.ModTime(), file)
 }

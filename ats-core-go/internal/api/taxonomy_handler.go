@@ -23,6 +23,13 @@ func NewTaxonomyHandler(st *store.Store) *TaxonomyHandler {
 
 func (h *TaxonomyHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	skills, total := h.store.ListSkills("", "all", "", 1, 1000)
+	for page := 2; len(skills) < total; page++ {
+		batch, _ := h.store.ListSkills("", "all", "", page, 1000)
+		if len(batch) == 0 {
+			break
+		}
+		skills = append(skills, batch...)
+	}
 	approvedCount := 0
 	pendingCount := 0
 	for _, sk := range skills {
@@ -47,8 +54,12 @@ func (h *TaxonomyHandler) ListSkills(w http.ResponseWriter, r *http.Request) {
 	cat := r.URL.Query().Get("category")
 	stat := r.URL.Query().Get("status")
 	search := r.URL.Query().Get("search")
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	page, pageErr := strconv.Atoi(r.URL.Query().Get("page"))
+	limit, limitErr := strconv.Atoi(r.URL.Query().Get("limit"))
+	if (r.URL.Query().Get("page") != "" && (pageErr != nil || page < 1 || page > 1000000)) || (r.URL.Query().Get("limit") != "" && (limitErr != nil || limit < 1 || limit > 1000)) {
+		writeError(w, http.StatusBadRequest, "Invalid page or limit")
+		return
+	}
 
 	if page < 1 {
 		page = 1
@@ -78,13 +89,17 @@ type CreateSkillPayload struct {
 
 func (h *TaxonomyHandler) CreateSkill(w http.ResponseWriter, r *http.Request) {
 	var payload CreateSkillPayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		http.Error(w, `{"detail": "Invalid JSON body"}`, http.StatusBadRequest)
+	if !decodeJSON(w, r, &payload) {
 		return
 	}
 
+	payload.CanonicalName = strings.TrimSpace(payload.CanonicalName)
+	if payload.CanonicalName == "" {
+		writeError(w, http.StatusBadRequest, "Canonical skill name is required")
+		return
+	}
 	if existing := h.store.GetSkillByCanonical(payload.CanonicalName); existing != nil {
-		http.Error(w, fmt.Sprintf(`{"detail": "Skill '%s' already exists"}`, payload.CanonicalName), http.StatusConflict)
+		writeError(w, http.StatusConflict, "Skill already exists")
 		return
 	}
 
@@ -115,11 +130,17 @@ func (h *TaxonomyHandler) ApproveSkill(w http.ResponseWriter, r *http.Request) {
 		Category      *string   `json:"category"`
 		Aliases       *[]string `json:"aliases"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&payload)
+	if r.ContentLength != 0 && !decodeJSON(w, r, &payload) {
+		return
+	}
 
+	if payload.CanonicalName != nil && strings.TrimSpace(*payload.CanonicalName) == "" {
+		writeError(w, http.StatusBadRequest, "Canonical skill name is required")
+		return
+	}
 	skill, ok := h.store.ApproveSkill(id, payload.CanonicalName, payload.Category, payload.Aliases)
 	if !ok {
-		http.Error(w, fmt.Sprintf(`{"detail": "Skill '%s' not found"}`, id), http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "Skill not found")
 		return
 	}
 
@@ -131,7 +152,7 @@ func (h *TaxonomyHandler) RejectSkill(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "skill_id")
 	skill, ok := h.store.RejectSkill(id)
 	if !ok {
-		http.Error(w, fmt.Sprintf(`{"detail": "Skill '%s' not found"}`, id), http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "Skill not found")
 		return
 	}
 
@@ -144,14 +165,17 @@ func (h *TaxonomyHandler) AddAlias(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		Alias string `json:"alias"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || payload.Alias == "" {
-		http.Error(w, `{"detail": "Invalid alias"}`, http.StatusBadRequest)
+	if !decodeJSON(w, r, &payload) {
+		return
+	}
+	if strings.TrimSpace(payload.Alias) == "" {
+		writeError(w, http.StatusBadRequest, "Invalid alias")
 		return
 	}
 
 	skill, ok := h.store.AddSkillAlias(id, payload.Alias)
 	if !ok {
-		http.Error(w, fmt.Sprintf(`{"detail": "Skill '%s' not found"}`, id), http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "Skill not found")
 		return
 	}
 
@@ -161,8 +185,9 @@ func (h *TaxonomyHandler) AddAlias(w http.ResponseWriter, r *http.Request) {
 
 func (h *TaxonomyHandler) SyncSeed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotImplemented)
 	json.NewEncoder(w).Encode(map[string]any{
-		"status":  "SUCCESS",
-		"message": "Successfully re-synced seed taxonomy ontology in Go core.",
+		"status":  "UNSUPPORTED",
+		"message": "Runtime seed synchronization is not implemented.",
 	})
 }

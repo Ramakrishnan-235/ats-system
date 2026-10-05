@@ -1,8 +1,11 @@
 package api
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"ats-core-go/internal/config"
@@ -23,25 +26,18 @@ func AuthMiddleware(cfg *config.Config) func(http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-
-			// Exclude healthcheck
-			if r.URL.Path == "/health" || r.URL.Path == "/api/v1/health" {
-				next.ServeHTTP(w, r)
+			key := r.Header.Get("X-API-Key")
+			if key == "" {
+				key = r.Header.Get("Authorization")
+				if strings.HasPrefix(key, "Bearer ") {
+					key = strings.TrimPrefix(key, "Bearer ")
+				}
+			}
+			expectedHash, actualHash := sha256.Sum256([]byte(cfg.APIKey)), sha256.Sum256([]byte(key))
+			if cfg.APIKey == "" || key == "" || subtle.ConstantTimeCompare(expectedHash[:], actualHash[:]) != 1 {
+				writeError(w, http.StatusUnauthorized, "Invalid or missing API key.")
 				return
 			}
-
-			apiKey := r.Header.Get("X-API-Key")
-			if apiKey == "" {
-				apiKey = r.Header.Get("Authorization")
-			}
-
-			if apiKey != cfg.APIKey {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusUnauthorized)
-				w.Write([]byte(`{"detail": "Invalid or missing API key."}`))
-				return
-			}
-
 			next.ServeHTTP(w, r)
 		})
 	}

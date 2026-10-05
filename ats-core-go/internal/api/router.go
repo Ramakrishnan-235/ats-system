@@ -1,7 +1,10 @@
 package api
 
 import (
+	"encoding/json"
+	"github.com/go-chi/chi/v5/middleware"
 	"net/http"
+	"runtime"
 
 	"ats-core-go/internal/config"
 	"ats-core-go/internal/services"
@@ -15,6 +18,7 @@ func NewRouter(cfg *config.Config, st *store.Store, eval *services.LLMEvaluator,
 
 	// 1. Logging & Recovery Middleware
 	r.Use(LoggerMiddleware)
+	r.Use(middleware.Recoverer)
 
 	// 2. CORS Middleware
 	r.Use(cors.Handler(cors.Options{
@@ -22,18 +26,18 @@ func NewRouter(cfg *config.Config, st *store.Store, eval *services.LLMEvaluator,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-API-Key"},
 		ExposedHeaders:   []string{"Link"},
-		AllowCredentials: true,
+		AllowCredentials: false,
 		MaxAge:           300,
 	}))
 
 	// Health check
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status": "OK", "runtime": "Go 1.27", "engine": "ATS Core Go"}`))
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "OK", "runtime": runtime.Version(), "engine": "ATS Core Go"})
 	})
 	r.Get("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status": "OK", "runtime": "Go 1.27", "engine": "ATS Core Go"}`))
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "OK", "runtime": runtime.Version(), "engine": "ATS Core Go"})
 	})
 
 	// Handlers

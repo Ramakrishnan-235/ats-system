@@ -37,30 +37,30 @@ type Scorecard struct {
 
 // Candidate represents a candidate profile
 type Candidate struct {
-	ID                string         `json:"id"`
-	Name              string         `json:"name"`
-	AnonymizedName    string         `json:"anonymized_name"`
-	Avatar            string         `json:"avatar"`
-	IsImageAvatar     bool           `json:"isImageAvatar"`
-	TargetHeadline    string         `json:"target_headline"`
-	Role              string         `json:"role"`
-	Status            string         `json:"status"`
-	Stage             string         `json:"stage"`
-	AppliedDate       string         `json:"applied_date"`
-	CreatedAt         string         `json:"created_at"`
-	AppliedForJob     string         `json:"applied_for_job"`
-	YearsOfExperience *float64       `json:"years_of_experience"`
-	CoreSkills        []string       `json:"core_skills"`
-	Experience        []any          `json:"experience"`
-	Scorecard         Scorecard      `json:"scorecard"`
-	Email             string         `json:"email"`
-	Phone             string         `json:"phone"`
-	Location          string         `json:"location"`
-	LinkedIn          string         `json:"linkedin"`
-	HighestEducation  string         `json:"highest_education"`
-	IsPIIMasked       bool           `json:"is_pii_masked"`
-	ResumeFilename    string         `json:"resume_filename,omitempty"`
-	RawText           string         `json:"raw_text,omitempty"`
+	ID                string    `json:"id"`
+	Name              string    `json:"name"`
+	AnonymizedName    string    `json:"anonymized_name"`
+	Avatar            string    `json:"avatar"`
+	IsImageAvatar     bool      `json:"isImageAvatar"`
+	TargetHeadline    string    `json:"target_headline"`
+	Role              string    `json:"role"`
+	Status            string    `json:"status"`
+	Stage             string    `json:"stage"`
+	AppliedDate       string    `json:"applied_date"`
+	CreatedAt         string    `json:"created_at"`
+	AppliedForJob     string    `json:"applied_for_job"`
+	YearsOfExperience *float64  `json:"years_of_experience"`
+	CoreSkills        []string  `json:"core_skills"`
+	Experience        []any     `json:"experience"`
+	Scorecard         Scorecard `json:"scorecard"`
+	Email             string    `json:"email"`
+	Phone             string    `json:"phone"`
+	Location          string    `json:"location"`
+	LinkedIn          string    `json:"linkedin"`
+	HighestEducation  string    `json:"highest_education"`
+	IsPIIMasked       bool      `json:"is_pii_masked"`
+	ResumeFilename    string    `json:"resume_filename,omitempty"`
+	RawText           string    `json:"raw_text,omitempty"`
 }
 
 // TopMatchInfo represents the top match summary for a job
@@ -162,15 +162,15 @@ type WeeklyVolume struct {
 }
 
 type PipelineCandidate struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Role        string  `json:"role"`
-	Avatar      string  `json:"avatar"`
-	MatchScore  *int    `json:"match_score"`
-	Summary     string  `json:"summary"`
-	Stage       string  `json:"stage"`
-	Probability *int    `json:"probability"`
-	AppliedTime string  `json:"applied_time"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Role        string `json:"role"`
+	Avatar      string `json:"avatar"`
+	MatchScore  *int   `json:"match_score"`
+	Summary     string `json:"summary"`
+	Stage       string `json:"stage"`
+	Probability *int   `json:"probability"`
+	AppliedTime string `json:"applied_time"`
 }
 
 type DashboardStatsResponse struct {

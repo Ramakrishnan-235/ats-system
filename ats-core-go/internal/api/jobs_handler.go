@@ -38,7 +38,7 @@ func (h *JobsHandler) GetJob(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "job_id")
 	job, ok := h.store.GetJob(id)
 	if !ok {
-		http.Error(w, `{"detail": "Job not found"}`, http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "Job not found")
 		return
 	}
 
@@ -58,8 +58,7 @@ type CreateJobPayload struct {
 
 func (h *JobsHandler) CreateJob(w http.ResponseWriter, r *http.Request) {
 	var payload CreateJobPayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		http.Error(w, `{"detail": "Invalid JSON"}`, http.StatusBadRequest)
+	if !decodeJSON(w, r, &payload) {
 		return
 	}
 
@@ -67,15 +66,18 @@ func (h *JobsHandler) CreateJob(w http.ResponseWriter, r *http.Request) {
 	nowStr := time.Now().UTC().Format("2006-01-02")
 	nowISO := time.Now().UTC().Format(time.RFC3339)
 
-	if len(payload.RequiredSkills) == 0 {
-		commonKeywords := []string{"Go", "Python", "PostgreSQL", "Docker", "Kubernetes", "AWS", "React", "TypeScript"}
-		for _, kw := range commonKeywords {
-			if strings.Contains(strings.ToLower(payload.JobDescription), strings.ToLower(kw)) {
-				payload.RequiredSkills = append(payload.RequiredSkills, kw)
-			}
-		}
+	payload.Title = strings.TrimSpace(payload.Title)
+	if payload.Title == "" || strings.TrimSpace(payload.JobDescription) == "" || payload.MinYearsExperience < 0 {
+		writeError(w, http.StatusBadRequest, "Title, job description, and non-negative experience are required")
+		return
 	}
-
+	if payload.RunAIMatch {
+		writeError(w, http.StatusBadRequest, "Use the match endpoint to run evaluations")
+		return
+	}
+	if payload.RequiredSkills == nil {
+		payload.RequiredSkills = []string{}
+	}
 	deptLower := strings.ToLower(payload.Department)
 	iconType := "code"
 	if strings.Contains(deptLower, "ai") || strings.Contains(deptLower, "machine learning") {
@@ -87,14 +89,14 @@ func (h *JobsHandler) CreateJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job := &models.Job{
-		ID:                 newID,
-		Title:              payload.Title,
-		Department:         payload.Department,
-		Location:           payload.Location,
-		Status:             "OPEN",
-		PostedDate:         nowStr,
-		CandidatesCount:    0,
-		Avatars:            []string{},
+		ID:              newID,
+		Title:           payload.Title,
+		Department:      payload.Department,
+		Location:        payload.Location,
+		Status:          "OPEN",
+		PostedDate:      nowStr,
+		CandidatesCount: 0,
+		Avatars:         []string{},
 		TopMatch: models.TopMatchInfo{
 			Score:   nil,
 			Label:   "Pending Match",
@@ -122,33 +124,36 @@ func (h *JobsHandler) CreateJob(w http.ResponseWriter, r *http.Request) {
 
 func (h *JobsHandler) UpdateJob(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "job_id")
-	job, ok := h.store.GetJob(id)
+	_, ok := h.store.GetJob(id)
 	if !ok {
-		http.Error(w, `{"detail": "Job not found"}`, http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "Job not found")
 		return
 	}
 
-	var updates map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&updates); err != nil {
-		http.Error(w, `{"detail": "Invalid JSON"}`, http.StatusBadRequest)
+	var updates struct {
+		Title              *string   `json:"title"`
+		Department         *string   `json:"department"`
+		Location           *string   `json:"location"`
+		JobDescription     *string   `json:"job_description"`
+		RequiredSkills     *[]string `json:"required_skills"`
+		MinYearsExperience *float64  `json:"min_years_experience"`
+	}
+	if !decodeJSON(w, r, &updates) {
 		return
 	}
-
-	if title, ok := updates["title"].(string); ok && title != "" {
-		job.Title = title
+	if (updates.Title != nil && strings.TrimSpace(*updates.Title) == "") || (updates.JobDescription != nil && strings.TrimSpace(*updates.JobDescription) == "") || (updates.MinYearsExperience != nil && *updates.MinYearsExperience < 0) {
+		writeError(w, http.StatusBadRequest, "Invalid job fields")
+		return
 	}
-	if dept, ok := updates["department"].(string); ok && dept != "" {
-		job.Department = dept
+	if updates.Title != nil {
+		title := strings.TrimSpace(*updates.Title)
+		updates.Title = &title
 	}
-	if loc, ok := updates["location"].(string); ok && loc != "" {
-		job.Location = loc
+	job, ok := h.store.UpdateJob(id, store.JobUpdate{Title: updates.Title, Department: updates.Department, Location: updates.Location, JobDescription: updates.JobDescription, RequiredSkills: updates.RequiredSkills, MinYearsExperience: updates.MinYearsExperience})
+	if !ok {
+		writeError(w, http.StatusNotFound, "Job not found")
+		return
 	}
-	if desc, ok := updates["job_description"].(string); ok && desc != "" {
-		job.JobDescription = desc
-	}
-	job.UpdatedAt = models.NowUTC()
-	h.store.SaveJob(job)
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(job)
 }
@@ -160,13 +165,18 @@ func (h *JobsHandler) UpdateJobStatus(w http.ResponseWriter, r *http.Request) {
 		newStatus = r.URL.Query().Get("status")
 	}
 	if newStatus == "" {
-		http.Error(w, `{"detail": "Missing new_status"}`, http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "Missing new_status")
 		return
 	}
 
-	job, ok := h.store.UpdateJobStatus(id, strings.ToUpper(newStatus))
+	newStatus = strings.ToUpper(newStatus)
+	if newStatus != "OPEN" && newStatus != "CLOSED" && newStatus != "DRAFT" && newStatus != "PAUSED" {
+		writeError(w, http.StatusBadRequest, "Invalid job status")
+		return
+	}
+	job, ok := h.store.UpdateJobStatus(id, newStatus)
 	if !ok {
-		http.Error(w, `{"detail": "Job not found"}`, http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "Job not found")
 		return
 	}
 
@@ -178,6 +188,10 @@ func (h *JobsHandler) GetJobCandidates(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "job_id")
 	includePII := strings.ToLower(r.URL.Query().Get("include_pii")) == "true"
 
+	if _, ok := h.store.GetJob(jobID); !ok {
+		writeError(w, http.StatusNotFound, "Job not found")
+		return
+	}
 	candidates := h.store.GetJobCandidates(jobID, includePII)
 	w.Header().Set("Content-Type", "application/json")
 	if candidates == nil {
@@ -191,13 +205,33 @@ func (h *JobsHandler) AddJobCandidate(w http.ResponseWriter, r *http.Request) {
 	includePII := strings.ToLower(r.URL.Query().Get("include_pii")) == "true"
 
 	var jc models.JobCandidate
-	if err := json.NewDecoder(r.Body).Decode(&jc); err != nil {
-		http.Error(w, `{"detail": "Invalid JSON"}`, http.StatusBadRequest)
+	if !decodeJSON(w, r, &jc) {
 		return
 	}
 
-	if jc.ID == "" {
-		jc.ID = fmt.Sprintf("cand-%s", uuid.New().String()[:12])
+	if _, ok := h.store.GetJob(jobID); !ok {
+		writeError(w, http.StatusNotFound, "Job not found")
+		return
+	}
+	candidate, ok := h.store.GetCandidate(jc.ID, true)
+	if !ok {
+		writeError(w, http.StatusNotFound, "Candidate not found")
+		return
+	}
+	jc.Avatar = candidate.Avatar
+	jc.IsImageAvatar = candidate.IsImageAvatar
+	jc.SourceResumeLink = fmt.Sprintf("/candidates/%s", jc.ID)
+	jc.Name = candidate.Name
+	jc.Headline = candidate.TargetHeadline
+	jc.Skills = candidate.CoreSkills
+	jc.MatchScore = nil
+	jc.MatchLabel = "Not Evaluated"
+	jc.TechnicalDepthScore = nil
+	jc.SystemDesignScore = nil
+	jc.Quote = ""
+	if jc.Stage != "" && !validStage(jc.Stage) {
+		writeError(w, http.StatusBadRequest, "Invalid candidate stage")
+		return
 	}
 	if jc.Avatar == "" {
 		jc.Avatar = "CD"
@@ -227,6 +261,21 @@ func (h *JobsHandler) RemoveJobCandidate(w http.ResponseWriter, r *http.Request)
 	candID := chi.URLParam(r, "candidate_id")
 	includePII := strings.ToLower(r.URL.Query().Get("include_pii")) == "true"
 
+	if _, ok := h.store.GetJob(jobID); !ok {
+		writeError(w, http.StatusNotFound, "Job not found")
+		return
+	}
+	found := false
+	for _, candidate := range h.store.GetJobCandidates(jobID, true) {
+		if candidate.ID == candID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "Candidate not found on job")
+		return
+	}
 	updated := h.store.RemoveJobCandidate(jobID, candID)
 	w.Header().Set("Content-Type", "application/json")
 	if !includePII {
@@ -241,17 +290,24 @@ func (h *JobsHandler) UpdateJobCandidateStage(w http.ResponseWriter, r *http.Req
 	jobID := chi.URLParam(r, "job_id")
 	candID := chi.URLParam(r, "candidate_id")
 	newStage := r.URL.Query().Get("new_stage")
-	if newStage == "" {
-		http.Error(w, `{"detail": "Missing new_stage"}`, http.StatusBadRequest)
+	if !validStage(newStage) {
+		writeError(w, http.StatusBadRequest, "Missing new_stage")
 		return
 	}
 
 	jc, ok := h.store.UpdateJobCandidateStage(jobID, candID, newStage)
 	if !ok {
-		http.Error(w, `{"detail": "Candidate not found on job"}`, http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "Candidate not found on job")
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(jc)
+	candidates := h.store.GetJobCandidates(jobID, false)
+	for _, candidate := range candidates {
+		if candidate.ID == jc.ID {
+			json.NewEncoder(w).Encode(candidate)
+			return
+		}
+	}
+	writeError(w, http.StatusNotFound, "Candidate not found on job")
 }

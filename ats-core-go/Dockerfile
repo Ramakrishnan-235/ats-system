@@ -1,5 +1,5 @@
 # Multi-stage build for ultra-small container footprint
-FROM golang:1.24-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 WORKDIR /app
 
@@ -21,7 +21,10 @@ RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /app
 
 COPY --from=builder /app/ats-core-server .
-COPY --from=builder /app/uploads ./uploads
+RUN addgroup -S ats && adduser -S -G ats ats \
+    && mkdir -p /app/uploads && chown ats:ats /app/uploads
+
+USER ats
 
 EXPOSE 8000
 

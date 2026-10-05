@@ -1,7 +1,9 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -18,6 +20,8 @@ type Config struct {
 	OpenRouterModel string
 	OllamaURL       string
 	OllamaModel     string
+	LLMEnabled      bool
+	MaxUploadBytes  int64
 }
 
 func Load() *Config {
@@ -30,13 +34,11 @@ func Load() *Config {
 		corsOrigins[i] = strings.TrimSpace(corsOrigins[i])
 	}
 
-	authEnabled := strings.ToLower(getEnv("ATS_AUTH_ENABLED", "false")) == "true"
+	authEnabled := !strings.EqualFold(strings.TrimSpace(getEnv("ATS_AUTH_ENABLED", "true")), "false")
 	apiKey := getEnv("ATS_API_KEY", "")
 
 	uploadDir := getEnv("ATS_UPLOAD_DIR", "./uploads")
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
-		// Log or fallback
-	}
+	maxUploadBytes, _ := strconv.ParseInt(getEnv("ATS_MAX_UPLOAD_BYTES", "10485760"), 10, 64)
 
 	openRouterURL := getEnv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 	openRouterKey := getEnv("OPENROUTER_API_KEY", "")
@@ -58,7 +60,26 @@ func Load() *Config {
 		OpenRouterModel: openRouterModel,
 		OllamaURL:       ollamaURL,
 		OllamaModel:     ollamaModel,
+		LLMEnabled:      strings.EqualFold(getEnv("ATS_LLM_ENABLED", "false"), "true"),
+		MaxUploadBytes:  maxUploadBytes,
 	}
+}
+
+// Validate fails startup rather than silently running with broken security/storage.
+func (c *Config) Validate() error {
+	if c.AuthEnabled && strings.TrimSpace(c.APIKey) == "" {
+		return fmt.Errorf("ATS_API_KEY is required when authentication is enabled")
+	}
+	if c.MaxUploadBytes <= 0 {
+		return fmt.Errorf("ATS_MAX_UPLOAD_BYTES must be a positive integer")
+	}
+	if strings.TrimSpace(c.UploadDir) == "" {
+		return fmt.Errorf("ATS_UPLOAD_DIR must not be empty")
+	}
+	if err := os.MkdirAll(c.UploadDir, 0700); err != nil {
+		return fmt.Errorf("create upload directory: %w", err)
+	}
+	return nil
 }
 
 func getEnv(key, defaultVal string) string {

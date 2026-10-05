@@ -1,79 +1,72 @@
-# 🚀 ATS Core (High-Performance Go Backend)
+# ATS Core Go
 
-An enterprise-grade, ultra-low-latency backend engine for the Applicant Tracking System (ATS), engineered in **Go 1.27**.
+Go 1.27 REST backend for the ATS frontend. State is stored in memory, and uploaded
+PDFs are stored locally. A restart loses candidates, jobs, taxonomy changes and
+upload task state. `DATABASE_URL` currently does not enable persistence.
 
-It replaces the Python FastAPI + Celery worker bottlenecks with native Go concurrency (goroutines), sub-millisecond response times, minimal RAM footprint (<35 MB), and built-in PII de-identification.
+This implementation uses lexical token-frequency ranking and rank-based reranking;
+it does not implement a dense-vector index, BM25 corpus IDF or multi-channel hybrid
+retrieval. Latency, RAM and throughput claims require representative benchmarks.
 
----
+## Run locally
 
-## ⚡ Performance Advantages
+Install Go 1.27, export configuration into the process environment, then run:
 
-| Metric | Python (FastAPI + Celery) | **Go Core Engine (`ats-core-go`)** | Improvement |
-| :--- | :--- | :--- | :--- |
-| **API Response Latency** | 25ms – 80ms | **< 1ms (500µs – 900µs)** | **~50x – 100x faster** |
-| **Memory Footprint** | 1.8 GB – 3.5 GB | **25 MB – 40 MB** | **~98% reduction** |
-| **Concurrency Model** | GIL / Multiprocess workers | **Native Goroutines & Worker Pools**| Massive scale per core |
-| **Startup Time** | 4.5s – 8.0s | **< 150ms** | Near instantaneous |
-| **Binary Size** | Full Python environment + deps | **~18 MB single static binary** | Zero dependencies |
-
----
-
-## 🏗️ Architecture & Features
-
-1. **Native REST API Gateway**:
-   - Built on `go-chi/chi/v5` with zero external bloat.
-   - 100% wire-compatible with the Next.js frontend (`NEXT_PUBLIC_API_URL="http://localhost:8000/api/v1"`).
-2. **Asynchronous Resume Ingestion**:
-   - `POST /api/v1/candidates/upload-async`: Responds instantly with `202 Accepted` and launches background PDF text extraction, AI scoring, and profile registration using lightweight goroutines.
-3. **Automated PII De-identification**:
-   - High-speed regex and token redaction masking names, emails, phone numbers, and LinkedIn handles before data reaches recruiters.
-4. **Hybrid Lexical BM25 + Reciprocal Rank Fusion (RRF)**:
-   - Built-in multi-stage candidate retrieval engine directly in Go for fast resume-to-job matching.
-5. **AI LLM Evaluation Engine**:
-   - Direct HTTP client with timeout management and retry logic connecting to **OpenRouter** or local **Ollama** foundation models (`nvidia/nemotron-3.5-lightning`, `gemma4:e2b`, `deepseek`).
-
----
-
-## 🛠️ Quick Start
-
-### 1. Build and Run Locally
-
-```bash
-cd ats-core-go
-
-# Run tests
-go test -v ./...
-
-# Build binary
-go build -o ats-core-server.exe ./cmd/server
-
-# Run server (runs on http://localhost:8000 by default)
-./ats-core-server.exe
+```powershell
+$env:ATS_API_KEY = '<your unique API key>'
+go test ./...
+go vet ./...
+go run ./cmd/server
 ```
 
-### 2. Run with Docker
+The server defaults to port 8000. `.env.example` lists environment variables;
+the server does **not** automatically load a `.env` file. Authentication is enabled
+by default and startup rejects an empty key. Set `ATS_AUTH_ENABLED=false` only for
+an intentional local development setup. The API accepts `X-API-Key` or bearer
+authentication. Configure browser origins with `ATS_CORS_ORIGINS`.
 
-```bash
+Uploads default to 10 MiB (`ATS_MAX_UPLOAD_BYTES`) in `ATS_UPLOAD_DIR`. The service
+supports a limited subset of uncompressed literal PDF text. Compressed, encrypted,
+image-only, and unsupported encoded PDFs need a full extraction/OCR service.
+No citation coordinates are returned because this parser cannot verify them.
+
+## Model evaluation
+
+`ATS_LLM_ENABLED=false` is the default. To enable inference, explicitly set it to
+`true` and configure Ollama or OpenRouter. A nonempty `OPENROUTER_API_KEY` selects
+OpenRouter; otherwise the configured Ollama endpoint is selected. Provider failure
+does not silently change destinations and does not generate fallback match scores.
+Known identifiers are masked before inference, but regex masking cannot guarantee
+complete PII removal. Establish data-handling policy before enabling cloud models.
+
+Scores require a valid provider result; missing evaluation remains pending or
+failed. Job assignment does not imply proof of candidate skills or experience.
+
+## API and frontend integration
+
+Public health: `GET /health`. Authenticated routes use `/api/v1` for candidates,
+jobs, dashboard, matching and taxonomy. Uploads return `202` with an asynchronous
+process-local task ID. Poll `/candidates/tasks/{task_id}` until `SUCCESS` or
+`FAILURE`; an unknown task returns `404`. Canceling the HTTP request does not cancel
+an already accepted background task. The current frontend upload helper needs this
+polling lifecycle before end-to-end compatibility can be claimed.
+
+Original PDFs and `include_pii=true` responses contain personal data. The shared
+API key has no role or tenant boundary; these endpoints require identity-based
+permissions before multi-user production use.
+
+## Docker
+
+```powershell
 docker build -t ats-core-go .
-docker run -p 8000:8000 ats-core-go
+docker run --rm -p 8000:8000 -e ATS_API_KEY='<your unique API key>' ats-core-go
 ```
 
----
+The container uses a non-root runtime account. Supply explicit configuration and a
+suitable volume/permissions for retained PDFs. Docker build and service deployment
+are not verified by the offline Go tests. Local uploads and `.env` are excluded
+from the image build context.
 
-## 📡 API Endpoints
-
-- `GET /health` — Health check
-- `GET /api/v1/jobs` — List jobs with status, department, and text filters
-- `POST /api/v1/jobs` — Create new job requisition
-- `GET /api/v1/jobs/{job_id}` — Get job details
-- `GET /api/v1/jobs/{job_id}/candidates` — List candidates ranked for a job
-- `POST /api/v1/jobs/{job_id}/candidates` — Add candidate to job
-- `PATCH /api/v1/jobs/{job_id}/candidates/{candidate_id}/stage` — Update candidate stage
-- `GET /api/v1/candidates` — List candidates with search, stage, and PII masking
-- `GET /api/v1/candidates/{candidate_id}` — Get single candidate
-- `GET /api/v1/candidates/{candidate_id}/scorecard` — Get candidate scorecard
-- `POST /api/v1/candidates/upload-async` — Upload PDF resume asynchronously
-- `GET /api/v1/candidates/tasks/{task_id}` — Check async upload status
-- `POST /api/v1/match/evaluate-job` — Multi-stage hybrid candidate matching & LLM evaluation
-- `GET /api/v1/dashboard/stats` — Dashboard metrics, weekly volume, and pipeline breakdown
-- `GET /api/v1/taxonomy/version` — Skills taxonomy version & stats
+See [CODE_REVIEW_REPORT.md](CODE_REVIEW_REPORT.md) for fixes, validation and remaining
+architecture work. Existing `ats-core-server.exe` is not rebuilt by the review;
+rebuild from source before running it.

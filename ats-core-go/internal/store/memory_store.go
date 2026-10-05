@@ -2,7 +2,9 @@ package store
 
 import (
 	"fmt"
+	"math"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -27,17 +29,22 @@ var (
 
 func GetStore() *Store {
 	once.Do(func() {
-		instance = &Store{
-			candidates:    make(map[string]*models.Candidate),
-			jobs:          make(map[string]*models.Job),
-			jobCandidates: make(map[string][]*models.JobCandidate),
-			uploadTasks:   make(map[string]*models.UploadTask),
-			skills:        make(map[string]*models.TaxonomySkill),
-		}
+		instance = NewStore()
 		instance.seedInitialJobs()
 		instance.seedInitialTaxonomy()
 	})
 	return instance
+}
+
+// NewStore creates an isolated empty store, without demo jobs or shared state.
+func NewStore() *Store {
+	return &Store{
+		candidates:    make(map[string]*models.Candidate),
+		jobs:          make(map[string]*models.Job),
+		jobCandidates: make(map[string][]*models.JobCandidate),
+		uploadTasks:   make(map[string]*models.UploadTask),
+		skills:        make(map[string]*models.TaxonomySkill),
+	}
 }
 
 // ==================== CANDIDATE OPERATIONS ====================
@@ -46,7 +53,7 @@ func (s *Store) ListCandidates(search, stage, skill string, includePII bool) []*
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var result []*models.Candidate
+	result := make([]*models.Candidate, 0)
 	sSearch := strings.ToLower(strings.TrimSpace(search))
 	sStage := strings.ToLower(strings.TrimSpace(stage))
 	sSkill := strings.ToLower(strings.TrimSpace(skill))
@@ -90,12 +97,13 @@ func (s *Store) ListCandidates(search, stage, skill string, includePII bool) []*
 		}
 
 		if includePII {
-			candCopy := *cand
-			result = append(result, &candCopy)
+			candCopy := cloneCandidate(cand)
+			result = append(result, candCopy)
 		} else {
 			result = append(result, s.maskCandidatePII(cand))
 		}
 	}
+	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
 	return result
 }
 
@@ -118,8 +126,8 @@ func (s *Store) GetCandidate(id string, includePII bool) (*models.Candidate, boo
 	}
 
 	if includePII {
-		candCopy := *cand
-		return &candCopy, true
+		candCopy := cloneCandidate(cand)
+		return candCopy, true
 	}
 	return s.maskCandidatePII(cand), true
 }
@@ -127,7 +135,9 @@ func (s *Store) GetCandidate(id string, includePII bool) (*models.Candidate, boo
 func (s *Store) SaveCandidate(cand *models.Candidate) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.candidates[cand.ID] = cand
+	if cand != nil {
+		s.candidates[cand.ID] = cloneCandidate(cand)
+	}
 }
 
 func (s *Store) UpdateCandidateStage(id, stage string) bool {
@@ -143,6 +153,21 @@ func (s *Store) UpdateCandidateStage(id, stage string) bool {
 	return true
 }
 
+// UpdateCandidateScorecard preserves concurrently added recruiter notes and
+// candidate stage while replacing evaluation data atomically.
+func (s *Store) UpdateCandidateScorecard(id string, scorecard models.Scorecard) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	candidate, ok := s.candidates[id]
+	if !ok {
+		return false
+	}
+	copy := cloneCandidate(&models.Candidate{Scorecard: scorecard})
+	copy.Scorecard.TeamNotes = candidate.Scorecard.TeamNotes
+	candidate.Scorecard = copy.Scorecard
+	return true
+}
+
 func (s *Store) AddCandidateNote(candidateID string, author, content string) (*models.Note, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -152,12 +177,12 @@ func (s *Store) AddCandidateNote(candidateID string, author, content string) (*m
 		return nil, fmt.Errorf("candidate %s not found", candidateID)
 	}
 
-	initials := "RA"
+	initials := ""
 	parts := strings.Fields(author)
 	if len(parts) >= 2 {
-		initials = strings.ToUpper(string(parts[0][0]) + string(parts[1][0]))
+		initials = strings.ToUpper(string([]rune(parts[0])[0]) + string([]rune(parts[1])[0]))
 	} else if len(parts) == 1 && len(parts[0]) > 0 {
-		initials = strings.ToUpper(string(parts[0][:1]))
+		initials = strings.ToUpper(string([]rune(parts[0])[0]))
 	}
 
 	note := models.Note{
@@ -165,7 +190,7 @@ func (s *Store) AddCandidateNote(candidateID string, author, content string) (*m
 		Author:    author,
 		Initials:  initials,
 		Role:      "Recruiter",
-		Timestamp: "Just now",
+		Timestamp: models.NowUTC(),
 		Content:   content,
 	}
 
@@ -180,7 +205,8 @@ var (
 )
 
 func (s *Store) maskCandidatePII(orig *models.Candidate) *models.Candidate {
-	c := *orig // shallow copy
+	c := *cloneCandidate(orig)
+	redactCandidateStrings(&c, orig)
 	c.IsPIIMasked = true
 
 	if c.AnonymizedName != "" {
@@ -200,6 +226,7 @@ func (s *Store) maskCandidatePII(orig *models.Candidate) *models.Candidate {
 	c.Avatar = "CD"
 	c.IsImageAvatar = false
 	c.RawText = "" // Never expose raw text with PII
+	c.ResumeFilename = ""
 
 	return &c
 }
@@ -210,7 +237,7 @@ func (s *Store) ListJobs(statusFilter, department, search string) []*models.Job 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var result []*models.Job
+	result := make([]*models.Job, 0)
 	sStatus := strings.ToUpper(strings.TrimSpace(statusFilter))
 	sDept := strings.ToLower(strings.TrimSpace(department))
 	sSearch := strings.ToLower(strings.TrimSpace(search))
@@ -243,9 +270,10 @@ func (s *Store) ListJobs(statusFilter, department, search string) []*models.Job 
 			}
 		}
 
-		jobCopy := *job
-		result = append(result, &jobCopy)
+		jobCopy := cloneJob(job)
+		result = append(result, jobCopy)
 	}
+	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
 	return result
 }
 
@@ -258,20 +286,62 @@ func (s *Store) GetJob(id string) (*models.Job, bool) {
 		// match by lowercase title or id
 		for _, j := range s.jobs {
 			if strings.EqualFold(j.Title, id) || j.ID == id {
-				jobCopy := *j
-				return &jobCopy, true
+				jobCopy := cloneJob(j)
+				return jobCopy, true
 			}
 		}
 		return nil, false
 	}
-	jobCopy := *job
-	return &jobCopy, true
+	jobCopy := cloneJob(job)
+	return jobCopy, true
 }
 
 func (s *Store) SaveJob(job *models.Job) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.jobs[job.ID] = job
+	if job != nil {
+		s.jobs[job.ID] = cloneJob(job)
+	}
+}
+
+// JobUpdate describes editable fields without replacing application counts or
+// status. Pointer fields distinguish omitted values from explicit empty values.
+type JobUpdate struct {
+	Title              *string
+	Department         *string
+	Location           *string
+	JobDescription     *string
+	RequiredSkills     *[]string
+	MinYearsExperience *float64
+}
+
+func (s *Store) UpdateJob(id string, updates JobUpdate) (*models.Job, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job, ok := s.jobs[id]
+	if !ok {
+		return nil, false
+	}
+	if updates.Title != nil {
+		job.Title = *updates.Title
+	}
+	if updates.Department != nil {
+		job.Department = *updates.Department
+	}
+	if updates.Location != nil {
+		job.Location = *updates.Location
+	}
+	if updates.JobDescription != nil {
+		job.JobDescription = *updates.JobDescription
+	}
+	if updates.RequiredSkills != nil {
+		job.RequiredSkills = append([]string{}, (*updates.RequiredSkills)...)
+	}
+	if updates.MinYearsExperience != nil {
+		job.MinYearsExperience = *updates.MinYearsExperience
+	}
+	job.UpdatedAt = models.NowUTC()
+	return cloneJob(job), true
 }
 
 func (s *Store) UpdateJobStatus(id, newStatus string) (*models.Job, bool) {
@@ -285,13 +355,16 @@ func (s *Store) UpdateJobStatus(id, newStatus string) (*models.Job, bool) {
 	job.Status = newStatus
 	if newStatus == "PAUSED" {
 		job.TopMatch.Status = "PAUSED"
-		job.TopMatch.Label = "Analysis Paused"
 	} else if newStatus == "OPEN" {
-		job.TopMatch.Status = "ACTIVE"
+		if job.TopMatch.Score == nil {
+			job.TopMatch.Status = "PENDING"
+		} else {
+			job.TopMatch.Status = "ACTIVE"
+		}
 	}
 	job.UpdatedAt = models.NowUTC()
-	jobCopy := *job
-	return &jobCopy, true
+	jobCopy := cloneJob(job)
+	return jobCopy, true
 }
 
 func (s *Store) GetJobCandidates(jobID string, includePII bool) []*models.JobCandidate {
@@ -303,10 +376,13 @@ func (s *Store) GetJobCandidates(jobID string, includePII bool) []*models.JobCan
 		return []*models.JobCandidate{}
 	}
 
-	var result []*models.JobCandidate
+	result := make([]*models.JobCandidate, 0)
 	for _, jc := range list {
-		copyJC := *jc
+		copyJC := *cloneJobCandidate(jc)
 		if !includePII {
+			if candidate := s.candidates[jc.ID]; candidate != nil {
+				redactProfileStrings(&copyJC, candidate)
+			}
 			copyJC.Name = fmt.Sprintf("Candidate #%s", copyJC.ID)
 			if len(copyJC.ID) > 8 {
 				copyJC.Name = fmt.Sprintf("Candidate #%s", copyJC.ID[len(copyJC.ID)-8:])
@@ -324,13 +400,16 @@ func (s *Store) AddJobCandidate(jobID string, jc *models.JobCandidate) []*models
 	defer s.mu.Unlock()
 
 	list := s.jobCandidates[jobID]
+	if jc == nil || s.jobs[jobID] == nil || s.candidates[jc.ID] == nil {
+		return cloneApplications(list)
+	}
 	var updated []*models.JobCandidate
 	for _, item := range list {
 		if item.ID != jc.ID {
 			updated = append(updated, item)
 		}
 	}
-	updated = append(updated, jc)
+	updated = append(updated, cloneJobCandidate(jc))
 
 	// Re-rank 1..N
 	for i, item := range updated {
@@ -341,7 +420,7 @@ func (s *Store) AddJobCandidate(jobID string, jc *models.JobCandidate) []*models
 	if job, ok := s.jobs[jobID]; ok {
 		job.CandidatesCount = len(updated)
 	}
-	return updated
+	return cloneApplications(updated)
 }
 
 func (s *Store) RemoveJobCandidate(jobID, candidateID string) []*models.JobCandidate {
@@ -362,7 +441,7 @@ func (s *Store) RemoveJobCandidate(jobID, candidateID string) []*models.JobCandi
 	if job, ok := s.jobs[jobID]; ok {
 		job.CandidatesCount = len(updated)
 	}
-	return updated
+	return cloneApplications(updated)
 }
 
 func (s *Store) UpdateJobCandidateStage(jobID, candidateID, newStage string) (*models.JobCandidate, bool) {
@@ -380,13 +459,9 @@ func (s *Store) UpdateJobCandidateStage(jobID, candidateID, newStage string) (*m
 			} else {
 				item.StageBadgeStyle = "bg-zinc-100 text-zinc-700"
 			}
-			// sync to candidates store if present
-			if cand, found := s.candidates[candidateID]; found {
-				cand.Stage = newStage
-				cand.Status = newStage
-			}
-			copyItem := *item
-			return &copyItem, true
+			// An application stage belongs only to this job.
+			copyItem := cloneJobCandidate(item)
+			return copyItem, true
 		}
 	}
 	return nil, false
@@ -397,7 +472,9 @@ func (s *Store) UpdateJobCandidateStage(jobID, candidateID, newStage string) (*m
 func (s *Store) SaveTask(task *models.UploadTask) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.uploadTasks[task.TaskID] = task
+	if task != nil {
+		s.uploadTasks[task.TaskID] = cloneTask(task)
+	}
 }
 
 func (s *Store) GetTask(taskID string) (*models.UploadTask, bool) {
@@ -407,8 +484,8 @@ func (s *Store) GetTask(taskID string) (*models.UploadTask, bool) {
 	if !ok {
 		return nil, false
 	}
-	copyTask := *t
-	return &copyTask, true
+	copyTask := cloneTask(t)
+	return copyTask, true
 }
 
 // ==================== TAXONOMY OPERATIONS ====================
@@ -444,9 +521,10 @@ func (s *Store) ListSkills(category, status, search string, page, limit int) ([]
 				continue
 			}
 		}
-		filtered = append(filtered, *sk)
+		filtered = append(filtered, *cloneSkill(sk))
 	}
 
+	sort.Slice(filtered, func(i, j int) bool { return filtered[i].ID < filtered[j].ID })
 	total := len(filtered)
 	if page < 1 {
 		page = 1
@@ -455,13 +533,16 @@ func (s *Store) ListSkills(category, status, search string, page, limit int) ([]
 		limit = 50
 	}
 
+	if total == 0 || page-1 > (total-1)/limit {
+		return []models.TaxonomySkill{}, total
+	}
 	start := (page - 1) * limit
 	if start >= total {
 		return []models.TaxonomySkill{}, total
 	}
-	end := start + limit
-	if end > total {
-		end = total
+	end := total
+	if limit < total-start {
+		end = start + limit
 	}
 
 	return filtered[start:end], total
@@ -470,7 +551,9 @@ func (s *Store) ListSkills(category, status, search string, page, limit int) ([]
 func (s *Store) AddSkill(skill *models.TaxonomySkill) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.skills[skill.ID] = skill
+	if skill != nil {
+		s.skills[skill.ID] = cloneSkill(skill)
+	}
 }
 
 func (s *Store) GetSkillByCanonical(name string) *models.TaxonomySkill {
@@ -479,8 +562,8 @@ func (s *Store) GetSkillByCanonical(name string) *models.TaxonomySkill {
 	lower := strings.ToLower(strings.TrimSpace(name))
 	for _, sk := range s.skills {
 		if strings.ToLower(sk.CanonicalName) == lower {
-			copySk := *sk
-			return &copySk
+			copySk := cloneSkill(sk)
+			return copySk
 		}
 	}
 	return nil
@@ -502,11 +585,11 @@ func (s *Store) ApproveSkill(id string, canonicalName, category *string, aliases
 		sk.Category = *category
 	}
 	if aliases != nil {
-		sk.Aliases = *aliases
+		sk.Aliases = append([]string(nil), (*aliases)...)
 	}
 	sk.UpdatedAt = models.NowUTC()
-	copySk := *sk
-	return &copySk, true
+	copySk := cloneSkill(sk)
+	return copySk, true
 }
 
 func (s *Store) RejectSkill(id string) (*models.TaxonomySkill, bool) {
@@ -519,8 +602,8 @@ func (s *Store) RejectSkill(id string) (*models.TaxonomySkill, bool) {
 	}
 	sk.Status = "rejected"
 	sk.UpdatedAt = models.NowUTC()
-	copySk := *sk
-	return &copySk, true
+	copySk := cloneSkill(sk)
+	return copySk, true
 }
 
 func (s *Store) AddSkillAlias(canonicalName, alias string) (*models.TaxonomySkill, bool) {
@@ -530,10 +613,19 @@ func (s *Store) AddSkillAlias(canonicalName, alias string) (*models.TaxonomySkil
 	lower := strings.ToLower(strings.TrimSpace(canonicalName))
 	for _, sk := range s.skills {
 		if strings.ToLower(sk.CanonicalName) == lower {
+			alias = strings.TrimSpace(alias)
+			if alias == "" {
+				return cloneSkill(sk), true
+			}
+			for _, existing := range sk.Aliases {
+				if strings.EqualFold(strings.TrimSpace(existing), alias) {
+					return cloneSkill(sk), true
+				}
+			}
 			sk.Aliases = append(sk.Aliases, alias)
 			sk.UpdatedAt = models.NowUTC()
-			copySk := *sk
-			return &copySk, true
+			copySk := cloneSkill(sk)
+			return copySk, true
 		}
 	}
 	return nil, false
@@ -557,10 +649,10 @@ func (s *Store) GetDashboardStats(includePII bool) *models.DashboardStatsRespons
 	todayDateStr := time.Now().UTC().Format("2006-01-02")
 
 	for _, c := range s.candidates {
-		if c.Scorecard.OverallMatchScore != nil && c.Scorecard.EvaluationStatus != "FAILED" && c.Scorecard.EvaluationStatus != "PENDING" {
+		if validEvaluationScore(c.Scorecard) {
 			evaluatedScores = append(evaluatedScores, *c.Scorecard.OverallMatchScore)
 		}
-		if strings.HasPrefix(c.Scorecard.EvaluatedAt, todayDateStr) {
+		if validEvaluationScore(c.Scorecard) && strings.HasPrefix(c.Scorecard.EvaluatedAt, todayDateStr) {
 			todayEvals++
 		}
 	}
@@ -582,7 +674,11 @@ func (s *Store) GetDashboardStats(includePII bool) *models.DashboardStatsRespons
 		"Negotiation": {},
 	}
 
-	for _, c := range s.candidates {
+	for _, storedCandidate := range s.candidates {
+		c := cloneCandidate(storedCandidate)
+		if !includePII {
+			c = s.maskCandidatePII(storedCandidate)
+		}
 		stage := c.Stage
 		if stage == "" {
 			stage = "Contacted"
@@ -604,7 +700,7 @@ func (s *Store) GetDashboardStats(includePII bool) *models.DashboardStatsRespons
 		}
 
 		var scoreInt *int
-		if c.Scorecard.OverallMatchScore != nil {
+		if validEvaluationScore(c.Scorecard) {
 			v := int(*c.Scorecard.OverallMatchScore)
 			scoreInt = &v
 		}
@@ -666,15 +762,45 @@ func (s *Store) GetDashboardStats(includePII bool) *models.DashboardStatsRespons
 		},
 	}
 
-	weeklyVolumes := []models.WeeklyVolume{
-		{Week: "W1", Count: 12, IsPeak: false},
-		{Week: "W2", Count: 19, IsPeak: false},
-		{Week: "W3", Count: 15, IsPeak: false},
-		{Week: "W4", Count: 28, IsPeak: false},
-		{Week: "W5", Count: 34, IsPeak: true},
-		{Week: "W6", Count: 22, IsPeak: false},
-		{Week: "W7", Count: 18, IsPeak: false},
-		{Week: "W8", Count: 25, IsPeak: false},
+	weeklyVolumes := make([]models.WeeklyVolume, 8)
+	now := time.Now().UTC()
+	// Eight UTC calendar weeks ending in the current week, Monday to Sunday.
+	weekStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	weekStart = weekStart.AddDate(0, 0, -(int(now.Weekday())+6)%7)
+	firstWeek := weekStart.AddDate(0, 0, -49)
+	for i := range weeklyVolumes {
+		weeklyVolumes[i].Week = firstWeek.AddDate(0, 0, i*7).Format("2006-01-02")
+	}
+	for _, candidate := range s.candidates {
+		created, err := time.Parse(time.RFC3339, candidate.CreatedAt)
+		if err != nil {
+			continue
+		}
+		if created.Before(firstWeek) || created.After(now) {
+			continue
+		}
+		index := int(created.Sub(firstWeek).Hours() / (24 * 7))
+		if index < len(weeklyVolumes) {
+			weeklyVolumes[index].Count++
+		}
+	}
+	peak := 0
+	for _, week := range weeklyVolumes {
+		if week.Count > peak {
+			peak = week.Count
+		}
+	}
+	for i := range weeklyVolumes {
+		weeklyVolumes[i].IsPeak = peak > 0 && weeklyVolumes[i].Count == peak
+	}
+	for _, list := range pipeline {
+		sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
+	}
+	processing := 0
+	for _, task := range s.uploadTasks {
+		if task.State == "PENDING" || task.State == "PROGRESS" {
+			processing++
+		}
 	}
 
 	return &models.DashboardStatsResponse{
@@ -687,8 +813,20 @@ func (s *Store) GetDashboardStats(includePII bool) *models.DashboardStatsRespons
 			"not_matched_percent": 100 - matchPercent,
 			"evaluated_count":     len(evaluatedScores),
 		},
-		ProcessingResumes: 0,
+		ProcessingResumes: processing,
 		TodayEvaluations:  todayEvals,
 		Pipeline:          pipeline,
 	}
+}
+
+func validEvaluationScore(scorecard models.Scorecard) bool {
+	status := strings.ToUpper(scorecard.EvaluationStatus)
+	if status != "COMPLETED" && status != "SUCCESS" && status != "MANUAL" {
+		return false
+	}
+	if scorecard.OverallMatchScore == nil {
+		return false
+	}
+	score := *scorecard.OverallMatchScore
+	return !math.IsNaN(score) && !math.IsInf(score, 0) && score >= 0 && score <= 100
 }

@@ -33,6 +33,9 @@ type CandidateScored struct {
 const kRRF = 60.0
 
 func (m *MatchService) MatchJob(ctx context.Context, jobTitle, jobDescription string, stage1Limit, stage2Limit int) ([]map[string]any, int, int, []string, bool) {
+	if ctx.Err() != nil || stage1Limit <= 0 || stage2Limit <= 0 {
+		return []map[string]any{}, 0, 0, []string{}, true
+	}
 	candidates := m.store.ListCandidates("", "", "", true)
 	if len(candidates) == 0 {
 		return []map[string]any{}, 0, 0, []string{}, false
@@ -43,8 +46,11 @@ func (m *MatchService) MatchJob(ctx context.Context, jobTitle, jobDescription st
 	// Stage 1: Lexical BM25 / Frequency Ranking
 	var scoredList []CandidateScored
 	for _, cand := range candidates {
-		candText := cand.Name + " " + cand.TargetHeadline + " " + strings.Join(cand.CoreSkills, " ") + " " + cand.RawText
+		candText := cand.TargetHeadline + " " + strings.Join(cand.CoreSkills, " ") + " " + cand.RawText
 		score := computeLexicalScore(queryTokens, candText)
+		if score <= 0 {
+			continue
+		}
 		scoredList = append(scoredList, CandidateScored{
 			Candidate: cand,
 			Score:     score,
@@ -53,6 +59,9 @@ func (m *MatchService) MatchJob(ctx context.Context, jobTitle, jobDescription st
 
 	// Sort Stage 1 by score descending
 	sort.Slice(scoredList, func(i, j int) bool {
+		if scoredList[i].Score == scoredList[j].Score {
+			return scoredList[i].Candidate.ID < scoredList[j].Candidate.ID
+		}
 		return scoredList[i].Score > scoredList[j].Score
 	})
 
@@ -78,30 +87,33 @@ func (m *MatchService) MatchJob(ctx context.Context, jobTitle, jobDescription st
 	}
 
 	// Stage 3: Deep LLM Evaluation for Top Candidates
-	var finalEvals []map[string]any
-	var failedIDs []string
+	finalEvals := []map[string]any{}
+	failedIDs := []string{}
 
 	for rank, item := range stage2List {
 		cand := item.Candidate
-		candSummary := cand.Name + " - " + cand.TargetHeadline + ". Skills: " + strings.Join(cand.CoreSkills, ", ")
+		if ctx.Err() != nil {
+			for _, remaining := range stage2List[rank:] {
+				failedIDs = append(failedIDs, remaining.Candidate.ID)
+			}
+			break
+		}
+		candSummary := cand.TargetHeadline + ". Skills: " + strings.Join(cand.CoreSkills, ", ")
 		if cand.RawText != "" {
 			candSummary += "\n" + cand.RawText
 		}
 
+		candSummary = RedactKnownPII(candSummary, cand.Name, cand.Email, cand.Phone, cand.LinkedIn)
 		scorecard, err := m.evaluator.EvaluateCandidate(ctx, candSummary, jobDescription)
-		if err != nil {
+		if err != nil || scorecard == nil || scorecard.OverallMatchScore == nil {
 			failedIDs = append(failedIDs, cand.ID)
 			continue
 		}
 
 		// Store updated scorecard in store
-		cand.Scorecard = *scorecard
-		m.store.SaveCandidate(cand)
+		m.store.UpdateCandidateScorecard(cand.ID, *scorecard)
 
-		matchScoreVal := 80.0
-		if scorecard.OverallMatchScore != nil {
-			matchScoreVal = *scorecard.OverallMatchScore
-		}
+		matchScoreVal := *scorecard.OverallMatchScore
 
 		evalMap := map[string]any{
 			"candidate_id": cand.ID,
@@ -120,15 +132,17 @@ func (m *MatchService) MatchJob(ctx context.Context, jobTitle, jobDescription st
 		finalEvals = append(finalEvals, evalMap)
 	}
 
-	return finalEvals, len(scoredList), len(stage2List), failedIDs, false
+	// This implementation uses lexical reranking, not a model-backed reranker.
+	return finalEvals, len(scoredList), len(stage2List), failedIDs, true
 }
 
 func tokenize(text string) []string {
 	words := strings.Fields(strings.ToLower(text))
 	var clean []string
 	for _, w := range words {
-		w = strings.Trim(w, ".,!?:;\"'()[]{}")
-		if len(w) > 2 {
+		w = strings.Trim(w, ",!?:;\"'()[]{}")
+		w = strings.TrimSuffix(w, ".")
+		if len(w) > 0 {
 			clean = append(clean, w)
 		}
 	}
@@ -136,17 +150,25 @@ func tokenize(text string) []string {
 }
 
 func computeLexicalScore(queryTokens []string, docText string) float64 {
-	lowerDoc := strings.ToLower(docText)
 	docTokens := tokenize(docText)
-	if len(docTokens) == 0 {
+	if len(docTokens) == 0 || len(queryTokens) == 0 {
 		return 0
 	}
 
 	score := 0.0
 	matchedMap := make(map[string]bool)
+	counts := make(map[string]int)
+	for _, token := range docTokens {
+		counts[token]++
+	}
+	uniqueQuery := make(map[string]bool)
 
 	for _, token := range queryTokens {
-		count := strings.Count(lowerDoc, token)
+		if uniqueQuery[token] {
+			continue
+		}
+		uniqueQuery[token] = true
+		count := counts[token]
 		if count > 0 {
 			// TF component with logarithmic dampening
 			tf := 1.0 + math.Log(float64(count))
@@ -156,6 +178,6 @@ func computeLexicalScore(queryTokens []string, docText string) float64 {
 	}
 
 	// Keyword coverage bonus
-	coverage := float64(len(matchedMap)) / float64(len(queryTokens))
+	coverage := float64(len(matchedMap)) / float64(len(uniqueQuery))
 	return score * (1.0 + coverage*2.0)
 }
