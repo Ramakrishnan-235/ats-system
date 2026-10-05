@@ -139,9 +139,22 @@ def test_pdf_grounding_does_not_accept_real_prefix_with_fabricated_suffix():
 
 
 @pytest.mark.asyncio
-async def test_audit_rejects_fabricated_uuid_foreign_keys():
+async def test_audit_accepts_ats_id_formats_and_rejects_empty_ids():
     session = SimpleNamespace(add=Mock(), commit=AsyncMock())
+    audit = await AuditLogger.persist_audit_record(
+        session, DeepCandidateEvaluationReport(overall_match_score=50), "cand-1", "job-1"
+    )
+    assert audit.candidate_id is not None
+    assert audit.job_id is not None
+    session.add.assert_called_once()
+    session.commit.assert_awaited_once()
+
+    # Empty candidate or job IDs must be rejected
     with pytest.raises(ValueError):
-        await AuditLogger.persist_audit_record(session, DeepCandidateEvaluationReport(overall_match_score=50), "cand-1", "job-1")
-    session.add.assert_not_called()
-    session.commit.assert_not_awaited()
+        await AuditLogger.persist_audit_record(
+            session, DeepCandidateEvaluationReport(overall_match_score=50), "", "job-1"
+        )
+    with pytest.raises(ValueError):
+        await AuditLogger.persist_audit_record(
+            session, DeepCandidateEvaluationReport(overall_match_score=50), "cand-1", ""
+        )

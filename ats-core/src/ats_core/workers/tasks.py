@@ -12,6 +12,7 @@ from sqlalchemy.orm import sessionmaker
 
 from ats_core.workers.celery_app import celery_app
 from ats_core.models.db import Candidate
+from ats_core.models.id_utils import coerce_to_uuid
 from ats_core.api.upload_storage import UPLOAD_STAGING_DIR, MAX_UPLOAD_BYTES
 
 logger = logging.getLogger("ats.workers.tasks")
@@ -82,7 +83,7 @@ def _execute_resume_processing(
     and updates PostgreSQL and vector embeddings.
     """
     # Reject permanent input errors before loading models or scheduling retries.
-    cand_uuid = uuid.UUID(candidate_id)
+    cand_uuid = coerce_to_uuid(candidate_id)
     file_p = _validated_staged_path(file_path)
     logger.info(f"[{task_instance.request.id}] Starting PDF resume processing for candidate {candidate_id}")
     

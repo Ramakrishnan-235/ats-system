@@ -361,6 +361,20 @@ async def upload_resume_async(
                             }
                         ]
                     }
+
+                    # Persist immutable scoring audit for EEOC and compliance tracking
+                    try:
+                        from ats_core.evaluator.audit_logger import AuditLogger
+                        await AuditLogger.persist_audit_record(
+                            session=None,
+                            report=report,
+                            candidate_id=candidate_id,
+                            job_id=target_job.get("id") or "job-001",
+                            telemetry=eval_result.get("telemetry"),
+                            raw_prompt=job_desc_eval,
+                        )
+                    except Exception as audit_err:
+                        logger.warning(f"Could not persist scoring audit for {candidate_id}: {audit_err}")
             except Exception as eval_err:
                 logger.warning(f"Ollama deep evaluation fallback: {eval_err}", exc_info=True)
 

@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import Depends, FastAPI, HTTPException
@@ -553,4 +553,87 @@ def test_invalid_candidate_stage_rejected(api):
     })
     assert response.status_code == 400
     assert "Invalid candidate stage" in response.json()["detail"]
+
+
+def test_coerce_to_uuid_handles_api_go_and_custom_id_formats():
+    from ats_core.models.id_utils import coerce_to_uuid, optional_coerce_to_uuid
+
+    # 1. API format: cand-<hex32>
+    orig_uuid = uuid.uuid4()
+    api_cand_id = f"cand-{orig_uuid.hex}"
+    parsed_api = coerce_to_uuid(api_cand_id)
+    assert parsed_api == orig_uuid
+
+    # 2. Go server format: cand-<uuid36>
+    go_cand_id = f"cand-{str(orig_uuid)}"
+    parsed_go = coerce_to_uuid(go_cand_id)
+    assert parsed_go == orig_uuid
+
+    # 3. Custom job formats: job-001, job-1, job-open
+    job_uuid1 = coerce_to_uuid("job-001")
+    assert isinstance(job_uuid1, uuid.UUID)
+    assert coerce_to_uuid("job-001") == job_uuid1  # Deterministic!
+
+    job_uuid_open = coerce_to_uuid("job-open")
+    assert isinstance(job_uuid_open, uuid.UUID)
+    assert job_uuid_open != job_uuid1
+
+    # 4. Short candidate formats: cand-1, cand-demo
+    cand_1_uuid = coerce_to_uuid("cand-1")
+    assert isinstance(cand_1_uuid, uuid.UUID)
+    assert coerce_to_uuid("cand-1") == cand_1_uuid
+
+    # 5. Invalid / empty IDs reject with ValueError
+    with pytest.raises(ValueError):
+        coerce_to_uuid("")
+    with pytest.raises(ValueError):
+        coerce_to_uuid(None)
+    with pytest.raises(ValueError):
+        coerce_to_uuid("   ")
+
+    # 6. Optional coercion
+    assert optional_coerce_to_uuid(None) is None
+    assert optional_coerce_to_uuid("") is None
+    assert optional_coerce_to_uuid("cand-001") is not None
+
+
+@pytest.mark.asyncio
+async def test_audit_logger_persists_with_api_candidate_and_job_ids():
+    from ats_core.evaluator.audit_logger import AuditLogger
+    from ats_core.schema.evaluation import DeepCandidateEvaluationReport
+
+    report = DeepCandidateEvaluationReport(
+        overall_match_score=85,
+        qualification_tier="Strong Fit",
+        executive_verdict="Excellent candidate for backend role.",
+    )
+
+    api_cand_id = f"cand-{uuid.uuid4().hex}"
+    job_id = "job-001"
+
+    # Persist with mock session
+    session = SimpleNamespace(add=MagicMock(), commit=AsyncMock())
+    entry = await AuditLogger.persist_audit_record(
+        session=session,
+        report=report,
+        candidate_id=api_cand_id,
+        job_id=job_id,
+        telemetry={"model": "gemma4:e2b", "latency_ms": 120},
+    )
+
+    assert entry.candidate_id is not None
+    assert entry.job_id is not None
+    assert entry.overall_match_score == 85.0
+    session.add.assert_called_once()
+    session.commit.assert_awaited_once()
+
+    # Persist without session (records to in-memory store)
+    entry_in_mem = await AuditLogger.persist_audit_record(
+        session=None,
+        report=report,
+        candidate_id="cand-1",
+        job_id="job-open",
+    )
+    assert entry_in_mem in AuditLogger.get_audits(candidate_id="cand-1", job_id="job-open")
+
 
