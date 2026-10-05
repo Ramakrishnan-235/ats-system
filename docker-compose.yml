@@ -40,6 +40,24 @@ services:
     environment:
       - OLLAMA_KEEP_ALIVE=24h
 
+  ats-core-go:
+    build:
+      context: ./ats-core-go
+      dockerfile: Dockerfile
+    container_name: ats-core-go
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://ats_user:ats_password@postgres:5432/ats_db
+      - ATS_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+      - ATS_AUTH_ENABLED=false
+    depends_on:
+      - postgres
+      - redis
+
 volumes:
   postgres_data:
   ollama_data:
