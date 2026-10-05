@@ -94,6 +94,11 @@ def register_candidate_profile(
             existing["applied_for_job_id"] = job_id
         if cand_dict.get("applied_for_job") and not existing.get("applied_for_job"):
             existing["applied_for_job"] = cand_dict["applied_for_job"]
+        try:
+            from ats_core.db.store_sync import sync_candidate_to_db
+            sync_candidate_to_db(existing)
+        except Exception as e:
+            logger.debug("Could not sync existing candidate to DB: %s", e)
         return existing
 
     incoming_name = cand_dict.get("name")
@@ -148,6 +153,11 @@ def register_candidate_profile(
         "highest_education": cand_dict.get("highest_education") or "N/A",
     }
     CANDIDATES_STORE[cand_id] = candidate
+    try:
+        from ats_core.db.store_sync import sync_candidate_to_db
+        sync_candidate_to_db(candidate)
+    except Exception as e:
+        logger.debug("Could not sync registered candidate to DB: %s", e)
     return candidate
 
 
@@ -163,6 +173,12 @@ async def list_candidates(
     skill: Optional[str] = Query(None),
     include_pii: bool = Query(False, description="Set to true only when authorized to view unmasked PII")
 ):
+    try:
+        from ats_core.db.store_sync import sync_candidates_from_db
+        sync_candidates_from_db()
+    except Exception as e:
+        logger.debug("Could not sync candidates from DB: %s", e)
+
     candidates = list(CANDIDATES_STORE.values())
 
     if stage and stage.upper() != "ALL":
@@ -198,6 +214,13 @@ async def get_candidate(
         target = CANDIDATES_STORE.get(alt_id)
 
     if not target:
+        try:
+            from ats_core.db.store_sync import sync_candidate_by_id_from_db
+            target = sync_candidate_by_id_from_db(candidate_id)
+        except Exception as e:
+            logger.debug("Could not sync candidate %s from DB: %s", candidate_id, e)
+
+    if not target:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Candidate with ID '{candidate_id}' not found."
@@ -212,6 +235,13 @@ async def get_candidate(
 @router.get("/{candidate_id}/scorecard")
 async def get_candidate_scorecard(candidate_id: str):
     if candidate_id not in CANDIDATES_STORE:
+        try:
+            from ats_core.db.store_sync import sync_candidate_by_id_from_db
+            sync_candidate_by_id_from_db(candidate_id)
+        except Exception as e:
+            logger.debug("Could not sync candidate %s from DB: %s", candidate_id, e)
+
+    if candidate_id not in CANDIDATES_STORE:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Candidate with ID '{candidate_id}' not found."
@@ -221,6 +251,13 @@ async def get_candidate_scorecard(candidate_id: str):
 
 @router.post("/{candidate_id}/notes")
 async def add_candidate_note(candidate_id: str, note: NoteCreateRequest):
+    if candidate_id not in CANDIDATES_STORE:
+        try:
+            from ats_core.db.store_sync import sync_candidate_by_id_from_db
+            sync_candidate_by_id_from_db(candidate_id)
+        except Exception as e:
+            logger.debug("Could not sync candidate %s from DB: %s", candidate_id, e)
+
     if candidate_id not in CANDIDATES_STORE:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -240,11 +277,25 @@ async def add_candidate_note(candidate_id: str, note: NoteCreateRequest):
     if "team_notes" not in cand["scorecard"]:
         cand["scorecard"]["team_notes"] = []
     cand["scorecard"]["team_notes"].append(new_note)
+
+    try:
+        from ats_core.db.store_sync import sync_candidate_to_db
+        sync_candidate_to_db(cand)
+    except Exception as e:
+        logger.debug("Could not persist candidate note to DB: %s", e)
+
     return new_note
 
 
 @router.patch("/{candidate_id}/stage")
 async def update_candidate_stage(candidate_id: str, new_stage: str = Query(...)):
+    if candidate_id not in CANDIDATES_STORE:
+        try:
+            from ats_core.db.store_sync import sync_candidate_by_id_from_db
+            sync_candidate_by_id_from_db(candidate_id)
+        except Exception as e:
+            logger.debug("Could not sync candidate %s from DB: %s", candidate_id, e)
+
     if candidate_id not in CANDIDATES_STORE:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -253,6 +304,13 @@ async def update_candidate_stage(candidate_id: str, new_stage: str = Query(...))
     cand = CANDIDATES_STORE[candidate_id]
     cand["stage"] = new_stage
     cand["status"] = new_stage
+
+    try:
+        from ats_core.db.store_sync import sync_candidate_to_db
+        sync_candidate_to_db(cand)
+    except Exception as e:
+        logger.debug("Could not persist candidate stage to DB: %s", e)
+
     return {"status": "SUCCESS", "candidate_id": candidate_id, "stage": new_stage}
 
 
@@ -378,10 +436,17 @@ async def upload_resume_async(
             except Exception as eval_err:
                 logger.warning(f"Ollama deep evaluation fallback: {eval_err}", exc_info=True)
 
-        # Store in live candidates memory. A missing evaluation is not an upload failure.
+        task_id = str(uuid.uuid4())
+        parsed_candidate["upload_task_id"] = task_id
         parsed_candidate["resume_filename"] = safe_filename
         parsed_candidate["created_at"] = datetime.now(timezone.utc).isoformat()
         CANDIDATES_STORE[candidate_id] = parsed_candidate
+        try:
+            from ats_core.db.store_sync import sync_candidate_to_db
+            sync_candidate_to_db(parsed_candidate)
+        except Exception as sync_db_err:
+            logger.debug("Could not sync uploaded candidate to DB: %s", sync_db_err)
+
         if target_job:
             target_job_id = target_job.get("id")
             if target_job_id:
@@ -421,8 +486,18 @@ async def upload_resume_async(
                         "last_run": "Just now",
                         "status": "ACTIVE",
                     }
+                try:
+                    from ats_core.db.store_sync import sync_application_to_db, sync_job_to_db
+                    sync_application_to_db(target_job_id, job_cand)
+                    sync_job_to_db(target_job)
+                except Exception as sync_app_err:
+                    logger.debug("Could not sync application to DB: %s", sync_app_err)
             else:
-                target_job["candidates_count"] = target_job.get("candidates_count", 0) + 1
+                target_job["candidates_count"] = len([
+                    c for c in CANDIDATES_STORE.values()
+                    if c.get("applied_for_job_id") == target_job.get("id")
+                    or c.get("applied_for_job") == target_job.get("title")
+                ])
 
         try:
             from ats_core.api.v1.match import sync_candidates_to_retriever
@@ -443,8 +518,10 @@ async def upload_resume_async(
             logger.warning("Could not remove failed resume upload for %s", candidate_id)
         candidate_name = safe_filename.replace(".pdf", "")
         final_score = 0
+        task_id = str(uuid.uuid4())
         parsed_candidate = {
             "id": candidate_id,
+            "upload_task_id": task_id,
             "name": candidate_name,
             "anonymized_name": f"Candidate #{candidate_id.replace('cand-', '')[:5]}",
             "target_headline": "Document Parse Error",
@@ -467,8 +544,12 @@ async def upload_resume_async(
             }
         }
         CANDIDATES_STORE[candidate_id] = parsed_candidate
+        try:
+            from ats_core.db.store_sync import sync_candidate_to_db
+            sync_candidate_to_db(parsed_candidate)
+        except Exception as e:
+            logger.debug("Could not sync failed candidate to DB: %s", e)
 
-    task_id = str(uuid.uuid4())
     UPLOAD_TASKS_STORE[task_id] = {
         "task_id": task_id,
         "state": "FAILURE" if processing_failed else "SUCCESS",
@@ -505,6 +586,14 @@ async def get_task_status(task_id: str):
     if task_id in UPLOAD_TASKS_STORE:
         return copy.deepcopy(UPLOAD_TASKS_STORE[task_id])
 
+    try:
+        from ats_core.db.store_sync import sync_task_status_from_db
+        db_task = sync_task_status_from_db(task_id)
+        if db_task:
+            return copy.deepcopy(db_task)
+    except Exception as e:
+        logger.debug("Could not check DB for task status: %s", e)
+
     # Other IDs may belong to actual worker tasks; never fabricate progress.
     try:
         from celery.result import AsyncResult
@@ -532,6 +621,12 @@ async def get_task_status(task_id: str):
         response["step"] = info.get("step", "Processing")
     elif state == "SUCCESS":
         response["result"] = result
+        if isinstance(result, dict) and "candidate_id" in result:
+            try:
+                from ats_core.db.store_sync import sync_candidate_by_id_from_db
+                sync_candidate_by_id_from_db(result["candidate_id"])
+            except Exception as e:
+                logger.debug("Could not sync candidate after Celery task completion: %s", e)
     elif state == "FAILURE":
         response["error"] = "Resume processing failed."
 

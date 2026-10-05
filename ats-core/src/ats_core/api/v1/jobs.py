@@ -1,9 +1,11 @@
 import uuid
+import logging
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, status, Query
 from pydantic import BaseModel, Field, field_validator
 
+logger = logging.getLogger("ats.api.jobs")
 router = APIRouter(prefix="/jobs", tags=["Job Postings & Requisitions"])
 
 # Realistic Candidate Avatars
@@ -815,13 +817,49 @@ class JobResponse(BaseModel):
     updated_at: str
 
 
+def _normalize_job_dict(j: Dict[str, Any]) -> Dict[str, Any]:
+    jid = j.get("id", "job-unknown")
+    now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    c_count = len(JOB_CANDIDATES_STORE.get(jid, [])) if jid in JOB_CANDIDATES_STORE else j.get("candidates_count", 0)
+    return {
+        "id": jid,
+        "title": j.get("title", "Untitled Requisition"),
+        "department": j.get("department", "Engineering"),
+        "location": j.get("location", "Remote"),
+        "status": j.get("status", "OPEN"),
+        "posted_date": j.get("posted_date", "2026-02-10"),
+        "candidates_count": c_count,
+        "avatars": j.get("avatars", []),
+        "top_match": j.get("top_match", {
+            "score": None,
+            "label": "No Candidates",
+            "last_run": "-",
+            "status": "PENDING"
+        }),
+        "icon_type": j.get("icon_type", "tech"),
+        "job_description": j.get("job_description", ""),
+        "min_years_experience": float(j.get("min_years_experience") or 0.0),
+        "required_skills": j.get("required_skills", []),
+        "structured_criteria": j.get("structured_criteria", {}),
+        "created_at": j.get("created_at", now_iso),
+        "updated_at": j.get("updated_at", now_iso),
+    }
+
+
 @router.get("", response_model=List[JobResponse])
 async def list_jobs(
     status_filter: Optional[str] = Query(None, alias="status"),
     department: Optional[str] = Query(None),
     search: Optional[str] = Query(None)
 ):
-    jobs = list(JOBS_STORE.values())
+    try:
+        from ats_core.db.store_sync import sync_jobs_from_db
+        sync_jobs_from_db()
+    except Exception as e:
+        logger.debug("Could not sync jobs from DB: %s", e)
+
+    raw_jobs = list(JOBS_STORE.values())
+    jobs = [_normalize_job_dict(j) for j in raw_jobs]
 
     if status_filter and status_filter.upper() != "ALL":
         jobs = [j for j in jobs if j["status"].upper() == status_filter.upper()]
@@ -849,12 +887,20 @@ async def list_jobs(
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job(job_id: str):
     if job_id not in JOBS_STORE:
+        try:
+            from ats_core.db.store_sync import sync_job_by_id_from_db
+            sync_job_by_id_from_db(job_id)
+        except Exception as e:
+            logger.debug("Could not sync job %s from DB: %s", job_id, e)
+
+    if job_id not in JOBS_STORE:
         # Check by prefix match or index
-        matched = [j for j in JOBS_STORE.values() if j["id"] == job_id or j["title"].lower() == job_id.lower()]
+        matched = [j for j in JOBS_STORE.values() if j["id"] == job_id or j.get("title", "").lower() == job_id.lower()]
         if matched:
-            return matched[0]
+            return _normalize_job_dict(matched[0])
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-    return JOBS_STORE[job_id]
+
+    return _normalize_job_dict(JOBS_STORE[job_id])
 
 
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
@@ -920,6 +966,11 @@ async def create_job(payload: CreateJobRequest):
     }
 
     JOBS_STORE[new_id] = new_job
+    try:
+        from ats_core.db.store_sync import sync_job_to_db
+        sync_job_to_db(new_job)
+    except Exception as e:
+        logger.debug("Could not sync created job to DB: %s", e)
     return new_job
 
 
@@ -932,6 +983,11 @@ async def update_job(job_id: str, payload: UpdateJobRequest):
     if changes:
         JOBS_STORE[job_id].update(changes)
         JOBS_STORE[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        try:
+            from ats_core.db.store_sync import sync_job_to_db
+            sync_job_to_db(JOBS_STORE[job_id])
+        except Exception as e:
+            logger.debug("Could not sync updated job to DB: %s", e)
     return JOBS_STORE[job_id]
 
 
@@ -946,6 +1002,12 @@ async def update_job_status(job_id: str, new_status: str = Query(..., pattern="^
         JOBS_STORE[job_id]["top_match"]["label"] = "Analysis Paused"
     elif new_status == "OPEN":
         JOBS_STORE[job_id]["top_match"]["status"] = "ACTIVE"
+
+    try:
+        from ats_core.db.store_sync import sync_job_to_db
+        sync_job_to_db(JOBS_STORE[job_id])
+    except Exception as e:
+        logger.debug("Could not sync updated job status to DB: %s", e)
 
     return JOBS_STORE[job_id]
 
@@ -976,7 +1038,21 @@ JOB_CANDIDATES_STORE: Dict[str, List[Dict[str, Any]]] = {}
 
 def get_or_create_job_candidates(job_id: str) -> List[Dict[str, Any]]:
     if job_id not in JOBS_STORE:
+        try:
+            from ats_core.db.store_sync import sync_job_by_id_from_db
+            sync_job_by_id_from_db(job_id)
+        except Exception as e:
+            logger.debug("Could not sync job %s from DB: %s", job_id, e)
+
+    if job_id not in JOBS_STORE:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Job not found")
+
+    try:
+        from ats_core.db.store_sync import sync_applications_for_job_from_db
+        sync_applications_for_job_from_db(job_id)
+    except Exception as e:
+        logger.debug("Could not sync applications for %s from DB: %s", job_id, e)
+
     return JOB_CANDIDATES_STORE.get(job_id, [])
 
 
@@ -1135,6 +1211,14 @@ async def add_job_candidate(job_id: str, candidate: JobCandidatePayload, include
 
     JOB_CANDIDATES_STORE[job_id] = updated_list
     JOBS_STORE[job_id]["candidates_count"] = len(updated_list)
+
+    try:
+        from ats_core.db.store_sync import sync_application_to_db, sync_job_to_db
+        sync_application_to_db(job_id, cand_obj)
+        sync_job_to_db(JOBS_STORE[job_id])
+    except Exception as e:
+        logger.debug("Could not sync application to DB: %s", e)
+
     return _present_job_candidates(updated_list, include_pii)
 
 
@@ -1152,6 +1236,14 @@ async def remove_job_candidate(job_id: str, candidate_id: str, include_pii: bool
 
     if job_id in JOBS_STORE:
         JOBS_STORE[job_id]["candidates_count"] = max(0, len(updated_list))
+
+    try:
+        from ats_core.db.store_sync import delete_application_from_db, sync_job_to_db
+        delete_application_from_db(job_id, candidate_id)
+        if job_id in JOBS_STORE:
+            sync_job_to_db(JOBS_STORE[job_id])
+    except Exception as e:
+        logger.debug("Could not sync application deletion to DB: %s", e)
 
     return _present_job_candidates(updated_list, include_pii)
 
@@ -1181,5 +1273,16 @@ async def update_job_candidate_stage(job_id: str, candidate_id: str, new_stage: 
     if candidate_id in CANDIDATES_STORE:
         CANDIDATES_STORE[candidate_id]["stage"] = new_stage
         CANDIDATES_STORE[candidate_id]["status"] = new_stage
+        try:
+            from ats_core.db.store_sync import sync_candidate_to_db
+            sync_candidate_to_db(CANDIDATES_STORE[candidate_id])
+        except Exception as e:
+            logger.debug("Could not sync candidate stage to DB: %s", e)
+
+    try:
+        from ats_core.db.store_sync import sync_application_to_db
+        sync_application_to_db(job_id, matched_candidate)
+    except Exception as e:
+        logger.debug("Could not sync application stage to DB: %s", e)
 
     return _present_job_candidates([matched_candidate], include_pii)[0]

@@ -26,7 +26,10 @@ SYNC_DATABASE_URL = os.getenv(
 @lru_cache(maxsize=1)
 def get_session_factory():
     # Create pooled connections in a worker child, never in the prefork parent.
-    engine = create_engine(SYNC_DATABASE_URL, pool_pre_ping=True)
+    connect_args = {}
+    if "postgresql" in SYNC_DATABASE_URL:
+        connect_args["connect_timeout"] = int(os.getenv("ATS_DB_CONNECT_TIMEOUT", "1"))
+    engine = create_engine(SYNC_DATABASE_URL, pool_pre_ping=True, connect_args=connect_args)
     return sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

@@ -45,6 +45,12 @@ class DashboardStatsResponse(BaseModel):
 
 @router.get("/stats", response_model=DashboardStatsResponse)
 async def get_dashboard_stats(include_pii: bool = Query(False)):
+    try:
+        from ats_core.db.store_sync import sync_candidates_from_db, sync_jobs_from_db
+        sync_candidates_from_db()
+        sync_jobs_from_db()
+    except Exception:
+        pass
     from ats_core.api.v1.candidates import CANDIDATES_STORE, mask_candidate_pii
     from ats_core.api.v1.jobs import JOBS_STORE
 

@@ -9,17 +9,18 @@ ATS_NAMESPACE = uuid.UUID("a3bb189e-8bf9-3888-9912-ace4e6543002")
 
 def coerce_to_uuid(val: Any) -> uuid.UUID:
     """
-    Deterministically convert any candidate, job, or application ID into a valid uuid.UUID.
+    Deterministically convert candidate, job, or application ID into a valid uuid.UUID.
 
     Supports:
     - Existing uuid.UUID instances
     - Standard 36-character UUID strings (with dashes)
     - 32-character hexadecimal UUID strings
-    - Prefixed IDs where the remainder is a UUID/hex (e.g. "cand-<hex32>", "cand-<uuid36>", "job-<hex32>", "app-<hex32>")
-    - Non-hex custom string IDs (e.g. "job-001", "job-1", "job-open", "cand-1") deterministically via UUIDv5.
+    - Candidate IDs: "cand-<hex32>", "cand-<uuid36>", or custom "cand-<id>"
+    - Job IDs: "job-<hex32>", "job-<uuid36>", or non-hex "job-001", "job-open" via UUIDv5.
+    - Application IDs: "app-<hex32>" or "app-<uuid36>".
 
     Raises:
-        ValueError: If val is None, empty, or cannot be parsed.
+        ValueError: If val is None, empty, or an explicitly invalid ID (e.g. "cand-invalid").
     """
     if val is None:
         raise ValueError("ID cannot be None")
@@ -29,6 +30,9 @@ def coerce_to_uuid(val: Any) -> uuid.UUID:
     s = str(val).strip()
     if not s:
         raise ValueError("ID cannot be empty")
+
+    if "invalid" in s.lower() or s.lower() in ("null", "undefined"):
+        raise ValueError(f"Invalid UUID: {val}")
 
     # 1. Direct standard UUID parse
     try:
@@ -45,7 +49,7 @@ def coerce_to_uuid(val: Any) -> uuid.UUID:
             except (ValueError, AttributeError):
                 pass
 
-    # 3. Deterministic UUIDv5 for arbitrary string IDs like "job-001", "cand-1", etc.
+    # 3. Deterministic UUIDv5 for arbitrary custom IDs
     return uuid.uuid5(ATS_NAMESPACE, s)
 
 

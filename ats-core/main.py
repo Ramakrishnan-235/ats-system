@@ -23,6 +23,12 @@ from ats_core.api.v1.taxonomy import router as taxonomy_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     validate_auth_configuration()
+    try:
+        from ats_core.db.store_sync import sync_all_from_db
+        sync_all_from_db()
+    except Exception as e:
+        import logging
+        logging.getLogger("ats.main").debug("Startup DB sync skipped or unavailable: %s", e)
     yield
 
 

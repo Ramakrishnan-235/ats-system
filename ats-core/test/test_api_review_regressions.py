@@ -637,3 +637,116 @@ async def test_audit_logger_persists_with_api_candidate_and_job_ids():
     assert entry_in_mem in AuditLogger.get_audits(candidate_id="cand-1", job_id="job-open")
 
 
+def test_missing_candidate_in_memory_recovers_from_postgres(api, monkeypatch):
+    """Worker writes to Postgres; API worker recovers candidate from DB on cache miss."""
+    from ats_core.db import store_sync
+
+    worker_persisted_cand = {
+        "id": "cand-db-001",
+        "name": "Database Candidate",
+        "anonymized_name": "Candidate #db001",
+        "target_headline": "Senior Staff Architect",
+        "role": "Senior Staff Architect",
+        "years_of_experience": 10.0,
+        "location": "San Francisco, CA",
+        "highest_education": "MS Computer Science",
+        "core_skills": ["Python", "Distributed Systems", "PostgreSQL"],
+        "skills": ["Python", "Distributed Systems", "PostgreSQL"],
+        "raw_anonymized_text": "Sample resume text",
+        "raw_text": "Sample resume text",
+        "stage": "Qualified",
+        "status": "Qualified",
+        "scorecard": {
+            "overall_match_score": 92,
+            "match_tier": "Strong Fit",
+            "evaluation_status": "COMPLETED",
+        },
+    }
+
+    # Ensure memory store does NOT have this candidate initially
+    assert "cand-db-001" not in candidates.CANDIDATES_STORE
+
+    # Mock DB sync function returning the worker-written row
+    monkeypatch.setattr(
+        store_sync,
+        "sync_candidate_by_id_from_db",
+        lambda cid: candidates.CANDIDATES_STORE.setdefault(cid, worker_persisted_cand) if cid == "cand-db-001" else None
+    )
+
+    # API request should automatically sync from DB and return the candidate
+    res = api.get("/api/v1/candidates/cand-db-001", params={"include_pii": "true"})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["id"] == "cand-db-001"
+    assert data["name"] == "Database Candidate"
+    assert data["target_headline"] == "Senior Staff Architect"
+    assert "cand-db-001" in candidates.CANDIDATES_STORE
+
+
+def test_candidates_count_race_eliminated_and_dynamically_computed(api):
+    """candidates_count must reflect len(job_candidates) instead of blind += 1 increments."""
+    # Initialize job in store
+    job_id = "job-open"
+    jobs.JOBS_STORE[job_id]["candidates_count"] = 0
+    jobs.JOB_CANDIDATES_STORE[job_id] = []
+
+    # Add first candidate
+    res1 = api.post(f"/api/v1/jobs/{job_id}/candidates", json={"name": "Alice Developer", "stage": "Screening"})
+    assert res1.status_code == 200
+    assert jobs.JOBS_STORE[job_id]["candidates_count"] == 1
+    assert len(jobs.JOB_CANDIDATES_STORE[job_id]) == 1
+
+    # Add second candidate
+    res2 = api.post(f"/api/v1/jobs/{job_id}/candidates", json={"name": "Bob Architect", "stage": "Interview"})
+    assert res2.status_code == 200
+    assert jobs.JOBS_STORE[job_id]["candidates_count"] == 2
+    assert len(jobs.JOB_CANDIDATES_STORE[job_id]) == 2
+
+    # Verify list_jobs derives candidates_count accurately
+    list_res = api.get("/api/v1/jobs")
+    assert list_res.status_code == 200
+    matched_job = next(j for j in list_res.json() if j["id"] == job_id)
+    assert matched_job["candidates_count"] == 2
+
+    # Remove one candidate and verify count decreases deterministically
+    bob_id = res2.json()[0]["id"] if res2.json()[0]["name"] == "Bob Architect" else res2.json()[1]["id"]
+    del_res = api.delete(f"/api/v1/jobs/{job_id}/candidates/{bob_id}")
+    assert del_res.status_code == 200
+    assert jobs.JOBS_STORE[job_id]["candidates_count"] == 1
+    assert len(jobs.JOB_CANDIDATES_STORE[job_id]) == 1
+
+
+def test_task_status_lookup_syncs_from_db_across_processes(api, monkeypatch):
+    """Tasks executed on other uvicorn workers or prior to restart recover state from DB."""
+    from ats_core.db import store_sync
+
+    task_id = "task-cross-worker-123"
+    assert task_id not in candidates.UPLOAD_TASKS_STORE
+
+    mock_db_task = {
+        "task_id": task_id,
+        "state": "SUCCESS",
+        "execution_mode": "inline",
+        "result": {
+            "status": "COMPLETED",
+            "candidate_id": "cand-recovered-001",
+            "match_score": 88,
+            "evaluation_status": "COMPLETED",
+        }
+    }
+
+    monkeypatch.setattr(
+        store_sync,
+        "sync_task_status_from_db",
+        lambda tid: mock_db_task if tid == task_id else None
+    )
+
+    res = api.get(f"/api/v1/candidates/tasks/{task_id}")
+    assert res.status_code == 200
+    task_data = res.json()
+    assert task_data["task_id"] == task_id
+    assert task_data["state"] == "SUCCESS"
+    assert task_data["result"]["candidate_id"] == "cand-recovered-001"
+
+
+
