@@ -534,7 +534,9 @@ export default function JobPipelineDetailPage() {
                         <div className="col-span-3">
                           <div className="flex items-center gap-2">
                             <span className="text-base font-bold text-zinc-950">
-                              {cand.matchScore ?? "Pending"}
+                              {typeof cand.matchScore === "number" && !isNaN(cand.matchScore)
+                                ? `${cand.matchScore}%`
+                                : "Pending"}
                             </span>
                             <span className="text-[11px] font-semibold text-zinc-600">
                               {cand.matchLabel}
@@ -542,8 +544,14 @@ export default function JobPipelineDetailPage() {
                           </div>
                           <div className="w-44 bg-zinc-100 h-1.5 rounded-full overflow-hidden mt-1.5">
                             <div
-                              className="bg-black h-full rounded-full"
-                              style={{ width: `${cand.matchScore ?? 0}%` }}
+                              className="bg-black h-full rounded-full transition-all duration-300"
+                              style={{
+                                width: `${
+                                  typeof cand.matchScore === "number" && !isNaN(cand.matchScore)
+                                    ? Math.max(0, Math.min(100, Math.round(cand.matchScore)))
+                                    : 0
+                                }%`,
+                              }}
                             />
                           </div>
                         </div>
@@ -644,7 +652,11 @@ export default function JobPipelineDetailPage() {
                                 <div className="w-full bg-zinc-200 h-1.5 rounded-full overflow-hidden">
                                   <div
                                     style={{
-                                      width: `${cand.technicalDepthScore * 10}%`,
+                                      width: `${
+                                        typeof cand.technicalDepthScore === "number" && !isNaN(cand.technicalDepthScore)
+                                          ? Math.max(0, Math.min(100, Math.round(cand.technicalDepthScore * 10)))
+                                          : 0
+                                      }%`,
                                     }}
                                     className="bg-black h-full rounded-full"
                                   />
@@ -679,7 +691,11 @@ export default function JobPipelineDetailPage() {
                                 <div className="w-full bg-zinc-200 h-1.5 rounded-full overflow-hidden">
                                   <div
                                     style={{
-                                      width: `${cand.systemDesignScore * 10}%`,
+                                      width: `${
+                                        typeof cand.systemDesignScore === "number" && !isNaN(cand.systemDesignScore)
+                                          ? Math.max(0, Math.min(100, Math.round(cand.systemDesignScore * 10)))
+                                          : 0
+                                      }%`,
                                     }}
                                     className="bg-black h-full rounded-full"
                                   />
@@ -860,7 +876,9 @@ export default function JobPipelineDetailPage() {
                               </div>
                             </div>
                             <span className="bg-zinc-100 text-zinc-900 font-bold text-[11px] px-2 py-0.5 rounded-md">
-                              {cand.matchScore ?? "Pending"}
+                              {typeof cand.matchScore === "number" && !isNaN(cand.matchScore)
+                                ? `${cand.matchScore}%`
+                                : "Pending"}
                             </span>
                           </div>
 

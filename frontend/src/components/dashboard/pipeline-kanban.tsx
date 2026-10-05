@@ -115,7 +115,11 @@ export function PipelineKanban({ pipeline, onAddCandidate }: PipelineKanbanProps
                                   isNegotiation ? "text-white" : "text-zinc-700"
                                 )}
                               />
-                              <span>{candidate.match_score ?? "Pending"}</span>
+                              <span>
+                                {typeof candidate.match_score === "number" && !isNaN(candidate.match_score)
+                                  ? `${candidate.match_score}%`
+                                  : "Pending"}
+                              </span>
                             </div>
                           </div>
 
@@ -130,7 +134,13 @@ export function PipelineKanban({ pipeline, onAddCandidate }: PipelineKanbanProps
                               <div className="flex items-center gap-3 pt-2">
                                 <div className="flex-1 bg-zinc-200 h-1.5 rounded-full overflow-hidden">
                                   <div
-                                    style={{ width: `${candidate.probability}%` }}
+                                    style={{
+                                      width: `${
+                                        typeof candidate.probability === "number" && !isNaN(candidate.probability)
+                                          ? Math.max(0, Math.min(100, Math.round(candidate.probability)))
+                                          : 0
+                                      }%`,
+                                    }}
                                     className="h-full bg-black rounded-full"
                                   />
                                 </div>
