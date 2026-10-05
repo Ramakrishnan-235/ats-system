@@ -114,9 +114,26 @@ export async function uploadAndWait(file: File, jobId?: string, signal?: AbortSi
   if (!uploaded.candidate_id) throw new ApiError("Backend did not return a candidate ID.");
   return uploaded;
 }
+export interface MatchResponse {
+  status: string;
+  job_title: string;
+  job_id?: string;
+  stage1_candidates_retrieved: number;
+  stage2_candidates_reranked: number;
+  stage3_final_ranked: number;
+  latency_ms: number;
+  candidates: RankedCandidate[];
+}
+
 export function evaluateJobMatching(payload: {
-  job_title: string; job_description: string; stage1_retrieve_limit?: number; stage2_rerank_limit?: number;
-}) { return json<{ status?: string }>("/match/evaluate-job", { method: "POST", ...body(payload) }); }
+  job_id?: string;
+  job_title: string;
+  job_description: string;
+  stage1_retrieve_limit?: number;
+  stage2_rerank_limit?: number;
+}) {
+  return json<MatchResponse>("/match/evaluate-job", { method: "POST", ...body(payload) });
+}
 
 export interface TaxonomySkillItem {
   id: string; canonical_name: string; category: string; aliases: string[];

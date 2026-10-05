@@ -133,12 +133,43 @@ export default function JobPipelineDetailPage() {
     setIsReRunning(true);
     setReRunMessage("Waiting for backend matching...");
     try {
-      await evaluateJobMatching({ job_title: job.title, job_description: job.job_description });
-      setCandidates(await fetchJobCandidates(rawId));
-      setReRunMessage("Matching request completed. Pipeline loaded from the backend.");
+      const result = await evaluateJobMatching({
+        job_id: rawId,
+        job_title: job.title,
+        job_description: job.job_description,
+      });
+
+      const updatedList = (result.candidates && result.candidates.length > 0)
+        ? result.candidates
+        : await fetchJobCandidates(rawId);
+
+      setCandidates(updatedList);
+      if (updatedList.length > 0) {
+        if (!expandedCand || !updatedList.some(c => c.id === expandedCand)) {
+          setExpandedCand(updatedList[0].id);
+        }
+        const topScore = updatedList[0].matchScore;
+        setJob(prev => prev ? {
+          ...prev,
+          candidates_count: updatedList.length,
+          top_match: {
+            score: topScore ?? (prev.top_match?.score ?? null),
+            label: updatedList[0].matchLabel || prev.top_match?.label || "Strong Match",
+            last_run: "Just now",
+            status: "ACTIVE",
+          },
+        } : null);
+        setReRunMessage(`✓ AI matching complete: ${updatedList.length} candidate(s) evaluated and ranked in pipeline.`);
+      } else {
+        setReRunMessage("AI matching completed: No candidates found in the pool yet. Upload resumes to evaluate matches.");
+      }
       setError(null);
-    } catch (reason) { setReRunMessage(null); setError(getErrorMessage(reason)); }
-    finally { setIsReRunning(false); }
+    } catch (reason) {
+      setReRunMessage(null);
+      setError(getErrorMessage(reason));
+    } finally {
+      setIsReRunning(false);
+    }
   };
 
   const handleAddCandidate = async (payload: NewCandidatePayload) => {
@@ -512,7 +543,7 @@ export default function JobPipelineDetailPage() {
                           <div className="w-44 bg-zinc-100 h-1.5 rounded-full overflow-hidden mt-1.5">
                             <div
                               className="bg-black h-full rounded-full"
-                              style={{ width: `${cand.matchScore ?? "Pending"}%` }}
+                              style={{ width: `${cand.matchScore ?? 0}%` }}
                             />
                           </div>
                         </div>

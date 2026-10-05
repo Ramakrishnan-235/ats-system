@@ -30,6 +30,7 @@ func TestMatchPreservesConcurrentRecruiterChanges(t *testing.T) {
 		t.Fatal("evaluation overwrote recruiter changes")
 	}
 }
+
 func TestUnavailableEvaluationIsNotSuccessfulMatch(t *testing.T) {
 	st := store.NewStore()
 	st.SaveCandidate(&models.Candidate{ID: "cand-one", CoreSkills: []string{"Go"}})
@@ -41,5 +42,22 @@ func TestUnavailableEvaluationIsNotSuccessfulMatch(t *testing.T) {
 	matches, _, _, _, _ = NewMatchService(st, e).MatchJob(context.Background(), "Rust", "Rust", 10, 10)
 	if len(matches) != 0 {
 		t.Fatal("zero-overlap candidate evaluated")
+	}
+}
+
+func TestMatchJobForRequisitionLinksCandidates(t *testing.T) {
+	st := store.NewStore()
+	st.SaveJob(&models.Job{ID: "job-test-1", Title: "Go Developer", CandidatesCount: 0})
+	st.SaveCandidate(&models.Candidate{ID: "cand-one", Name: "Alex Smith", CoreSkills: []string{"Go"}, RawText: "Go systems developer"})
+	e := fakeEvaluator(t, 200, `{"overall_match_score":85}`)
+	_, _, _, failed, _, candidates := NewMatchService(st, e).MatchJobForRequisition(context.Background(), "job-test-1", "Go Developer", "Go systems developer", 10, 10)
+	if len(failed) != 0 {
+		t.Fatalf("expected 0 failed, got %v", failed)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 candidate linked to job, got %d", len(candidates))
+	}
+	if candidates[0].MatchScore == nil || *candidates[0].MatchScore != 85 {
+		t.Fatalf("expected match score 85, got %v", candidates[0].MatchScore)
 	}
 }

@@ -338,7 +338,53 @@ async def upload_resume_async(
         parsed_candidate["created_at"] = datetime.now(timezone.utc).isoformat()
         CANDIDATES_STORE[candidate_id] = parsed_candidate
         if target_job:
-            target_job["candidates_count"] = target_job.get("candidates_count", 0) + 1
+            target_job_id = target_job.get("id")
+            if target_job_id:
+                from ats_core.api.v1.jobs import JOB_CANDIDATES_STORE
+                scorecard = parsed_candidate.get("scorecard", {})
+                cats = {c.get("name", ""): c.get("score", 0) for c in scorecard.get("categories", [])}
+                job_cand = {
+                    "id": candidate_id,
+                    "rank": len(JOB_CANDIDATES_STORE.get(target_job_id, [])) + 1,
+                    "name": parsed_candidate.get("name", "Candidate"),
+                    "headline": parsed_candidate.get("target_headline", target_job.get("title", "Candidate")),
+                    "avatar": "CD",
+                    "isImageAvatar": False,
+                    "matchScore": scorecard.get("overall_match_score"),
+                    "matchLabel": scorecard.get("match_tier", "Evaluation Pending"),
+                    "skills": parsed_candidate.get("core_skills", []),
+                    "stage": parsed_candidate.get("stage", "Screening"),
+                    "stageBadgeStyle": "bg-emerald-50 text-emerald-700 border-emerald-200",
+                    "technicalDepthScore": cats.get("Technical Depth", 8.0),
+                    "systemDesignScore": cats.get("System Design", 7.5),
+                    "quote": parsed_candidate.get("summary", "Resume uploaded for requisition"),
+                    "sourceResumeLink": f"/candidates/{candidate_id}",
+                    "potentialGap": (scorecard.get("risk_flags") or [None])[0],
+                    "suggestedQuestions": scorecard.get("suggested_questions", []),
+                }
+                c_list = [c for c in JOB_CANDIDATES_STORE.get(target_job_id, []) if c.get("id") != candidate_id]
+                c_list.append(job_cand)
+                c_list.sort(key=lambda x: (x.get("matchScore") is not None, x.get("matchScore") or 0), reverse=True)
+                for idx, item in enumerate(c_list):
+                    item["rank"] = idx + 1
+                JOB_CANDIDATES_STORE[target_job_id] = c_list
+                target_job["candidates_count"] = len(c_list)
+                if c_list and c_list[0].get("matchScore") is not None:
+                    target_job["top_match"] = {
+                        "score": c_list[0]["matchScore"],
+                        "label": c_list[0].get("matchLabel", "Strong Match"),
+                        "last_run": "Just now",
+                        "status": "ACTIVE",
+                    }
+            else:
+                target_job["candidates_count"] = target_job.get("candidates_count", 0) + 1
+
+        try:
+            from ats_core.api.v1.match import sync_candidates_to_retriever
+            sync_candidates_to_retriever()
+        except Exception as sync_err:
+            logger.debug("Retriever sync on upload: %s", sync_err)
+
         candidate_name = parsed_candidate.get("name", "Candidate")
         final_score = parsed_candidate.get("scorecard", {}).get("overall_match_score")
         logger.info("Successfully staged candidate %s with score %s", candidate_id, final_score)

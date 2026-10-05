@@ -365,3 +365,63 @@ def test_match_total_evaluation_failure_is_explicit(api, monkeypatch):
     ))
     response = api.post("/api/v1/match/evaluate-job", json={"job_title": "Engineer", "job_description": "Python"})
     assert response.status_code == 502
+
+
+def test_rerun_ai_match_syncs_candidates_and_updates_pipeline(api, monkeypatch):
+    from ats_core.search.hybrid_retriever import HybridCandidateRetriever
+
+    class FakeEmbedder:
+        def embed_documents(self, documents):
+            return [[1.0, 0.0] for _ in documents]
+
+        def embed_query(self, query):
+            return [1.0, 0.0]
+
+    test_retriever = HybridCandidateRetriever(dense_embedder=FakeEmbedder())
+    monkeypatch.setattr(match, "_retriever", test_retriever)
+    monkeypatch.setattr(match, "get_retriever", lambda: test_retriever)
+
+    mock_reranker = MagicMock()
+    mock_reranker.rerank.side_effect = lambda *args, **kwargs: [{**c, "score": 0.95} for c in (kwargs.get("candidates") or (args[1] if len(args) > 1 else []))]
+    monkeypatch.setattr(match, "_reranker", mock_reranker)
+    monkeypatch.setattr(match, "get_reranker", lambda: mock_reranker)
+
+    cand_id = "cand-python-1"
+    candidates.CANDIDATES_STORE[cand_id] = {
+        "id": cand_id,
+        "name": "Jane Python",
+        "target_headline": "Senior Python Developer",
+        "role": "Python Engineer",
+        "core_skills": ["Python", "FastAPI"],
+        "raw_text": "Experienced Python and FastAPI backend engineer",
+        "scorecard": {"overall_match_score": None, "evaluation_status": "PENDING"},
+        "stage": "Screening",
+    }
+
+    mock_report = SimpleNamespace(
+        overall_match_score=92.0,
+        qualification_tier="STRONG",
+        criteria_breakdown=[],
+        risks_and_skill_gaps=[],
+        suggested_improvements=["Improve documentation"],
+        suggested_interview_questions=[],
+    )
+    monkeypatch.setitem(sys.modules, "ats_core.evaluator.llm_evaluator", SimpleNamespace(
+        evaluate_candidate=MagicMock(return_value=mock_report),
+        EvaluationReport=object,
+    ))
+
+    response = api.post("/api/v1/match/evaluate-job", json={
+        "job_id": "job-open",
+        "job_title": "Engineer",
+        "job_description": "Python backend engineer",
+    })
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["stage1_candidates_retrieved"] >= 1
+    assert data["stage3_final_ranked"] >= 1
+    assert len(data["candidates"]) >= 1
+    assert data["candidates"][0]["id"] == cand_id
+    assert data["candidates"][0]["matchScore"] == 92
+    assert jobs.JOBS_STORE["job-open"]["candidates_count"] >= 1
+    assert jobs.JOB_CANDIDATES_STORE["job-open"][0]["id"] == cand_id

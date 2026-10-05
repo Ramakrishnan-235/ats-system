@@ -33,12 +33,17 @@ type CandidateScored struct {
 const kRRF = 60.0
 
 func (m *MatchService) MatchJob(ctx context.Context, jobTitle, jobDescription string, stage1Limit, stage2Limit int) ([]map[string]any, int, int, []string, bool) {
+	evals, s1, s2, failed, fallback, _ := m.MatchJobForRequisition(ctx, "", jobTitle, jobDescription, stage1Limit, stage2Limit)
+	return evals, s1, s2, failed, fallback
+}
+
+func (m *MatchService) MatchJobForRequisition(ctx context.Context, jobID, jobTitle, jobDescription string, stage1Limit, stage2Limit int) ([]map[string]any, int, int, []string, bool, []*models.JobCandidate) {
 	if ctx.Err() != nil || stage1Limit <= 0 || stage2Limit <= 0 {
-		return []map[string]any{}, 0, 0, []string{}, true
+		return []map[string]any{}, 0, 0, []string{}, true, []*models.JobCandidate{}
 	}
 	candidates := m.store.ListCandidates("", "", "", true)
 	if len(candidates) == 0 {
-		return []map[string]any{}, 0, 0, []string{}, false
+		return []map[string]any{}, 0, 0, []string{}, false, []*models.JobCandidate{}
 	}
 
 	queryTokens := tokenize(jobTitle + " " + jobDescription)
@@ -115,6 +120,43 @@ func (m *MatchService) MatchJob(ctx context.Context, jobTitle, jobDescription st
 
 		matchScoreVal := *scorecard.OverallMatchScore
 
+		if jobID != "" {
+			var techScore, sysScore *float64
+			for _, cat := range scorecard.Categories {
+				if strings.Contains(strings.ToLower(cat.Name), "technical") {
+					ts := cat.Score
+					techScore = &ts
+				} else if strings.Contains(strings.ToLower(cat.Name), "system") {
+					ss := cat.Score
+					sysScore = &ss
+				}
+			}
+			var potGap string
+			if len(scorecard.RiskFlags) > 0 {
+				potGap = scorecard.RiskFlags[0]
+			}
+			scoreInt := int(math.Round(matchScoreVal))
+			jc := &models.JobCandidate{
+				ID:                  cand.ID,
+				Name:                cand.Name,
+				Headline:            cand.TargetHeadline,
+				Avatar:              "CD",
+				IsImageAvatar:       false,
+				MatchScore:          &scoreInt,
+				MatchLabel:          scorecard.MatchTier,
+				Skills:              cand.CoreSkills,
+				Stage:               cand.Stage,
+				StageBadgeStyle:     "bg-emerald-50 text-emerald-700 border-emerald-200",
+				TechnicalDepthScore: techScore,
+				SystemDesignScore:   sysScore,
+				Quote:               "Evaluated against requisition requirements",
+				SourceResumeLink:    "/candidates/" + cand.ID,
+				PotentialGap:        potGap,
+				SuggestedQuestions:  scorecard.SuggestedQuestions,
+			}
+			m.store.AddJobCandidate(jobID, jc)
+		}
+
 		evalMap := map[string]any{
 			"candidate_id": cand.ID,
 			"rerank_score": item.RerankScore,
@@ -132,8 +174,15 @@ func (m *MatchService) MatchJob(ctx context.Context, jobTitle, jobDescription st
 		finalEvals = append(finalEvals, evalMap)
 	}
 
+	var jobCandidates []*models.JobCandidate
+	if jobID != "" {
+		jobCandidates = m.store.GetJobCandidates(jobID, false)
+	} else {
+		jobCandidates = []*models.JobCandidate{}
+	}
+
 	// This implementation uses lexical reranking, not a model-backed reranker.
-	return finalEvals, len(scoredList), len(stage2List), failedIDs, true
+	return finalEvals, len(scoredList), len(stage2List), failedIDs, true, jobCandidates
 }
 
 func tokenize(text string) []string {
