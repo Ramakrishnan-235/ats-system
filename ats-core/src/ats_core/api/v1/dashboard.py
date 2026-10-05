@@ -5,6 +5,17 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard & Metrics"])
 
+PIPELINE_STAGES = (
+    "Screening", "Review Required", "Qualified", "Contacted", "Interview",
+    "Negotiation", "Offer", "Hired", "Rejected",
+)
+
+
+def pipeline_stage(stage: Any) -> str:
+    """Preserve actual stages, including custom stages; never imply contact."""
+    value = stage.strip() if isinstance(stage, str) else ""
+    return next((known for known in PIPELINE_STAGES if known.casefold() == value.casefold()), value or "Unassigned")
+
 
 class StatCard(BaseModel):
     id: str
@@ -85,17 +96,13 @@ async def get_dashboard_stats(include_pii: bool = Query(False)):
     for item in weekly_candidates:
         item["is_peak"] = peak > 0 and item["count"] == peak
 
-    pipeline: Dict[str, List[Dict[str, Any]]] = {
-        "Contacted": [],
-        "Interview": [],
-        "Negotiation": []
-    }
+    pipeline: Dict[str, List[Dict[str, Any]]] = {stage: [] for stage in PIPELINE_STAGES}
 
     for candidate in cand_list:
         c = candidate if include_pii else mask_candidate_pii(candidate)
         categories = c.get("scorecard", {}).get("categories") or []
-        stage = c.get("stage", "Contacted")
-        stage_key = "Interview" if "interview" in stage.lower() else ("Negotiation" if "negotiat" in stage.lower() or "offer" in stage.lower() else "Contacted")
+        stage = c.get("stage")
+        stage_key = pipeline_stage(stage)
         if stage_key not in pipeline:
             pipeline[stage_key] = []
         pipeline[stage_key].append({
@@ -105,7 +112,7 @@ async def get_dashboard_stats(include_pii: bool = Query(False)):
             "avatar": c.get("avatar", "CD"),
             "match_score": c.get("scorecard", {}).get("overall_match_score"),
             "summary": categories[0].get("quote", "Candidate profile") if categories else "Awaiting evaluation",
-            "stage": stage,
+            "stage": stage_key,
             "probability": None,
             "applied_time": c.get("applied_date", "Recently")
         })
@@ -143,8 +150,8 @@ async def get_dashboard_stats(include_pii: bool = Query(False)):
             {
                 "id": "open_offers",
                 "label": "OPEN OFFERS",
-                "value": str(len(pipeline.get("Negotiation", []))),
-                "change": "Awaiting signatures",
+                "value": str(len(pipeline.get("Offer", []))),
+                "change": "Candidates in Offer stage",
                 "trend": "neutral",
                 "icon": "award",
                 "style": "highlighted_dark"

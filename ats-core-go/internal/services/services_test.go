@@ -37,7 +37,7 @@ func TestEvaluationValidation(t *testing.T) {
 	}{
 		{"missing", "{}", 200, true}, {"negative", `{"overall_match_score":-1}`, 200, true}, {"over100", `{"overall_match_score":101}`, 200, true},
 		{"zero", `{"overall_match_score":0}`, 200, false}, {"valid", `{"overall_match_score":81,"qualification_tier":"NOT_FIT","criteria_breakdown":[{"score":8,"max_score":10,"quote":"Go systems","source_ref":"Page 99"}]}`, 200, false},
-		{"invented evidence", `{"overall_match_score":81,"criteria_breakdown":[{"score":8,"max_score":10,"quote":"Expert in Mars"}]}`, 200, true},
+		{"invented evidence", `{"overall_match_score":81,"criteria_breakdown":[{"score":8,"max_score":10,"quote":"Expert in Mars"}]}`, 200, false},
 		{"bad criterion", `{"overall_match_score":81,"criteria_breakdown":[{"score":11,"max_score":10}]}`, 200, true},
 		{"HTTP failure", `{"overall_match_score":85}`, 503, true}, {"malformed", "bad JSON", 200, true},
 		{"fenced", "```json\n{\"overall_match_score\":81}\n```", 200, false},
@@ -175,5 +175,27 @@ func TestEvaluationFeedbackAndTierContract(t *testing.T) {
 	}
 	if score.SuggestedImprovements == nil || len(score.SuggestedImprovements) != 0 {
 		t.Fatalf("missing improvements must be empty: %+v", score)
+	}
+}
+
+func TestEvaluationDropsOnlyUngroundedQuotes(t *testing.T) {
+	e := fakeEvaluator(t, 200, `{"overall_match_score":81,"criteria_breakdown":[{"name":"valid","score":8,"max_score":10,"quote":"Go systems","source_ref":"Page 99"},{"name":"paraphrased","score":7,"max_score":10,"quote":"Built advanced Golang systems","source_ref":"Page 7"},{"name":"blank","score":6,"max_score":10,"quote":"   "}]}`)
+	score, err := e.EvaluateCandidate(context.Background(), "Go\nsystems", "Go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if score.EvaluationStatus != "COMPLETED" || *score.OverallMatchScore != 81 || len(score.Categories) != 3 {
+		t.Fatalf("lost evaluation: %#v", score)
+	}
+	if score.Categories[0].Quote != "Go systems" || score.Categories[1].Quote != "" || score.Categories[2].Quote != "" {
+		t.Fatalf("quotes: %#v", score.Categories)
+	}
+	for _, criterion := range score.Categories {
+		if criterion.SourceRef != "" {
+			t.Fatal("model source retained")
+		}
+	}
+	if score.Categories[1].Score != 7 {
+		t.Fatal("criterion score discarded")
 	}
 }

@@ -669,9 +669,8 @@ func (s *Store) GetDashboardStats(includePII bool) *models.DashboardStatsRespons
 	}
 
 	pipeline := map[string][]models.PipelineCandidate{
-		"Contacted":   {},
-		"Interview":   {},
-		"Negotiation": {},
+		"Screening": {}, "Review Required": {}, "Qualified": {}, "Contacted": {},
+		"Interview": {}, "Negotiation": {}, "Offer": {}, "Hired": {}, "Rejected": {},
 	}
 
 	for _, storedCandidate := range s.candidates {
@@ -679,16 +678,15 @@ func (s *Store) GetDashboardStats(includePII bool) *models.DashboardStatsRespons
 		if !includePII {
 			c = s.maskCandidatePII(storedCandidate)
 		}
-		stage := c.Stage
-		if stage == "" {
-			stage = "Contacted"
+		stageKey := strings.TrimSpace(c.Stage)
+		if stageKey == "" {
+			stageKey = "Unassigned"
 		}
-		stageKey := "Contacted"
-		lowerStage := strings.ToLower(stage)
-		if strings.Contains(lowerStage, "interview") {
-			stageKey = "Interview"
-		} else if strings.Contains(lowerStage, "negotiat") || strings.Contains(lowerStage, "offer") {
-			stageKey = "Negotiation"
+		for _, known := range []string{"Screening", "Review Required", "Qualified", "Contacted", "Interview", "Negotiation", "Offer", "Hired", "Rejected"} {
+			if strings.EqualFold(stageKey, known) {
+				stageKey = known
+				break
+			}
 		}
 
 		name := c.Name
@@ -717,7 +715,7 @@ func (s *Store) GetDashboardStats(includePII bool) *models.DashboardStatsRespons
 			Avatar:      c.Avatar,
 			MatchScore:  scoreInt,
 			Summary:     summary,
-			Stage:       stage,
+			Stage:       stageKey,
 			AppliedTime: c.AppliedDate,
 		})
 	}
@@ -754,8 +752,8 @@ func (s *Store) GetDashboardStats(includePII bool) *models.DashboardStatsRespons
 		{
 			ID:     "open_offers",
 			Label:  "OPEN OFFERS",
-			Value:  fmt.Sprintf("%d", len(pipeline["Negotiation"])),
-			Change: "Awaiting signatures",
+			Value:  fmt.Sprintf("%d", len(pipeline["Offer"])),
+			Change: "Candidates in Offer stage",
 			Trend:  "neutral",
 			Icon:   "award",
 			Style:  "highlighted_dark",

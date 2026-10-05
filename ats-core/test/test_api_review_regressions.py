@@ -801,3 +801,49 @@ def test_upload_with_job_id_sets_applied_for_job_id_and_preserves_score_in_pipel
 
 
 
+
+
+@pytest.mark.parametrize("include_pii", [False, True])
+def test_dashboard_preserves_stages_and_counts_only_open_offers(api, monkeypatch, include_pii):
+    monkeypatch.setitem(sys.modules, "ats_core.db.store_sync", SimpleNamespace(
+        sync_candidates_from_db=lambda: None, sync_jobs_from_db=lambda: None,
+    ))
+    stages = ["Screening", "Qualified", "Review Required", "Contacted", "Interview",
+              "Negotiation", "Offer", "Hired", "Rejected", "Offer Accepted",
+              "Offer Rejected", "Custom Stage", None, "  offer  "]
+    for index, stage in enumerate(stages):
+        candidate_id = f"stage-{index}"
+        candidates.CANDIDATES_STORE[candidate_id] = {
+            "id": candidate_id, "name": "Jane Doe", "stage": stage,
+            "scorecard": {"categories": [], "overall_match_score": None},
+        }
+    response = api.get(f"/api/v1/dashboard/stats?include_pii={str(include_pii).lower()}")
+    assert response.status_code == 200
+    result = response.json()
+    for index, stage in enumerate(stages):
+        key = "Unassigned" if stage is None else "Offer" if stage.strip().lower() == "offer" else stage
+        assert any(c["id"] == f"stage-{index}" for c in result["pipeline"][key])
+    assert len(result["pipeline"]["Contacted"]) == 1
+    assert sum(len(items) for items in result["pipeline"].values()) == len(stages)
+    offers = next(stat for stat in result["stats"] if stat["id"] == "open_offers")
+    assert offers["value"] == "2"
+
+
+def test_upload_does_not_replace_dropped_citation_with_assessment(api, fake_processing, monkeypatch):
+    criterion = SimpleNamespace(category="Tech Stack Alignment", score=4,
+                                verbatim_citation=None, assessment="Model assessment")
+    report = SimpleNamespace(overall_match_score=87, qualification_tier="Strong Fit",
+        criteria_breakdown=[criterion], risks_and_skill_gaps=[], suggested_improvements=[],
+        suggested_interview_questions=[], executive_verdict="Relevant candidate")
+    evaluator = MagicMock(model_name="offline-test")
+    evaluator.evaluate.return_value = {"success": True, "report": report}
+    monkeypatch.setitem(sys.modules, "ats_core.evaluator.deep_evaluator",
+                        SimpleNamespace(LocalDeepEvaluator=MagicMock(return_value=evaluator)))
+    response = upload(api, data={"job_id": "job-open"})
+    assert response.status_code == 202
+    scorecard = candidates.CANDIDATES_STORE[response.json()["candidate_id"]]["scorecard"]
+    assert scorecard["evaluation_status"] == "COMPLETED"
+    assert scorecard["overall_match_score"] == 87
+    assert scorecard["categories"][0]["quote"] == ""
+    assert scorecard["categories"][0]["source_ref"] == ""
+    assert scorecard["categories"][0]["assessment"] == "Model assessment"

@@ -153,8 +153,9 @@ func (e *LLMEvaluator) EvaluateCandidate(ctx context.Context, summary, job strin
 		if math.IsNaN(c.Score) || math.IsInf(c.Score, 0) || math.IsNaN(c.MaxScore) || math.IsInf(c.MaxScore, 0) || c.MaxScore <= 0 || c.Score < 0 || c.Score > c.MaxScore {
 			return nil, errors.New("invalid criterion score")
 		}
-		if c.Quote != "" && !strings.Contains(safeSummary, c.Quote) {
-			return nil, errors.New("evaluation quote absent from resume")
+		quote := strings.Join(strings.Fields(c.Quote), " ")
+		if c.Quote != "" && (quote == "" || !strings.Contains(strings.Join(strings.Fields(safeSummary), " "), quote)) {
+			c.Quote = ""
 		}
 		c.SourceRef = ""
 	}

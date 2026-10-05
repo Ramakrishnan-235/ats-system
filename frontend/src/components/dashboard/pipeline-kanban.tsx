@@ -13,11 +13,16 @@ interface PipelineKanbanProps {
 }
 
 export function PipelineKanban({ pipeline, onAddCandidate }: PipelineKanbanProps) {
-  const stages = [
-    { key: "Contacted", label: "Contacted" },
-    { key: "Interview", label: "Interview" },
-    { key: "Negotiation", label: "Negotiation" },
+  const activeStages = [
+    "Screening", "Review Required", "Qualified", "Contacted",
+    "Interview", "Negotiation", "Offer",
   ];
+  const stages = [
+    ...activeStages,
+    ...Object.keys(pipeline).filter(
+      (stage) => !activeStages.includes(stage) && pipeline[stage].length > 0
+    ),
+  ].map((key) => ({ key, label: key }));
 
   return (
     <div className="mt-8 font-sans">
@@ -40,14 +45,14 @@ export function PipelineKanban({ pipeline, onAddCandidate }: PipelineKanbanProps
       </div>
 
       {/* Kanban Columns Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      <div className="flex gap-5 overflow-x-auto pb-4">
         {stages.map(({ key, label }) => {
           const items = pipeline[key] || [];
 
           return (
             <div
               key={key}
-              className="bg-[#f6f5f1] rounded-2xl p-4 flex flex-col gap-3 min-h-[360px]"
+              className="bg-[#f6f5f1] rounded-2xl p-4 flex flex-col gap-3 min-h-[360px] w-[320px] shrink-0"
             >
               {/* Column Header */}
               <div className="flex items-center justify-between px-1 pb-1">

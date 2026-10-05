@@ -219,7 +219,8 @@ Generate the complete structured evaluation report adhering strictly to the sche
                 if criterion.verbatim_citation:
                     quote = " ".join(criterion.verbatim_citation.split())
                     if not quote or quote not in source:
-                        raise ValueError("Evaluation contains a citation absent from the resume")
+                        criterion.verbatim_citation = None
+                        logger.warning("Dropped an ungrounded evaluation citation for candidate %s", candidate_id)
 
             report.qualification_tier = (
                 QualificationTier.STRONG_FIT if report.overall_match_score >= 80

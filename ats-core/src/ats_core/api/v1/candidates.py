@@ -394,8 +394,9 @@ async def upload_resume_async(
                             "name": crit.category.value if hasattr(crit.category, "value") else str(crit.category),
                             "score": round(min(10.0, float(crit.score) * 2.0), 1),
                             "max_score": 10.0,
-                            "quote": crit.verbatim_citation or crit.assessment or "",
-                            "source_ref": f"Evidence: {crit.category.value if hasattr(crit.category, 'value') else str(crit.category)}"
+                            "quote": crit.verbatim_citation or "",
+                            "assessment": crit.assessment or "",
+                            "source_ref": (f"Evidence: {crit.category.value if hasattr(crit.category, 'value') else str(crit.category)}" if crit.verbatim_citation else "")
                         })
 
                     tier_name = report.qualification_tier.value if hasattr(report.qualification_tier, "value") else str(report.qualification_tier)

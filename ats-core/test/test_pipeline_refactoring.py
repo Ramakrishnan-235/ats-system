@@ -112,12 +112,16 @@ def test_deep_evaluator_validates_quotes_and_discards_model_coordinates():
     assert report.criteria_breakdown[0].citation_location is None
 
 
-def test_deep_evaluator_rejects_fabricated_citation():
+def test_deep_evaluator_drops_fabricated_citation_without_losing_report():
     result = fake_deep_evaluator("Developed Python applications and reduced latency 90%").evaluate(
         "cand", "Developed Python applications", "Engineer", "Python required"
     )
-    assert result["success"] is False
-    assert "report" not in result
+    assert result["success"] is True
+    assert result["report"].overall_match_score == 92
+    criterion = result["report"].criteria_breakdown[0]
+    assert criterion.verbatim_citation is None
+    assert criterion.citation_location is None
+    assert criterion.assessment == "Relevant skill"
 
 
 def test_deep_prompt_candidate_id_cannot_escape_xml_attribute():
@@ -158,3 +162,19 @@ async def test_audit_accepts_ats_id_formats_and_rejects_empty_ids():
         await AuditLogger.persist_audit_record(
             session, DeepCandidateEvaluationReport(overall_match_score=50), "cand-1", ""
         )
+
+
+@pytest.mark.parametrize("bad_quote", ["Created sophisticated Python solutions", "   "])
+def test_deep_evaluator_keeps_valid_citations_in_mixed_report(bad_quote):
+    from ats_core.schema.evaluation import CriterionScore
+    evaluator = fake_deep_evaluator("Developed Python applications")
+    report = evaluator.client.chat.completions.create()
+    report.criteria_breakdown.append(CriterionScore(score=3, assessment="Second criterion",
+                                                   verbatim_citation=bad_quote))
+    result = evaluator.evaluate("cand", "Developed\nPython applications", "Engineer", "Python")
+    assert result["success"] is True
+    assert result["report"].overall_match_score == 92
+    assert len(result["report"].criteria_breakdown) == 2
+    assert report.criteria_breakdown[0].verbatim_citation == "Developed Python applications"
+    assert report.criteria_breakdown[1].verbatim_citation is None
+    assert all(c.citation_location is None for c in report.criteria_breakdown)
