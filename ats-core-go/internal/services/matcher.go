@@ -162,13 +162,14 @@ func (m *MatchService) MatchJobForRequisition(ctx context.Context, jobID, jobTit
 			"rerank_score": item.RerankScore,
 			"rerank_rank":  rank + 1,
 			"evaluation": map[string]any{
-				"match_score":         matchScoreVal,
-				"qualification_tier":  scorecard.MatchTier,
-				"executive_verdict":   "Evaluated against requisition requirements",
-				"key_strengths":       scorecard.SuggestedImprovements,
-				"risks_or_red_flags":  scorecard.RiskFlags,
-				"suggested_questions": scorecard.SuggestedQuestions,
-				"categories":          scorecard.Categories,
+				"match_score":            matchScoreVal,
+				"qualification_tier":     scorecard.MatchTier,
+				"executive_verdict":      "Evaluated against requisition requirements",
+				"key_strengths":          scorecard.KeyStrengths,
+				"suggested_improvements": scorecard.SuggestedImprovements,
+				"risks_or_red_flags":     scorecard.RiskFlags,
+				"suggested_questions":    scorecard.SuggestedQuestions,
+				"categories":             scorecard.Categories,
 			},
 		}
 		finalEvals = append(finalEvals, evalMap)

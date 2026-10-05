@@ -30,6 +30,7 @@ type Scorecard struct {
 	EvaluatedAt           string          `json:"evaluated_at,omitempty"`
 	Categories            []CategoryScore `json:"categories"`
 	RiskFlags             []string        `json:"risk_flags"`
+	KeyStrengths          []string        `json:"key_strengths"`
 	SuggestedImprovements []string        `json:"suggested_improvements"`
 	SuggestedQuestions    []string        `json:"suggested_questions"`
 	TeamNotes             []Note          `json:"team_notes"`

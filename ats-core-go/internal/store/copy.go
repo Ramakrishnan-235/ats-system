@@ -92,6 +92,7 @@ func cloneCandidate(v *models.Candidate) *models.Candidate {
 	out.Scorecard.OverallMatchScore = clonePointer(v.Scorecard.OverallMatchScore)
 	out.Scorecard.Categories = slices.Clone(v.Scorecard.Categories)
 	out.Scorecard.RiskFlags = slices.Clone(v.Scorecard.RiskFlags)
+	out.Scorecard.KeyStrengths = slices.Clone(v.Scorecard.KeyStrengths)
 	out.Scorecard.SuggestedImprovements = slices.Clone(v.Scorecard.SuggestedImprovements)
 	out.Scorecard.SuggestedQuestions = slices.Clone(v.Scorecard.SuggestedQuestions)
 	out.Scorecard.TeamNotes = slices.Clone(v.Scorecard.TeamNotes)

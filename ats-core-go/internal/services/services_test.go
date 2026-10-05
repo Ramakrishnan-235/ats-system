@@ -53,7 +53,7 @@ func TestEvaluationValidation(t *testing.T) {
 				if score.OverallMatchScore == nil {
 					t.Fatal("missing score")
 				}
-				if *score.OverallMatchScore == 81 && score.MatchTier != "STRONG_FIT" {
+				if *score.OverallMatchScore == 81 && score.MatchTier != "Strong Fit Match" {
 					t.Fatal("tier trusted from provider")
 				}
 				for _, c := range score.Categories {
@@ -141,5 +141,39 @@ func TestRedirectDoesNotForwardCandidateData(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatal("candidate data forwarded to redirect")
+	}
+}
+
+func TestEvaluationFeedbackAndTierContract(t *testing.T) {
+	for _, tc := range []struct {
+		score int
+		tier  string
+	}{
+		{0, "Low Match"}, {59, "Low Match"}, {60, "Potential Fit Match"},
+		{79, "Potential Fit Match"}, {80, "Strong Fit Match"}, {100, "Strong Fit Match"},
+	} {
+		payload, _ := json.Marshal(map[string]any{"overall_match_score": tc.score, "key_strengths": []string{"Go systems experience"}, "suggested_improvements": []string{"Add production scale metrics"}})
+		e := fakeEvaluator(t, 200, string(payload))
+		score, err := e.EvaluateCandidate(context.Background(), "Go systems", "Go systems")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if score.MatchTier != tc.tier {
+			t.Fatalf("score %d: tier %q, want %q", tc.score, score.MatchTier, tc.tier)
+		}
+		if len(score.KeyStrengths) != 1 || score.KeyStrengths[0] != "Go systems experience" {
+			t.Fatalf("strengths lost: %+v", score)
+		}
+		if len(score.SuggestedImprovements) != 1 || score.SuggestedImprovements[0] != "Add production scale metrics" {
+			t.Fatalf("improvements mixed with strengths: %+v", score)
+		}
+	}
+	e := fakeEvaluator(t, 200, `{"overall_match_score":81,"key_strengths":["Go systems experience"]}`)
+	score, err := e.EvaluateCandidate(context.Background(), "Go systems", "Go systems")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if score.SuggestedImprovements == nil || len(score.SuggestedImprovements) != 0 {
+		t.Fatalf("missing improvements must be empty: %+v", score)
 	}
 }
