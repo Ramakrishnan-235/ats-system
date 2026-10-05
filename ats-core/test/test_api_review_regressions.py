@@ -3,6 +3,7 @@
 import importlib.util
 import io
 import sys
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -463,3 +464,93 @@ def test_add_existing_candidate_to_job_does_not_overwrite_real_name_with_masked(
     assert len(job_cands) >= 1
     assert job_cands[0]["name"] == "Alice Wonderland"
     assert job_cands[0]["headline"] == "Principal Architect"
+
+
+def test_client_cannot_pass_arbitrary_new_candidate_id(api):
+    response = api.post("/api/v1/jobs/job-open/candidates", json={
+        "id": "arbitrary-non-existent-id",
+        "name": "Malicious Attacker",
+        "headline": "Hacker",
+    })
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()
+    assert "arbitrary-non-existent-id" not in candidates.CANDIDATES_STORE
+    assert "arbitrary-non-existent-id" not in [c.get("id") for c in jobs.JOB_CANDIDATES_STORE.get("job-open", [])]
+
+
+def test_posting_existing_candidate_cannot_rewrite_name_or_stage_in_store(api):
+    cand_id = "cand-guard-" + uuid.uuid4().hex
+    candidates.CANDIDATES_STORE[cand_id] = {
+        "id": cand_id,
+        "name": "Sarah Connor",
+        "anonymized_name": "Candidate #12345678",
+        "target_headline": "Security Specialist",
+        "avatar": "SC",
+        "core_skills": ["Cybersecurity"],
+        "stage": "Interview",
+        "status": "Interview",
+        "scorecard": {"overall_match_score": None, "evaluation_status": "PENDING"},
+    }
+
+    response = api.post("/api/v1/jobs/job-open/candidates", json={
+        "id": cand_id,
+        "name": "Overwritten Bob",
+        "headline": "Junior Intern",
+        "stage": "Offer",
+    })
+    assert response.status_code == 200
+
+    # CANDIDATES_STORE must NOT be rewritten by posting to a job
+    stored = candidates.CANDIDATES_STORE[cand_id]
+    assert stored["name"] == "Sarah Connor"
+    assert stored["target_headline"] == "Security Specialist"
+    assert stored["stage"] == "Interview"
+    assert stored["status"] == "Interview"
+
+    # In the job list, the canonical identity is also locked
+    job_cand = [c for c in jobs.JOB_CANDIDATES_STORE["job-open"] if c.get("id") == cand_id][0]
+    assert job_cand["name"] == "Sarah Connor"
+    assert job_cand["headline"] == "Security Specialist"
+
+
+def test_posting_cannot_fabricate_recruiter_assessment_score(api):
+    response = api.post("/api/v1/jobs/job-open/candidates", json={
+        "name": "Charlie Chaplin",
+        "headline": "Actor",
+        "matchScore": 99,
+        "matchLabel": "Top Match",
+        "technicalDepthScore": 9.8,
+        "systemDesignScore": 9.7,
+        "quote": "Fabricated evaluation quote",
+    })
+    assert response.status_code == 200
+
+    # In CANDIDATES_STORE, the new candidate must have clean unevaluated scorecard (no fake Recruiter assessment)
+    new_cands = [c for c in candidates.CANDIDATES_STORE.values() if c.get("name") == "Charlie Chaplin"]
+    assert len(new_cands) == 1
+    new_cand = new_cands[0]
+    sc = new_cand["scorecard"]
+    assert sc["overall_match_score"] is None
+    assert sc["evaluation_status"] == "PENDING"
+    assert sc["match_tier"] == "Not Evaluated"
+    assert sc.get("model_version") is None
+    assert sc["categories"] == []
+
+    # In JOB_CANDIDATES_STORE, candidate also starts unevaluated
+    job_cand = [c for c in jobs.JOB_CANDIDATES_STORE["job-open"] if c.get("id") == new_cand["id"]][0]
+    assert job_cand["matchScore"] is None
+    assert job_cand["matchLabel"] == "Not Evaluated"
+    assert job_cand["technicalDepthScore"] is None
+    assert job_cand["systemDesignScore"] is None
+    assert job_cand["quote"] == ""
+
+
+def test_invalid_candidate_stage_rejected(api):
+    response = api.post("/api/v1/jobs/job-open/candidates", json={
+        "name": "Valid Candidate",
+        "headline": "Developer",
+        "stage": "NotAValidStageName",
+    })
+    assert response.status_code == 400
+    assert "Invalid candidate stage" in response.json()["detail"]
+

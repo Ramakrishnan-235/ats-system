@@ -80,80 +80,73 @@ def is_generic_or_error_headline(headline: Optional[str]) -> bool:
 
 
 def register_candidate_profile(
-    cand_dict: Dict[str, Any], job_title: str = "Software Engineer", department: str = "Engineering"
+    cand_dict: Dict[str, Any],
+    job_title: str = "Software Engineer",
+    department: str = "Engineering",
+    job_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Register supplied facts without inventing employment history or AI assessments."""
     cand_id = cand_dict.get("id") or f"cand-{uuid.uuid4().hex}"
-    existing = CANDIDATES_STORE.get(cand_id, {})
+    existing = CANDIDATES_STORE.get(cand_id)
     if existing:
-        # Linking an extracted profile to a job must preserve its evidence, real name, and evaluation.
-        # NEVER overwrite an existing candidate's real name with a masked or anonymous placeholder.
-        incoming_name = cand_dict.get("name")
-        if incoming_name and not is_masked_or_anonymous_name(incoming_name):
-            if not existing.get("name") or is_masked_or_anonymous_name(existing.get("name")):
-                existing["name"] = incoming_name
-
-        incoming_headline = cand_dict.get("headline") or cand_dict.get("target_headline")
-        if incoming_headline and not is_generic_or_error_headline(incoming_headline):
-            if not existing.get("target_headline") or is_generic_or_error_headline(existing.get("target_headline")):
-                existing["target_headline"] = incoming_headline
-
-        if cand_dict.get("stage") is not None:
-            existing["stage"] = cand_dict["stage"]
-            existing["status"] = cand_dict["stage"]
-
-        if cand_dict.get("applied_for_job_id"):
-            existing["applied_for_job_id"] = cand_dict["applied_for_job_id"]
-        if cand_dict.get("applied_for_job"):
+        # Existing candidate already in repository: preserve canonical identity, stage, and evaluation
+        if job_id and not existing.get("applied_for_job_id"):
+            existing["applied_for_job_id"] = job_id
+        if cand_dict.get("applied_for_job") and not existing.get("applied_for_job"):
             existing["applied_for_job"] = cand_dict["applied_for_job"]
         return existing
 
     incoming_name = cand_dict.get("name")
-    name = incoming_name if (incoming_name and not is_masked_or_anonymous_name(incoming_name)) else existing.get("name", "Candidate")
-    headline = cand_dict.get("headline") or existing.get("target_headline", job_title)
-    skills = cand_dict.get("skills") or existing.get("core_skills", [])
-    match_score = cand_dict.get("matchScore")
-    if match_score is None:
-        match_score = existing.get("scorecard", {}).get("overall_match_score")
-    categories = []
-    for label, key in (("Technical Depth", "technicalDepthScore"), ("System Design", "systemDesignScore")):
-        score = cand_dict.get(key)
-        if score is not None:
-            categories.append({
-                "name": label, "score": score, "max_score": 10.0,
-                "quote": cand_dict.get("quote") or "", "source_ref": "Recruiter assessment",
-            })
-    scorecard = copy.deepcopy(existing.get("scorecard", {}))
-    scorecard.update({
-        "overall_match_score": match_score,
-        "match_tier": (cand_dict.get("matchLabel") or "Recruiter assessment") if match_score is not None else "Not Evaluated",
-        "evaluation_status": "MANUAL" if match_score is not None else "PENDING",
-        "model_version": "Recruiter assessment" if match_score is not None else None,
-        "evaluated_at": datetime.now(timezone.utc).isoformat() if match_score is not None else None,
-        "categories": categories or scorecard.get("categories", []),
-        "risk_flags": [cand_dict["potentialGap"]] if cand_dict.get("potentialGap") else scorecard.get("risk_flags", []),
-        "suggested_improvements": cand_dict.get("suggestedImprovements") or scorecard.get("suggested_improvements", []),
-        "suggested_questions": cand_dict.get("suggestedQuestions") or scorecard.get("suggested_questions", []),
-        "team_notes": scorecard.get("team_notes", []),
-    })
-    candidate = {
-        **existing,
-        "id": cand_id, "name": name,
-        "anonymized_name": existing.get("anonymized_name", f"Candidate #{cand_id[-8:]}"),
-        "avatar": cand_dict.get("avatar") or existing.get("avatar", "CD"),
-        "target_headline": headline, "role": headline,
-        "status": cand_dict.get("stage", existing.get("stage", "Screening")),
-        "stage": cand_dict.get("stage", existing.get("stage", "Screening")),
-        "applied_date": existing.get("applied_date", "Recently"),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "applied_for_job": f"{job_title} ({department})",
-        "years_of_experience": cand_dict.get("experienceYears", existing.get("years_of_experience")),
-        "core_skills": skills,
-        "experience": cand_dict.get("experience", existing.get("experience", [])),
-        "scorecard": scorecard,
+    name = (
+        incoming_name
+        if (incoming_name and not is_masked_or_anonymous_name(incoming_name))
+        else "Candidate"
+    )
+    incoming_headline = cand_dict.get("headline") or cand_dict.get("target_headline")
+    headline = (
+        incoming_headline
+        if (incoming_headline and not is_generic_or_error_headline(incoming_headline))
+        else job_title
+    )
+    skills = cand_dict.get("skills") or cand_dict.get("core_skills") or []
+
+    # Clean unevaluated scorecard — NEVER set manual "Recruiter assessment" or client-supplied scores
+    scorecard = {
+        "overall_match_score": None,
+        "match_tier": "Not Evaluated",
+        "evaluation_status": "PENDING",
+        "model_version": None,
+        "evaluated_at": None,
+        "categories": [],
+        "risk_flags": [],
+        "suggested_improvements": [],
+        "suggested_questions": [],
+        "team_notes": [],
     }
-    for field in ("email", "phone", "location", "linkedin", "highest_education"):
-        candidate[field] = cand_dict.get(field) or existing.get(field, "N/A")
+
+    candidate = {
+        "id": cand_id,
+        "name": name,
+        "anonymized_name": f"Candidate #{cand_id[-8:]}",
+        "avatar": cand_dict.get("avatar") or "CD",
+        "target_headline": headline,
+        "role": headline,
+        "status": "Screening",
+        "stage": "Screening",
+        "applied_date": "Recently",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "applied_for_job": cand_dict.get("applied_for_job") or f"{job_title} ({department})",
+        "applied_for_job_id": job_id or cand_dict.get("applied_for_job_id"),
+        "years_of_experience": None,
+        "core_skills": skills,
+        "experience": [],
+        "scorecard": scorecard,
+        "email": cand_dict.get("email") or "N/A",
+        "phone": cand_dict.get("phone") or "N/A",
+        "location": cand_dict.get("location") or "N/A",
+        "linkedin": cand_dict.get("linkedin") or "N/A",
+        "highest_education": cand_dict.get("highest_education") or "N/A",
+    }
     CANDIDATES_STORE[cand_id] = candidate
     return candidate
 

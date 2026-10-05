@@ -953,8 +953,8 @@ async def update_job_status(job_id: str, new_status: str = Query(..., pattern="^
 class JobCandidatePayload(BaseModel):
     id: Optional[str] = None
     rank: Optional[int] = 0
-    name: str
-    headline: str
+    name: Optional[str] = ""
+    headline: Optional[str] = ""
     avatar: Optional[str] = None
     isImageAvatar: Optional[bool] = False
     matchScore: Optional[int] = Field(default=None, ge=0, le=100)
@@ -970,6 +970,7 @@ class JobCandidatePayload(BaseModel):
     suggestedQuestions: Optional[List[str]] = Field(default_factory=list)
 
 
+VALID_CANDIDATE_STAGES = {"Screening", "Interview", "Qualified", "Offer", "Hired", "Rejected"}
 JOB_CANDIDATES_STORE: Dict[str, List[Dict[str, Any]]] = {}
 
 
@@ -995,10 +996,13 @@ async def get_job_candidates(job_id: str, include_pii: bool = Query(False)):
 @router.post("/{job_id}/candidates", response_model=List[Dict[str, Any]])
 async def add_job_candidate(job_id: str, candidate: JobCandidatePayload, include_pii: bool = Query(False)):
     current = get_or_create_job_candidates(job_id)
+    job = JOBS_STORE[job_id]
 
-    new_id = candidate.id or f"cand-{uuid.uuid4().hex}"
-    cand_obj = candidate.model_dump()
-    cand_obj["id"] = new_id
+    if candidate.stage and candidate.stage not in VALID_CANDIDATE_STAGES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid candidate stage",
+        )
 
     from ats_core.api.v1.candidates import (
         CANDIDATES_STORE,
@@ -1007,38 +1011,100 @@ async def add_job_candidate(job_id: str, candidate: JobCandidatePayload, include
         is_generic_or_error_headline,
     )
 
-    cand_rec = CANDIDATES_STORE.get(new_id)
+    if candidate.id and candidate.id.strip():
+        target_id = candidate.id.strip()
+        cand_rec = CANDIDATES_STORE.get(target_id)
+        if not cand_rec:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Candidate with ID '{candidate.id}' not found.",
+            )
+        is_new_candidate = False
+    else:
+        target_id = f"cand-{uuid.uuid4().hex}"
+        cand_rec = None
+        is_new_candidate = True
+        if not candidate.name or not candidate.name.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Candidate name is required.",
+            )
+
+    cand_obj = candidate.model_dump()
+    cand_obj["id"] = target_id
+
     if cand_rec:
-        # Candidate already exists in repository — inherit and preserve real identity
+        # Existing candidate in repository: lock canonical identity from store
         stored_name = cand_rec.get("name")
         if stored_name and not is_masked_or_anonymous_name(stored_name):
             cand_obj["name"] = stored_name
         elif candidate.name and not is_masked_or_anonymous_name(candidate.name):
             cand_obj["name"] = candidate.name
         else:
-            cand_obj["name"] = stored_name or candidate.name
+            cand_obj["name"] = stored_name or candidate.name or "Candidate"
 
-        stored_headline = cand_rec.get("target_headline")
+        stored_headline = cand_rec.get("target_headline") or cand_rec.get("role")
         if stored_headline and not is_generic_or_error_headline(stored_headline):
             cand_obj["headline"] = stored_headline
         elif candidate.headline and not is_generic_or_error_headline(candidate.headline):
             cand_obj["headline"] = candidate.headline
         else:
-            cand_obj["headline"] = stored_headline or candidate.headline
+            cand_obj["headline"] = stored_headline or candidate.headline or job.get("title", "Candidate")
 
-        if cand_rec.get("avatar") and cand_rec["avatar"] != "CD":
-            cand_obj["avatar"] = cand_rec["avatar"]
-        if cand_rec.get("core_skills"):
-            cand_obj["skills"] = cand_rec["core_skills"]
+        cand_obj["avatar"] = cand_rec.get("avatar") or "CD"
         cand_obj["isImageAvatar"] = cand_rec.get("isImageAvatar", False)
+        cand_obj["skills"] = cand_rec.get("core_skills", candidate.skills or [])
 
-    initials = cand_obj["name"].split(" ")[0][:1] + (cand_obj["name"].split(" ")[1][:1] if len(cand_obj["name"].split(" ")) > 1 else "")
-    avatar = cand_obj.get("avatar") or initials.upper() or "CD"
+        # Only use genuine evaluation scores if authentic scorecard exists for this candidate/job
+        existing_sc = cand_rec.get("scorecard") or {}
+        if existing_sc.get("evaluation_status") == "COMPLETED" and (
+            not cand_rec.get("applied_for_job_id") or cand_rec.get("applied_for_job_id") == job_id
+        ):
+            cand_obj["matchScore"] = existing_sc.get("overall_match_score")
+            cand_obj["matchLabel"] = existing_sc.get("match_tier") or "Evaluated"
+            tech_score = None
+            sys_score = None
+            quote = ""
+            for cat in existing_sc.get("categories", []):
+                cat_name = cat.get("name", "").lower()
+                if "technical" in cat_name and tech_score is None:
+                    tech_score = cat.get("score")
+                elif "system" in cat_name and sys_score is None:
+                    sys_score = cat.get("score")
+                if not quote and cat.get("quote"):
+                    quote = cat.get("quote")
+            cand_obj["technicalDepthScore"] = tech_score
+            cand_obj["systemDesignScore"] = sys_score
+            cand_obj["quote"] = quote
+        else:
+            cand_obj["matchScore"] = None
+            cand_obj["matchLabel"] = "Not Evaluated"
+            cand_obj["technicalDepthScore"] = None
+            cand_obj["systemDesignScore"] = None
+            cand_obj["quote"] = ""
+    else:
+        # New candidate: sanitize and ensure unevaluated initial state (no client-controlled scores)
+        if is_masked_or_anonymous_name(cand_obj.get("name")):
+            cand_obj["name"] = "Candidate"
+        if is_generic_or_error_headline(cand_obj.get("headline")):
+            cand_obj["headline"] = job.get("title", "Candidate")
+
+        cand_obj["matchScore"] = None
+        cand_obj["matchLabel"] = "Not Evaluated"
+        cand_obj["technicalDepthScore"] = None
+        cand_obj["systemDesignScore"] = None
+        cand_obj["quote"] = ""
+        cand_obj["skills"] = candidate.skills or []
+
+    initials = (cand_obj["name"].split(" ")[0][:1] + (cand_obj["name"].split(" ")[1][:1] if len(cand_obj["name"].split(" ")) > 1 else "")) if cand_obj.get("name") else "CD"
+    avatar = cand_obj.get("avatar") or (initials.upper() if initials else "CD") or "CD"
     cand_obj["avatar"] = avatar
-    cand_obj["sourceResumeLink"] = f"/candidates/{new_id}"
+    cand_obj["sourceResumeLink"] = f"/candidates/{target_id}"
+    if not cand_obj.get("stage"):
+        cand_obj["stage"] = "Screening"
 
     # Remove any existing duplicate by ID
-    updated_list = [c for c in current if c.get("id") != new_id]
+    updated_list = [c for c in current if c.get("id") != target_id]
     updated_list.append(cand_obj)
 
     # Re-rank by match score descending (with technicalDepth as tiebreaker)
@@ -1054,9 +1120,18 @@ async def add_job_candidate(job_id: str, candidate: JobCandidatePayload, include
     for idx, c in enumerate(updated_list):
         c["rank"] = idx + 1
 
-    # Registration errors must be visible, rather than reporting a partial success.
-    job = JOBS_STORE[job_id]
-    register_candidate_profile(cand_obj, job_title=job["title"], department=job["department"])
+    if is_new_candidate:
+        register_candidate_profile(
+            cand_obj,
+            job_title=job["title"],
+            department=job["department"],
+            job_id=job_id,
+        )
+    else:
+        # Existing candidate: link job if not already set, never overwrite profile
+        if not cand_rec.get("applied_for_job_id"):
+            cand_rec["applied_for_job_id"] = job_id
+            cand_rec["applied_for_job"] = f"{job['title']} ({job['department']})"
 
     JOB_CANDIDATES_STORE[job_id] = updated_list
     JOBS_STORE[job_id]["candidates_count"] = len(updated_list)
