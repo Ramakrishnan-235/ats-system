@@ -749,4 +749,55 @@ def test_task_status_lookup_syncs_from_db_across_processes(api, monkeypatch):
     assert task_data["result"]["candidate_id"] == "cand-recovered-001"
 
 
+def test_upload_with_job_id_sets_applied_for_job_id_and_preserves_score_in_pipeline(api, fake_processing, monkeypatch):
+    """Uploading against a job requisition records applied_for_job_id and retains match score in pipeline."""
+    report = SimpleNamespace(
+        overall_match_score=87.0,
+        qualification_tier="Strong Match",
+        criteria_breakdown=[],
+        risks_and_skill_gaps=[],
+        suggested_improvements=[],
+        suggested_interview_questions=[],
+        executive_verdict="Strong candidate",
+    )
+    evaluator = MagicMock()
+    evaluator.model_name = "mock-model"
+    evaluator.evaluate.return_value = {"success": True, "report": report}
+    monkeypatch.setitem(sys.modules, "ats_core.evaluator.deep_evaluator", SimpleNamespace(LocalDeepEvaluator=MagicMock(return_value=evaluator)))
+
+    job_id = "job-open"
+    jobs.JOBS_STORE[job_id] = {
+        "id": job_id,
+        "title": "Backend Systems Engineer",
+        "department": "Infrastructure",
+        "job_description": "Distributed systems and Python development.",
+        "status": "OPEN",
+        "candidates_count": 0,
+        "required_skills": ["Python", "FastAPI"],
+    }
+
+    res = upload(api, name="Dana_Scully.pdf", data={"job_id": job_id})
+    assert res.status_code == 202
+    data = res.json()
+    assert data["applied_for_job_id"] == job_id
+    candidate_id = data["candidate_id"]
+
+    cand_in_store = candidates.CANDIDATES_STORE[candidate_id]
+    assert cand_in_store["applied_for_job_id"] == job_id
+    assert cand_in_store["scorecard"]["overall_match_score"] == 87
+
+    cand_resp = api.get(f"/api/v1/candidates/{candidate_id}?include_pii=true")
+    assert cand_resp.status_code == 200
+    assert cand_resp.json()["applied_for_job_id"] == job_id
+
+    add_resp = api.post(f"/api/v1/jobs/{job_id}/candidates?include_pii=true", json={"id": candidate_id})
+    assert add_resp.status_code == 200
+    pipeline = add_resp.json()
+    cand_in_pipeline = next((c for c in pipeline if c["id"] == candidate_id), None)
+    assert cand_in_pipeline is not None
+    assert cand_in_pipeline["matchScore"] == 87
+    assert cand_in_pipeline["matchLabel"] == "Strong Match"
+
+
+
 

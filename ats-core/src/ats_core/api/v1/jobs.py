@@ -1133,9 +1133,14 @@ async def add_job_candidate(job_id: str, candidate: JobCandidatePayload, include
 
         # Only use genuine evaluation scores if authentic scorecard exists for this candidate/job
         existing_sc = cand_rec.get("scorecard") or {}
-        if existing_sc.get("evaluation_status") == "COMPLETED" and (
-            not cand_rec.get("applied_for_job_id") or cand_rec.get("applied_for_job_id") == job_id
-        ):
+        job_title_lower = (job.get("title") or "").strip().lower()
+        applied_for_lower = (cand_rec.get("applied_for_job") or "").strip().lower()
+        matches_job = (
+            not cand_rec.get("applied_for_job_id")
+            or cand_rec.get("applied_for_job_id") == job_id
+            or (job_title_lower and job_title_lower in applied_for_lower)
+        )
+        if existing_sc.get("evaluation_status") == "COMPLETED" and matches_job:
             cand_obj["matchScore"] = existing_sc.get("overall_match_score")
             cand_obj["matchLabel"] = existing_sc.get("match_tier") or "Evaluated"
             tech_score = None

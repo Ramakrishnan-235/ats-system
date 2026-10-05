@@ -194,7 +194,7 @@ func (h *CandidatesHandler) UploadResumeAsync(w http.ResponseWriter, r *http.Req
 	}()
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	_ = json.NewEncoder(w).Encode(map[string]any{"status": "ACCEPTED", "task_id": taskID, "candidate_id": candidateID, "filename": filename, "job_id": jobID, "execution_mode": "async_goroutine", "evaluation_status": "PROCESSING"})
+	_ = json.NewEncoder(w).Encode(map[string]any{"status": "ACCEPTED", "task_id": taskID, "candidate_id": candidateID, "filename": filename, "job_id": jobID, "applied_for_job_id": jobID, "execution_mode": "async_goroutine", "evaluation_status": "PROCESSING"})
 }
 func (h *CandidatesHandler) processUpload(taskID, candidateID, filename, pdfPath string, data []byte, job *models.Job) {
 	complete := false
@@ -240,7 +240,16 @@ func (h *CandidatesHandler) processUpload(taskID, candidateID, filename, pdfPath
 		}
 		h.store.AddJobCandidate(job.ID, &models.JobCandidate{ID: candidateID, Name: name, Avatar: "CD", MatchScore: score, MatchLabel: scorecard.MatchTier, Skills: []string{}, Stage: "Screening", SourceResumeLink: fmt.Sprintf("/candidates/%s", candidateID)})
 	}
-	h.store.SaveTask(&models.UploadTask{TaskID: taskID, State: "SUCCESS", Progress: 100, Step: "Completed", ExecutionMode: "async_goroutine", Result: map[string]any{"status": "COMPLETED", "candidate_id": candidateID, "match_score": scorecard.OverallMatchScore, "evaluation_status": scorecard.EvaluationStatus}})
+	resultMap := map[string]any{
+		"status": "COMPLETED",
+		"candidate_id": candidateID,
+		"match_score": scorecard.OverallMatchScore,
+		"evaluation_status": scorecard.EvaluationStatus,
+	}
+	if job != nil {
+		resultMap["applied_for_job_id"] = job.ID
+	}
+	h.store.SaveTask(&models.UploadTask{TaskID: taskID, State: "SUCCESS", Progress: 100, Step: "Completed", ExecutionMode: "async_goroutine", Result: resultMap})
 	complete = true
 }
 func (h *CandidatesHandler) GetTaskStatus(w http.ResponseWriter, r *http.Request) {

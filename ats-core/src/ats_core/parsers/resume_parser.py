@@ -610,7 +610,12 @@ def parse_resume_to_candidate(
         "status": "Contacted",
         "stage": "Contacted",
         "applied_date": "Just now",
-        "applied_for_job": f"{target_headline} Requisition",
+        "applied_for_job": (
+            f"{target_job['title']} ({target_job.get('department', 'Engineering')})"
+            if target_job
+            else f"{target_headline} Requisition"
+        ),
+        "applied_for_job_id": target_job.get("id") if target_job else None,
         "years_of_experience": years_of_experience,
         "highest_education": highest_education,
         "core_skills": found_skills,

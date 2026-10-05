@@ -94,11 +94,12 @@ export const locateCandidateCitation = (candidateId: string, phrase: string) => 
 export interface UploadResponse {
   status: string; task_id: string; candidate_id: string; filename: string;
   execution_mode: string; evaluation_status: string; match_score: number | null; message: string;
+  job_id?: string; applied_for_job_id?: string;
 }
 export interface UploadTask {
   task_id: string; state: string; execution_mode?: string; error?: string;
   progress?: number; step?: string;
-  result?: { candidate_id: string; evaluation_status?: string; match_score?: number | null; status?: string };
+  result?: { candidate_id: string; evaluation_status?: string; match_score?: number | null; status?: string; applied_for_job_id?: string };
 }
 export interface UploadWaitOptions {
   signal?: AbortSignal;
@@ -211,6 +212,7 @@ export async function uploadAndWait(
         status: task.result?.status || uploaded.status,
         evaluation_status: task.result?.evaluation_status || uploaded.evaluation_status,
         match_score: task.result?.match_score !== undefined ? task.result.match_score : (uploaded.match_score ?? null),
+        applied_for_job_id: task.result?.applied_for_job_id || uploaded.applied_for_job_id || jobId,
       };
     }
 

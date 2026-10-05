@@ -49,6 +49,17 @@ export function AddCandidateJobModal({ open, onOpenChange, jobTitle, jobId, exis
       }
     }
 
+    const matchesJob = Boolean(
+      jobId && (
+        candidateToAssign.applied_for_job_id === jobId ||
+        (jobTitle && candidateToAssign.applied_for_job && candidateToAssign.applied_for_job.toLowerCase().includes(jobTitle.toLowerCase()))
+      )
+    );
+    const score = matchesJob ? (candidateToAssign.scorecard?.overall_match_score ?? null) : null;
+    const label = matchesJob
+      ? (candidateToAssign.scorecard?.match_tier || (score !== null ? "Evaluated" : "Not Evaluated"))
+      : "Not Evaluated";
+
     await onAddCandidate({
       id: candidateToAssign.id,
       name: candidateToAssign.name,
@@ -57,7 +68,8 @@ export function AddCandidateJobModal({ open, onOpenChange, jobTitle, jobId, exis
       skills: candidateToAssign.core_skills,
       stage: "Screening",
       // Match scores belong to the job they were evaluated against.
-      matchScore: candidateToAssign.applied_for_job_id === jobId ? candidateToAssign.scorecard?.overall_match_score : null,
+      matchScore: score,
+      matchLabel: label,
       sourceResumeLink: `/candidates/${candidateToAssign.id}`,
     });
   };
@@ -76,6 +88,14 @@ export function AddCandidateJobModal({ open, onOpenChange, jobTitle, jobId, exis
       if (pending.signal.aborted) return;
       const candidate = await fetchCandidate(result.candidate_id, true);
       if (pending.signal.aborted) return;
+      if (jobId && !candidate.applied_for_job_id) {
+        candidate.applied_for_job_id = jobId;
+      }
+      if (result.match_score !== null && result.match_score !== undefined && candidate.scorecard) {
+        if (candidate.scorecard.overall_match_score === null || candidate.scorecard.overall_match_score === undefined) {
+          candidate.scorecard.overall_match_score = result.match_score;
+        }
+      }
       await assign(candidate);
       onOpenChange(false);
     } catch (reason) { if (!pending.signal.aborted) setError(getErrorMessage(reason)); }

@@ -356,7 +356,9 @@ async def upload_resume_async(
         
         # Link to target job
         if target_job:
-            parsed_candidate["applied_for_job"] = f"{target_job['title']} ({target_job['department']})"
+            target_job_id = target_job.get("id") or job_id
+            parsed_candidate["applied_for_job"] = f"{target_job['title']} ({target_job.get('department', 'Engineering')})"
+            parsed_candidate["applied_for_job_id"] = target_job_id
 
         # Only score against a real requisition, never against inferred self-fit criteria.
         if target_job:
@@ -532,6 +534,12 @@ async def upload_resume_async(
             "status": "EVALUATION_FAILED",
             "stage": "Review Required",
             "created_at": datetime.now(timezone.utc).isoformat(),
+            "applied_for_job": (
+                f"{target_job['title']} ({target_job.get('department', 'Engineering')})"
+                if target_job
+                else "N/A"
+            ),
+            "applied_for_job_id": (target_job.get("id") or job_id) if target_job else None,
             "years_of_experience": 0.0,
             "core_skills": [],
             "scorecard": {
@@ -550,6 +558,7 @@ async def upload_resume_async(
         except Exception as e:
             logger.debug("Could not sync failed candidate to DB: %s", e)
 
+    effective_job_id = (target_job.get("id") or job_id) if target_job else job_id
     UPLOAD_TASKS_STORE[task_id] = {
         "task_id": task_id,
         "state": "FAILURE" if processing_failed else "SUCCESS",
@@ -560,6 +569,7 @@ async def upload_resume_async(
     else:
         UPLOAD_TASKS_STORE[task_id]["result"] = {
             "status": "COMPLETED", "candidate_id": candidate_id,
+            "applied_for_job_id": effective_job_id,
             "match_score": final_score,
             "evaluation_status": parsed_candidate.get("scorecard", {}).get("evaluation_status", "PENDING"),
         }
@@ -571,6 +581,7 @@ async def upload_resume_async(
         "filename": safe_filename,
         "name": candidate_name,
         "job_id": job_id,
+        "applied_for_job_id": effective_job_id,
         "match_score": final_score,
         "execution_mode": "inline",
         "evaluation_status": parsed_candidate.get("scorecard", {}).get("evaluation_status", "PENDING"),

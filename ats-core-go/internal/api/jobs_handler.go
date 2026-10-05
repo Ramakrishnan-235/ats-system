@@ -209,7 +209,8 @@ func (h *JobsHandler) AddJobCandidate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, ok := h.store.GetJob(jobID); !ok {
+	job, ok := h.store.GetJob(jobID)
+	if !ok {
 		writeError(w, http.StatusNotFound, "Job not found")
 		return
 	}
@@ -224,7 +225,10 @@ func (h *JobsHandler) AddJobCandidate(w http.ResponseWriter, r *http.Request) {
 	jc.Name = candidate.Name
 	jc.Headline = candidate.TargetHeadline
 	jc.Skills = candidate.CoreSkills
-	if candidate.Scorecard.EvaluationStatus == "COMPLETED" && (candidate.AppliedForJobID == "" || candidate.AppliedForJobID == jobID) {
+	jobTitleLower := strings.ToLower(job.Title)
+	appliedJobLower := strings.ToLower(candidate.AppliedForJob)
+	matchesJob := candidate.AppliedForJobID == "" || candidate.AppliedForJobID == jobID || (jobTitleLower != "" && strings.Contains(appliedJobLower, jobTitleLower))
+	if candidate.Scorecard.EvaluationStatus == "COMPLETED" && matchesJob {
 		if candidate.Scorecard.OverallMatchScore != nil {
 			val := int(*candidate.Scorecard.OverallMatchScore)
 			jc.MatchScore = &val
@@ -265,6 +269,13 @@ func (h *JobsHandler) AddJobCandidate(w http.ResponseWriter, r *http.Request) {
 	}
 	if jc.StageBadgeStyle == "" {
 		jc.StageBadgeStyle = "bg-zinc-100 text-zinc-700"
+	}
+	if candidate.AppliedForJobID == "" {
+		candidate.AppliedForJobID = jobID
+		if candidate.AppliedForJob == "" {
+			candidate.AppliedForJob = job.Title
+		}
+		h.store.SaveCandidate(candidate)
 	}
 
 	updated := h.store.AddJobCandidate(jobID, &jc)
