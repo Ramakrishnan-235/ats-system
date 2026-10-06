@@ -35,10 +35,10 @@ async def test_auth_enabled_requires_key():
             await auth_mod.verify_api_key(header_key=None, bearer_creds=None)
         assert exc_info.value.status_code == 401
 
-        # Invalid key raises 403
+        # Invalid key raises 401
         with pytest.raises(HTTPException) as exc_info:
             await auth_mod.verify_api_key(header_key="wrong-key", bearer_creds=None)
-        assert exc_info.value.status_code == 403
+        assert exc_info.value.status_code == 401
 
         # Correct key succeeds
         token = await auth_mod.verify_api_key(header_key="secure-production-ats-key-999", bearer_creds=None)

@@ -14,7 +14,7 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 bearer_scheme = HTTPBearer(auto_error=False)
 
 # Configuration from environment
-ATS_AUTH_ENABLED = os.getenv("ATS_AUTH_ENABLED", "true").strip().lower() not in ("false", "0", "no")
+ATS_AUTH_ENABLED = os.getenv("ATS_AUTH_ENABLED", "true").strip().lower() not in ("false", "0", "no", "off")
 EXPECTED_API_KEY = os.getenv("ATS_API_KEY", "")
 
 
@@ -145,8 +145,9 @@ async def verify_api_key(
     if not secrets.compare_digest(token.strip().encode("utf-8"), EXPECTED_API_KEY.strip().encode("utf-8")):
         logger.warning("Unauthorized request with invalid API key attempted")
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials.",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     return token

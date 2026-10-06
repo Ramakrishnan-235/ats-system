@@ -18,9 +18,11 @@ func TestSecureDefaults(t *testing.T) {
 	if cfg.Validate() == nil {
 		t.Fatal("empty API key accepted")
 	}
-	t.Setenv("ATS_AUTH_ENABLED", "false")
-	if Load().AuthEnabled {
-		t.Fatal("explicit development opt-out ignored")
+	for _, falsy := range []string{"false", "0", "no", "off", "FALSE", "No"} {
+		t.Setenv("ATS_AUTH_ENABLED", falsy)
+		if Load().AuthEnabled {
+			t.Fatalf("explicit development opt-out %q ignored", falsy)
+		}
 	}
 }
 func TestConfigValidation(t *testing.T) {

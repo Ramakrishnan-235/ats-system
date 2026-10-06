@@ -943,4 +943,51 @@ func TestInputValidationAndBounds(t *testing.T) {
 	}
 }
 
+func TestAuthInconsistencies28(t *testing.T) {
+	cfg := &config.Config{
+		AuthEnabled: true,
+		APIKey:      "super-secret-key-28",
+	}
+	st := store.NewStore()
+	router := NewRouter(cfg, st, nil, nil, nil)
+
+	// 1. Invalid key returns 401 Unauthorized (not 403 or 200)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/jobs", nil)
+	req.Header.Set("X-API-Key", "wrong-key")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for wrong API key, got %d", rr.Code)
+	}
+
+	// 2. Case-insensitive Bearer prefix in Authorization header
+	bearerVariants := []string{
+		"Bearer super-secret-key-28",
+		"bearer super-secret-key-28",
+		"BEARER super-secret-key-28",
+		"  Bearer   super-secret-key-28  ",
+		"  bearer super-secret-key-28",
+	}
+
+	for _, variant := range bearerVariants {
+		req = httptest.NewRequest(http.MethodGet, "/api/v1/jobs", nil)
+		req.Header.Set("Authorization", variant)
+		rr = httptest.NewRecorder()
+		router.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("expected 200 for authorization header %q, got %d (body: %s)", variant, rr.Code, rr.Body.String())
+		}
+	}
+
+	// 3. Invalid token in Authorization header returns 401
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/jobs", nil)
+	req.Header.Set("Authorization", "bearer invalid-token-xyz")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for invalid bearer token, got %d", rr.Code)
+	}
+}
+
+
 

@@ -34,7 +34,7 @@ func Load() *Config {
 		corsOrigins[i] = strings.TrimSpace(corsOrigins[i])
 	}
 
-	authEnabled := !strings.EqualFold(strings.TrimSpace(getEnv("ATS_AUTH_ENABLED", "true")), "false")
+	authEnabled := parseBoolEnv(getEnv("ATS_AUTH_ENABLED", "true"), true)
 	apiKey := getEnv("ATS_API_KEY", "")
 
 	uploadDir := getEnv("ATS_UPLOAD_DIR", "./uploads")
@@ -60,7 +60,7 @@ func Load() *Config {
 		OpenRouterModel: openRouterModel,
 		OllamaURL:       ollamaURL,
 		OllamaModel:     ollamaModel,
-		LLMEnabled:      strings.EqualFold(getEnv("ATS_LLM_ENABLED", "false"), "true"),
+		LLMEnabled:      parseBoolEnv(getEnv("ATS_LLM_ENABLED", "false"), false),
 		MaxUploadBytes:  maxUploadBytes,
 	}
 }
@@ -88,3 +88,19 @@ func getEnv(key, defaultVal string) string {
 	}
 	return defaultVal
 }
+
+func parseBoolEnv(val string, defaultVal bool) bool {
+	v := strings.ToLower(strings.TrimSpace(val))
+	if v == "" {
+		return defaultVal
+	}
+	switch v {
+	case "false", "0", "no", "off":
+		return false
+	case "true", "1", "yes", "on":
+		return true
+	default:
+		return defaultVal
+	}
+}
+

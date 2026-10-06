@@ -98,11 +98,13 @@ func AuthMiddleware(cfg *config.Config) func(http.Handler) http.Handler {
 				return
 			}
 
-			key := r.Header.Get("X-API-Key")
+			key := strings.TrimSpace(r.Header.Get("X-API-Key"))
 			if key == "" {
-				key = r.Header.Get("Authorization")
-				if strings.HasPrefix(key, "Bearer ") {
-					key = strings.TrimPrefix(key, "Bearer ")
+				authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+				if len(authHeader) >= 7 && strings.EqualFold(authHeader[:7], "bearer ") {
+					key = strings.TrimSpace(authHeader[7:])
+				} else {
+					key = authHeader
 				}
 			}
 			expectedHash, actualHash := sha256.Sum256([]byte(cfg.APIKey)), sha256.Sum256([]byte(key))
@@ -192,7 +194,7 @@ func RateLimitMiddleware(next http.Handler) http.Handler {
 	limiter := NewSlidingWindowRateLimiter(rpm)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if enabled := strings.ToLower(strings.TrimSpace(os.Getenv("ATS_RATE_LIMIT_ENABLED"))); enabled == "false" || enabled == "0" || enabled == "no" {
+		if enabled := strings.ToLower(strings.TrimSpace(os.Getenv("ATS_RATE_LIMIT_ENABLED"))); enabled == "false" || enabled == "0" || enabled == "no" || enabled == "off" {
 			next.ServeHTTP(w, r)
 			return
 		}
