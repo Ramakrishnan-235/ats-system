@@ -1,12 +1,16 @@
 """
 taxonomy.py
 REST API routes for Skills Taxonomy and Flywheel review queue.
+Enforces role-based authorization, collision prevention, audit logging,
+and public service method encapsulation.
 """
 
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, status, Query
+from fastapi import APIRouter, HTTPException, status, Query, Request
 from pydantic import BaseModel, Field
 
+from ats_core.api.auth import get_current_user
+from ats_core.api.audit import audit_store
 from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
 
 router = APIRouter(prefix="/taxonomy", tags=["Skill Taxonomy & Flywheel"])
@@ -65,96 +69,181 @@ async def list_taxonomy_skills(
 
 
 @router.post("/skills", status_code=status.HTTP_201_CREATED)
-async def create_taxonomy_skill(payload: CreateSkillPayload):
-    """Creates a new canonical skill in the taxonomy."""
-    service = SkillTaxonomyService.get_instance()
-    existing = service.get_skill_by_canonical(payload.canonical_name)
-    if existing:
+async def create_taxonomy_skill(payload: CreateSkillPayload, request: Request):
+    """Creates a new canonical skill in the taxonomy (requires taxonomy manage permissions)."""
+    user = get_current_user(request)
+    if not user.can_manage_taxonomy():
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Canonical skill '{payload.canonical_name}' already exists in taxonomy."
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Forbidden: Role '{user.role}' is not authorized to create taxonomy skills.",
         )
 
-    new_skill = {
-        "id": f"skill-custom-{uuid_hex()}",
-        "canonical_name": payload.canonical_name.strip(),
-        "category": payload.category.strip().lower(),
-        "aliases": [a.strip() for a in payload.aliases if a.strip()],
-        "is_ambiguous": payload.is_ambiguous,
-        "status": "approved",
-        "source": payload.source,
-        "occurrence_count": 1,
-        "taxonomy_version": service.version,
-        "created_at": datetime_now_iso(),
-        "updated_at": datetime_now_iso(),
-    }
-    service._register_record(new_skill)
+    service = SkillTaxonomyService.get_instance()
+    try:
+        new_skill = service.create_skill(
+            canonical_name=payload.canonical_name,
+            category=payload.category,
+            aliases=payload.aliases,
+            is_ambiguous=payload.is_ambiguous,
+            source=payload.source,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        )
+
+    audit_store.record(
+        actor_id=user.user_id,
+        actor_role=user.role,
+        action="taxonomy:create_skill",
+        resource_type="skill",
+        resource_id=new_skill["id"],
+        decision="allow",
+        details=f"Created canonical skill '{new_skill['canonical_name']}'",
+    )
     return new_skill
 
 
 @router.patch("/skills/{skill_id}/approve")
-async def approve_taxonomy_skill(skill_id: str, payload: Optional[ApproveSkillPayload] = None):
-    """Promotes a pending flywheel skill to approved canonical status."""
+async def approve_taxonomy_skill(skill_id: str, request: Request, payload: Optional[ApproveSkillPayload] = None):
+    """Promotes a pending flywheel skill to approved canonical status (requires taxonomy manage permissions)."""
+    user = get_current_user(request)
+    if not user.can_manage_taxonomy():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Forbidden: Role '{user.role}' is not authorized to approve taxonomy skills.",
+        )
+
     service = SkillTaxonomyService.get_instance()
-    res = service.approve_skill(
-        skill_id=skill_id,
-        canonical_name=payload.canonical_name if payload else None,
-        category=payload.category if payload else None,
-        aliases=payload.aliases if payload else None
-    )
+    try:
+        res = service.approve_skill(
+            skill_id=skill_id,
+            canonical_name=payload.canonical_name if payload else None,
+            category=payload.category if payload else None,
+            aliases=payload.aliases if payload else None,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        )
+
     if not res:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Skill with ID '{skill_id}' not found."
+            detail=f"Skill with ID '{skill_id}' not found.",
         )
+
+    audit_store.record(
+        actor_id=user.user_id,
+        actor_role=user.role,
+        action="taxonomy:approve_skill",
+        resource_type="skill",
+        resource_id=skill_id,
+        decision="allow",
+        details=f"Approved skill '{res.get('canonical_name')}'",
+    )
     return res
 
 
 @router.patch("/skills/{skill_id}/reject")
-async def reject_taxonomy_skill(skill_id: str):
-    """Rejects a pending flywheel skill."""
+async def reject_taxonomy_skill(skill_id: str, request: Request):
+    """Rejects a pending flywheel skill (requires taxonomy manage permissions)."""
+    user = get_current_user(request)
+    if not user.can_manage_taxonomy():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Forbidden: Role '{user.role}' is not authorized to reject taxonomy skills.",
+        )
+
     service = SkillTaxonomyService.get_instance()
     res = service.reject_skill(skill_id)
     if not res:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Skill with ID '{skill_id}' not found."
+            detail=f"Skill with ID '{skill_id}' not found.",
         )
+
+    audit_store.record(
+        actor_id=user.user_id,
+        actor_role=user.role,
+        action="taxonomy:reject_skill",
+        resource_type="skill",
+        resource_id=skill_id,
+        decision="allow",
+        details=f"Rejected skill '{res.get('canonical_name')}'",
+    )
     return res
 
 
 @router.post("/skills/{skill_id}/aliases")
-async def add_alias_to_skill(skill_id: str, payload: AddAliasPayload):
-    """Adds a new alias to an existing skill."""
+async def add_alias_to_skill(skill_id: str, payload: AddAliasPayload, request: Request):
+    """Adds a new alias to an existing skill (requires taxonomy manage permissions)."""
+    user = get_current_user(request)
+    if not user.can_manage_taxonomy():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Forbidden: Role '{user.role}' is not authorized to add taxonomy aliases.",
+        )
+
     service = SkillTaxonomyService.get_instance()
     skill = service.get_skill_by_id(skill_id)
     if not skill:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Skill with ID '{skill_id}' not found."
+            detail=f"Skill with ID '{skill_id}' not found.",
         )
 
-    res = service.add_alias(skill["canonical_name"], payload.alias)
+    try:
+        res = service.add_alias(skill["canonical_name"], payload.alias)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        )
+
+    audit_store.record(
+        actor_id=user.user_id,
+        actor_role=user.role,
+        action="taxonomy:add_alias",
+        resource_type="skill",
+        resource_id=skill_id,
+        decision="allow",
+        details=f"Added alias '{payload.alias}' to skill '{skill['canonical_name']}'",
+    )
     return res
 
 
 @router.post("/sync-seed")
-async def sync_seed_taxonomy():
-    """Resets or syncs the taxonomy in-memory database with the curated seed data."""
+async def sync_seed_taxonomy(request: Request):
+    """
+    Synchronizes the taxonomy in-memory database with the curated seed data
+    without overwriting approved edits or custom skills. Requires administrator privileges.
+    """
+    user = get_current_user(request)
+    if not user.can_admin_taxonomy():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Forbidden: Role '{user.role}' is not authorized to administer taxonomy seed data. Administrator role is required.",
+        )
+
     service = SkillTaxonomyService.get_instance()
-    service._seed_taxonomy()
+    result = service.sync_seed()
+
+    audit_store.record(
+        actor_id=user.user_id,
+        actor_role=user.role,
+        action="taxonomy:sync_seed",
+        resource_type="taxonomy",
+        resource_id="seed",
+        decision="allow",
+        details=f"Synced seed taxonomy (added: {result['added_count']}, updated: {result['updated_count']})",
+    )
     return {
         "status": "SUCCESS",
-        "message": f"Successfully re-synced seed taxonomy ontology (version {service.version}).",
-        "stats": service.get_taxonomy_stats()
+        "message": f"Successfully synchronized seed taxonomy ontology (version {service.version}). Approved user edits and custom skills preserved.",
+        "added_count": result["added_count"],
+        "updated_count": result["updated_count"],
+        "stats": result["stats"],
     }
-
-
-def uuid_hex() -> str:
-    import uuid
-    return uuid.uuid4().hex[:8]
-
-
-def datetime_now_iso() -> str:
-    from datetime import datetime
-    return datetime.utcnow().isoformat()

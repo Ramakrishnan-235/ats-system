@@ -571,6 +571,58 @@ func (s *Store) GetSkillByCanonical(name string) *models.TaxonomySkill {
 	return nil
 }
 
+func (s *Store) GetSkillByID(id string) *models.TaxonomySkill {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	sk, ok := s.skills[id]
+	if !ok {
+		return nil
+	}
+	return cloneSkill(sk)
+}
+
+func (s *Store) CheckSkillCollision(canonical string, aliases []string, excludeID string) (bool, string) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	cTrim := strings.TrimSpace(canonical)
+	if cTrim != "" {
+		for otherID, other := range s.skills {
+			if otherID != excludeID {
+				if strings.EqualFold(strings.TrimSpace(other.CanonicalName), cTrim) {
+					return true, fmt.Sprintf("Canonical skill '%s' already exists in taxonomy", cTrim)
+				}
+				for _, otherAlias := range other.Aliases {
+					if strings.EqualFold(strings.TrimSpace(otherAlias), cTrim) {
+						return true, fmt.Sprintf("Canonical name '%s' conflicts with alias of skill '%s'", cTrim, other.CanonicalName)
+					}
+				}
+			}
+		}
+	}
+
+	for _, a := range aliases {
+		aTrim := strings.TrimSpace(a)
+		if aTrim == "" {
+			continue
+		}
+		for otherID, other := range s.skills {
+			if otherID != excludeID {
+				if strings.EqualFold(strings.TrimSpace(other.CanonicalName), aTrim) {
+					return true, fmt.Sprintf("Alias '%s' conflicts with canonical name of skill '%s'", aTrim, other.CanonicalName)
+				}
+				for _, otherAlias := range other.Aliases {
+					if strings.EqualFold(strings.TrimSpace(otherAlias), aTrim) {
+						return true, fmt.Sprintf("Alias '%s' conflicts with alias of skill '%s'", aTrim, other.CanonicalName)
+					}
+				}
+			}
+		}
+	}
+
+	return false, ""
+}
+
 func (s *Store) ApproveSkill(id string, canonicalName, category *string, aliases *[]string) (*models.TaxonomySkill, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -579,15 +631,65 @@ func (s *Store) ApproveSkill(id string, canonicalName, category *string, aliases
 	if !ok {
 		return nil, false
 	}
-	sk.Status = "approved"
-	if canonicalName != nil && *canonicalName != "" {
-		sk.CanonicalName = *canonicalName
+
+	targetCanonical := sk.CanonicalName
+	if canonicalName != nil && strings.TrimSpace(*canonicalName) != "" {
+		targetCanonical = strings.TrimSpace(*canonicalName)
 	}
-	if category != nil && *category != "" {
-		sk.Category = *category
+
+	// Collision check: cannot overwrite another skill's canonical name or alias
+	for otherID, other := range s.skills {
+		if otherID != id {
+			if strings.EqualFold(strings.TrimSpace(other.CanonicalName), targetCanonical) {
+				return nil, false
+			}
+			for _, otherAlias := range other.Aliases {
+				if strings.EqualFold(strings.TrimSpace(otherAlias), targetCanonical) {
+					return nil, false
+				}
+			}
+		}
+	}
+
+	// Alias collision check: cannot steal another skill's canonical name or alias
+	if aliases != nil {
+		for _, a := range *aliases {
+			aClean := strings.TrimSpace(a)
+			if aClean == "" {
+				continue
+			}
+			for otherID, other := range s.skills {
+				if otherID != id {
+					if strings.EqualFold(strings.TrimSpace(other.CanonicalName), aClean) {
+						return nil, false
+					}
+					for _, otherAlias := range other.Aliases {
+						if strings.EqualFold(strings.TrimSpace(otherAlias), aClean) {
+							return nil, false
+						}
+					}
+				}
+			}
+		}
+	}
+
+	sk.Status = "approved"
+	sk.CanonicalName = targetCanonical
+	if category != nil && strings.TrimSpace(*category) != "" {
+		sk.Category = strings.ToLower(strings.TrimSpace(*category))
 	}
 	if aliases != nil {
-		sk.Aliases = append([]string(nil), (*aliases)...)
+		seen := make(map[string]bool)
+		var merged []string
+		for _, a := range append(sk.Aliases, (*aliases)...) {
+			trimmed := strings.TrimSpace(a)
+			lower := strings.ToLower(trimmed)
+			if trimmed != "" && !seen[lower] {
+				seen[lower] = true
+				merged = append(merged, trimmed)
+			}
+		}
+		sk.Aliases = merged
 	}
 	sk.UpdatedAt = models.NowUTC()
 	copySk := cloneSkill(sk)
@@ -608,29 +710,50 @@ func (s *Store) RejectSkill(id string) (*models.TaxonomySkill, bool) {
 	return copySk, true
 }
 
-func (s *Store) AddSkillAlias(canonicalName, alias string) (*models.TaxonomySkill, bool) {
+func (s *Store) AddSkillAlias(idOrCanonical, alias string) (*models.TaxonomySkill, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	lower := strings.ToLower(strings.TrimSpace(canonicalName))
+	alias = strings.TrimSpace(alias)
+	if alias == "" {
+		return nil, false
+	}
+
+	target := strings.ToLower(strings.TrimSpace(idOrCanonical))
+	var targetSkill *models.TaxonomySkill
 	for _, sk := range s.skills {
-		if strings.ToLower(sk.CanonicalName) == lower {
-			alias = strings.TrimSpace(alias)
-			if alias == "" {
-				return cloneSkill(sk), true
-			}
-			for _, existing := range sk.Aliases {
-				if strings.EqualFold(strings.TrimSpace(existing), alias) {
-					return cloneSkill(sk), true
-				}
-			}
-			sk.Aliases = append(sk.Aliases, alias)
-			sk.UpdatedAt = models.NowUTC()
-			copySk := cloneSkill(sk)
-			return copySk, true
+		if strings.ToLower(sk.ID) == target || strings.ToLower(sk.CanonicalName) == target {
+			targetSkill = sk
+			break
 		}
 	}
-	return nil, false
+	if targetSkill == nil {
+		return nil, false
+	}
+
+	// Check collision against all other skills
+	for otherID, other := range s.skills {
+		if otherID != targetSkill.ID {
+			if strings.EqualFold(strings.TrimSpace(other.CanonicalName), alias) {
+				return nil, false
+			}
+			for _, otherAlias := range other.Aliases {
+				if strings.EqualFold(strings.TrimSpace(otherAlias), alias) {
+					return nil, false
+				}
+			}
+		}
+	}
+
+	for _, existing := range targetSkill.Aliases {
+		if strings.EqualFold(strings.TrimSpace(existing), alias) {
+			return cloneSkill(targetSkill), true
+		}
+	}
+	targetSkill.Aliases = append(targetSkill.Aliases, alias)
+	targetSkill.UpdatedAt = models.NowUTC()
+	copySk := cloneSkill(targetSkill)
+	return copySk, true
 }
 
 // Dashboard statistics aggregation

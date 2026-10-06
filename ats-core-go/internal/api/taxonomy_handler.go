@@ -88,6 +88,12 @@ type CreateSkillPayload struct {
 }
 
 func (h *TaxonomyHandler) CreateSkill(w http.ResponseWriter, r *http.Request) {
+	user := GetUserIdentity(r)
+	if !user.CanManageTaxonomy() {
+		writeError(w, http.StatusForbidden, "Forbidden: role unauthorized to create taxonomy skills")
+		return
+	}
+
 	var payload CreateSkillPayload
 	if !decodeJSON(w, r, &payload) {
 		return
@@ -98,8 +104,9 @@ func (h *TaxonomyHandler) CreateSkill(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Canonical skill name is required")
 		return
 	}
-	if existing := h.store.GetSkillByCanonical(payload.CanonicalName); existing != nil {
-		writeError(w, http.StatusConflict, "Skill already exists")
+
+	if conflict, reason := h.store.CheckSkillCollision(payload.CanonicalName, payload.Aliases, ""); conflict {
+		writeError(w, http.StatusConflict, reason)
 		return
 	}
 
@@ -118,12 +125,30 @@ func (h *TaxonomyHandler) CreateSkill(w http.ResponseWriter, r *http.Request) {
 	}
 	h.store.AddSkill(skill)
 
+	h.store.RecordAuditLog(&models.AuditLogEntry{
+		ID:           uuid.New().String(),
+		Timestamp:    models.NowUTC(),
+		ActorID:      user.UserID,
+		ActorRole:    string(user.Role),
+		Action:       "taxonomy:create_skill",
+		ResourceType: "skill",
+		ResourceID:   skill.ID,
+		Decision:     "allow",
+		Details:      fmt.Sprintf("Created canonical skill '%s'", skill.CanonicalName),
+	})
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(skill)
 }
 
 func (h *TaxonomyHandler) ApproveSkill(w http.ResponseWriter, r *http.Request) {
+	user := GetUserIdentity(r)
+	if !user.CanManageTaxonomy() {
+		writeError(w, http.StatusForbidden, "Forbidden: role unauthorized to approve taxonomy skills")
+		return
+	}
+
 	id := chi.URLParam(r, "skill_id")
 	var payload struct {
 		CanonicalName *string   `json:"canonical_name"`
@@ -140,15 +165,37 @@ func (h *TaxonomyHandler) ApproveSkill(w http.ResponseWriter, r *http.Request) {
 	}
 	skill, ok := h.store.ApproveSkill(id, payload.CanonicalName, payload.Category, payload.Aliases)
 	if !ok {
-		writeError(w, http.StatusNotFound, "Skill not found")
+		if h.store.GetSkillByID(id) == nil {
+			writeError(w, http.StatusNotFound, "Skill not found")
+		} else {
+			writeError(w, http.StatusConflict, "Canonical name or alias conflicts with an existing skill")
+		}
 		return
 	}
+
+	h.store.RecordAuditLog(&models.AuditLogEntry{
+		ID:           uuid.New().String(),
+		Timestamp:    models.NowUTC(),
+		ActorID:      user.UserID,
+		ActorRole:    string(user.Role),
+		Action:       "taxonomy:approve_skill",
+		ResourceType: "skill",
+		ResourceID:   skill.ID,
+		Decision:     "allow",
+		Details:      fmt.Sprintf("Approved skill '%s'", skill.CanonicalName),
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(skill)
 }
 
 func (h *TaxonomyHandler) RejectSkill(w http.ResponseWriter, r *http.Request) {
+	user := GetUserIdentity(r)
+	if !user.CanManageTaxonomy() {
+		writeError(w, http.StatusForbidden, "Forbidden: role unauthorized to reject taxonomy skills")
+		return
+	}
+
 	id := chi.URLParam(r, "skill_id")
 	skill, ok := h.store.RejectSkill(id)
 	if !ok {
@@ -156,11 +203,29 @@ func (h *TaxonomyHandler) RejectSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.store.RecordAuditLog(&models.AuditLogEntry{
+		ID:           uuid.New().String(),
+		Timestamp:    models.NowUTC(),
+		ActorID:      user.UserID,
+		ActorRole:    string(user.Role),
+		Action:       "taxonomy:reject_skill",
+		ResourceType: "skill",
+		ResourceID:   skill.ID,
+		Decision:     "allow",
+		Details:      fmt.Sprintf("Rejected skill '%s'", skill.CanonicalName),
+	})
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(skill)
 }
 
 func (h *TaxonomyHandler) AddAlias(w http.ResponseWriter, r *http.Request) {
+	user := GetUserIdentity(r)
+	if !user.CanManageTaxonomy() {
+		writeError(w, http.StatusForbidden, "Forbidden: role unauthorized to add taxonomy aliases")
+		return
+	}
+
 	id := chi.URLParam(r, "skill_id")
 	var payload struct {
 		Alias string `json:"alias"`
@@ -175,15 +240,37 @@ func (h *TaxonomyHandler) AddAlias(w http.ResponseWriter, r *http.Request) {
 
 	skill, ok := h.store.AddSkillAlias(id, payload.Alias)
 	if !ok {
-		writeError(w, http.StatusNotFound, "Skill not found")
+		if h.store.GetSkillByID(id) == nil {
+			writeError(w, http.StatusNotFound, "Skill not found")
+		} else {
+			writeError(w, http.StatusConflict, "Alias conflicts with an existing skill")
+		}
 		return
 	}
+
+	h.store.RecordAuditLog(&models.AuditLogEntry{
+		ID:           uuid.New().String(),
+		Timestamp:    models.NowUTC(),
+		ActorID:      user.UserID,
+		ActorRole:    string(user.Role),
+		Action:       "taxonomy:add_alias",
+		ResourceType: "skill",
+		ResourceID:   skill.ID,
+		Decision:     "allow",
+		Details:      fmt.Sprintf("Added alias '%s' to skill '%s'", payload.Alias, skill.CanonicalName),
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(skill)
 }
 
 func (h *TaxonomyHandler) SyncSeed(w http.ResponseWriter, r *http.Request) {
+	user := GetUserIdentity(r)
+	if !user.CanAdminTaxonomy() {
+		writeError(w, http.StatusForbidden, "Forbidden: role unauthorized to administer taxonomy")
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotImplemented)
 	json.NewEncoder(w).Encode(map[string]any{

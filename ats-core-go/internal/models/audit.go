@@ -37,6 +37,22 @@ func (u *UserIdentity) CanViewAudit() bool {
 	return role == RoleAdmin || role == RoleRecruiter || role == RoleCompliance
 }
 
+func (u *UserIdentity) CanManageTaxonomy() bool {
+	if u == nil {
+		return false
+	}
+	role := UserRole(strings.ToLower(strings.TrimSpace(string(u.Role))))
+	return role == RoleAdmin || role == RoleRecruiter
+}
+
+func (u *UserIdentity) CanAdminTaxonomy() bool {
+	if u == nil {
+		return false
+	}
+	role := UserRole(strings.ToLower(strings.TrimSpace(string(u.Role))))
+	return role == RoleAdmin
+}
+
 type AuditLogEntry struct {
 	ID           string `json:"id"`
 	Timestamp    string `json:"timestamp"`

@@ -16,6 +16,7 @@ def configured_test_auth(monkeypatch):
     """Exercise protected taxonomy routes with an isolated test credential."""
     monkeypatch.setattr(auth, "ATS_AUTH_ENABLED", True)
     monkeypatch.setattr(auth, "EXPECTED_API_KEY", TEST_API_KEY)
+    monkeypatch.setenv("ATS_DEFAULT_USER_ROLE", "admin")
 
 
 # =========================================================================

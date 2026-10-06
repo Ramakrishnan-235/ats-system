@@ -694,3 +694,103 @@ func TestSharedKeyWithoutRoleCannotAccessPII(t *testing.T) {
 	}
 }
 
+func TestTaxonomyRoleGatingAndCollisionPrevention(t *testing.T) {
+	cfg := &config.Config{
+		AuthEnabled: true,
+		APIKey:      "secret-key-tax-25",
+	}
+	st := store.NewStore()
+	st.AddSkill(&models.TaxonomySkill{
+		ID:            "skill-k8s",
+		CanonicalName: "Kubernetes",
+		Category:      "platform",
+		Aliases:       []string{"k8s"},
+		Status:        "approved",
+	})
+	st.AddSkill(&models.TaxonomySkill{
+		ID:            "skill-pending-1",
+		CanonicalName: "K3sEngine",
+		Category:      "platform",
+		Aliases:       []string{"k3s"},
+		Status:        "pending",
+	})
+
+	router := NewRouter(cfg, st, nil, nil, nil)
+
+	// 1. Viewer role blocked from mutations (403)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/taxonomy/skills", strings.NewReader(`{"canonical_name":"CustomTool","category":"tool"}`))
+	req.Header.Set("X-API-Key", "secret-key-tax-25")
+	req.Header.Set("X-User-Role", "viewer")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when viewer attempts to create skill, got %d", rr.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/taxonomy/sync-seed", nil)
+	req.Header.Set("X-API-Key", "secret-key-tax-25")
+	req.Header.Set("X-User-Role", "viewer")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when viewer attempts sync-seed, got %d", rr.Code)
+	}
+
+	// 2. Recruiter role blocked from sync-seed (admin only)
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/taxonomy/sync-seed", nil)
+	req.Header.Set("X-API-Key", "secret-key-tax-25")
+	req.Header.Set("X-User-Role", "recruiter")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when recruiter attempts sync-seed, got %d", rr.Code)
+	}
+
+	// 3. Recruiter can create non-conflicting skill
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/taxonomy/skills", strings.NewReader(`{"canonical_name":"RecruiterTool","category":"tool","aliases":["rtool"]}`))
+	req.Header.Set("X-API-Key", "secret-key-tax-25")
+	req.Header.Set("X-User-Role", "recruiter")
+	req.Header.Set("X-User-Id", "recruiter-1")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 when recruiter creates skill, got %d", rr.Code)
+	}
+
+	// 4. Collision prevention: attempting to create skill with alias that already exists -> 409
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/taxonomy/skills", strings.NewReader(`{"canonical_name":"ConflictingTool","category":"tool","aliases":["k8s"]}`))
+	req.Header.Set("X-API-Key", "secret-key-tax-25")
+	req.Header.Set("X-User-Role", "recruiter")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409 when creating skill with conflicting alias, got %d", rr.Code)
+	}
+
+	// 5. Collision prevention: approving skill with canonical name that already exists -> 409
+	req = httptest.NewRequest(http.MethodPatch, "/api/v1/taxonomy/skills/skill-pending-1/approve", strings.NewReader(`{"canonical_name":"Kubernetes"}`))
+	req.Header.Set("X-API-Key", "secret-key-tax-25")
+	req.Header.Set("X-User-Role", "recruiter")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409 when approving skill with conflicting canonical name, got %d", rr.Code)
+	}
+
+	// 6. Admin can access sync-seed (reaches handler, not 403)
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/taxonomy/sync-seed", nil)
+	req.Header.Set("X-API-Key", "secret-key-tax-25")
+	req.Header.Set("X-User-Role", "admin")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code == http.StatusForbidden {
+		t.Fatalf("expected non-403 when admin accesses sync-seed, got 403")
+	}
+
+	// 7. Verify audit logs were written
+	logs := st.ListAuditLogs(50, "recruiter-1", "taxonomy:create_skill", "")
+	if len(logs) == 0 {
+		t.Fatalf("expected audit log entry for taxonomy:create_skill")
+	}
+}
+

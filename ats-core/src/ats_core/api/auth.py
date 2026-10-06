@@ -28,6 +28,8 @@ class Role(str, Enum):
 
 PII_ROLES: Set[str] = {Role.ADMIN.value, Role.RECRUITER.value, Role.COMPLIANCE.value}
 AUDIT_ROLES: Set[str] = {Role.ADMIN.value, Role.RECRUITER.value, Role.COMPLIANCE.value}
+TAXONOMY_MANAGE_ROLES: Set[str] = {Role.ADMIN.value, Role.RECRUITER.value}
+TAXONOMY_ADMIN_ROLES: Set[str] = {Role.ADMIN.value}
 
 
 @dataclass
@@ -45,6 +47,16 @@ class UserIdentity:
         if not self.role:
             return False
         return self.role.strip().lower() in AUDIT_ROLES
+
+    def can_manage_taxonomy(self) -> bool:
+        if not self.role:
+            return False
+        return self.role.strip().lower() in TAXONOMY_MANAGE_ROLES
+
+    def can_admin_taxonomy(self) -> bool:
+        if not self.role:
+            return False
+        return self.role.strip().lower() in TAXONOMY_ADMIN_ROLES
 
 
 def extract_user_identity(request: Optional[Request] = None) -> UserIdentity:

@@ -70,7 +70,7 @@ class SkillTaxonomyService:
         self._ambiguous_tokens: Set[str] = set(SHORT_EXACT_SKILLS)
 
         # Initialize from seed data
-        self._seed_taxonomy()
+        self.sync_seed()
 
     @classmethod
     def get_instance(cls) -> "SkillTaxonomyService":
@@ -78,43 +78,168 @@ class SkillTaxonomyService:
             cls._instance = SkillTaxonomyService()
         return cls._instance
 
+    def sync_seed(self) -> Dict[str, Any]:
+        """
+        Safely synchronizes the seed ontology into the taxonomy store.
+        Preserves all approved user edits, custom skills, and custom aliases on seeded skills.
+        """
+        added_count = 0
+        updated_count = 0
+
+        for seed in SEED_SKILLS:
+            seed_canonical = seed["canonical_name"]
+            seed_id = f"skill-{uuid.uuid5(uuid.NAMESPACE_DNS, seed_canonical).hex[:8]}"
+
+            canonical_key = self._normalize_key(seed_canonical)
+            existing = self._skills_by_id.get(seed_id) or self._canonical_index.get(canonical_key)
+
+            if existing:
+                # Skill already exists in store! Preserve all user edits and customizations.
+                # Only add missing seed aliases that do not collide with another skill.
+                existing_aliases = existing.get("aliases", [])
+                existing_aliases_lower = {a.lower() for a in existing_aliases}
+
+                modified = False
+                for s_alias in seed.get("aliases", []):
+                    s_clean = s_alias.strip()
+                    if s_clean and s_clean.lower() not in existing_aliases_lower:
+                        a_key = self._normalize_key(s_clean)
+                        conflict = False
+                        if a_key in self._canonical_index and self._canonical_index[a_key]["id"] != existing["id"]:
+                            conflict = True
+                        if a_key in self._alias_index:
+                            owner = self._alias_index[a_key]
+                            owner_rec = self._canonical_index.get(self._normalize_key(owner))
+                            if owner_rec and owner_rec["id"] != existing["id"]:
+                                conflict = True
+                        if not conflict:
+                            existing_aliases.append(s_clean)
+                            existing_aliases_lower.add(s_clean.lower())
+                            modified = True
+
+                if modified:
+                    existing["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    self._register_record(existing)
+                    updated_count += 1
+            else:
+                # Brand new seed skill to register
+                record = {
+                    "id": seed_id,
+                    "canonical_name": seed_canonical,
+                    "category": seed["category"],
+                    "aliases": list(seed.get("aliases", [])),
+                    "is_ambiguous": seed.get("is_ambiguous", False),
+                    "status": "approved",
+                    "source": seed.get("source", "lightcast"),
+                    "occurrence_count": 1,
+                    "taxonomy_version": self.version,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+                self._register_record(record)
+                added_count += 1
+
+        logger.info(
+            f"Taxonomy seed synced: {added_count} new skills added, "
+            f"{updated_count} existing skills updated with non-conflicting seed aliases. "
+            f"All approved edits and custom skills preserved."
+        )
+        return {
+            "status": "SUCCESS",
+            "added_count": added_count,
+            "updated_count": updated_count,
+            "stats": self.get_taxonomy_stats(),
+        }
+
     def _seed_taxonomy(self):
-        """Loads default curated ontology into memory store."""
-        for skill in SEED_SKILLS:
-            skill_id = f"skill-{uuid.uuid5(uuid.NAMESPACE_DNS, skill['canonical_name']).hex[:8]}"
-            record = {
-                "id": skill_id,
-                "canonical_name": skill["canonical_name"],
-                "category": skill["category"],
-                "aliases": list(skill.get("aliases", [])),
-                "is_ambiguous": skill.get("is_ambiguous", False),
-                "status": "approved",
-                "source": skill.get("source", "lightcast"),
-                "occurrence_count": 1,
-                "taxonomy_version": self.version,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }
-            self._register_record(record)
-        logger.info(f"Loaded {len(self._canonical_index)} canonical skills into taxonomy service (version {self.version}).")
+        """Backward-compatibility helper; delegates to sync_seed."""
+        return self.sync_seed()
+
+    def _check_canonical_collision(self, canonical_name: str, current_skill_id: Optional[str] = None) -> None:
+        """
+        Ensures that canonical_name does not collide with another skill's canonical name
+        or another skill's alias.
+        """
+        canonical_key = self._normalize_key(canonical_name)
+        if not canonical_key:
+            raise ValueError("Canonical skill name cannot be empty.")
+
+        # 1. Collision with another skill's canonical name
+        existing_canonical = self._canonical_index.get(canonical_key)
+        if existing_canonical and existing_canonical.get("id") != current_skill_id:
+            raise ValueError(
+                f"Canonical skill '{canonical_name}' already exists in taxonomy (id: {existing_canonical.get('id')})."
+            )
+
+        # 2. Collision with another skill's alias
+        existing_alias_target = self._alias_index.get(canonical_key)
+        if existing_alias_target:
+            target_record = self._canonical_index.get(self._normalize_key(existing_alias_target))
+            if target_record and target_record.get("id") != current_skill_id:
+                raise ValueError(
+                    f"Canonical name '{canonical_name}' conflicts with alias of existing skill '{existing_alias_target}'."
+                )
+
+    def _check_alias_collision(self, alias: str, current_skill_id: Optional[str] = None) -> None:
+        """
+        Ensures that alias does not collide with another skill's canonical name
+        or another skill's alias.
+        """
+        alias_key = self._normalize_key(alias)
+        if not alias_key:
+            raise ValueError("Alias cannot be empty.")
+
+        # 1. Collision with another skill's canonical name
+        existing_canonical = self._canonical_index.get(alias_key)
+        if existing_canonical and existing_canonical.get("id") != current_skill_id:
+            raise ValueError(
+                f"Alias '{alias}' conflicts with canonical name of existing skill '{existing_canonical.get('canonical_name')}'."
+            )
+
+        # 2. Collision with another skill's alias
+        existing_alias_target = self._alias_index.get(alias_key)
+        if existing_alias_target:
+            target_record = self._canonical_index.get(self._normalize_key(existing_alias_target))
+            if target_record and target_record.get("id") != current_skill_id:
+                raise ValueError(
+                    f"Alias '{alias}' conflicts with existing skill '{existing_alias_target}'."
+                )
 
     def _register_record(self, record: Dict[str, Any]):
-        """Registers a skill record into memory indexes."""
+        """Registers a skill record into memory indexes with collision guards."""
         self._skills_by_id[record["id"]] = record
         canonical_key = self._normalize_key(record["canonical_name"])
 
         # Only approved skills participate in canonical resolution
         if record.get("status") == "approved":
-            self._canonical_index[canonical_key] = record
+            existing_canonical = self._canonical_index.get(canonical_key)
+            if existing_canonical and existing_canonical.get("id") != record["id"]:
+                logger.warning(
+                    f"Canonical index collision: '{record['canonical_name']}' (id: {record['id']}) "
+                    f"cannot overwrite existing canonical skill (id: {existing_canonical.get('id')})."
+                )
+            else:
+                self._canonical_index[canonical_key] = record
+                self._alias_index[canonical_key] = record["canonical_name"]
 
-            # Register canonical name as an alias to itself
-            self._alias_index[canonical_key] = record["canonical_name"]
-
-            # Register all aliases
+            # Register all non-conflicting aliases
             for alias in record.get("aliases", []):
                 alias_key = self._normalize_key(alias)
-                if alias_key:
-                    self._alias_index[alias_key] = record["canonical_name"]
+                if not alias_key:
+                    continue
+
+                if alias_key in self._alias_index:
+                    existing_owner = self._alias_index[alias_key]
+                    if existing_owner != record["canonical_name"]:
+                        owner_rec = self._canonical_index.get(self._normalize_key(existing_owner))
+                        if owner_rec and owner_rec.get("id") != record["id"]:
+                            logger.warning(
+                                f"Skipping conflicting alias '{alias}' for skill '{record['canonical_name']}'; "
+                                f"already mapped to '{existing_owner}'."
+                            )
+                            continue
+
+                self._alias_index[alias_key] = record["canonical_name"]
 
             if record.get("is_ambiguous") and len(canonical_key) <= 3:
                 self._ambiguous_tokens.add(canonical_key)
@@ -258,6 +383,51 @@ class SkillTaxonomyService:
         logger.info(f"Flywheel registered new pending skill '{cleaned}' from source={source}.")
         return pending_record
 
+    def create_skill(
+        self,
+        canonical_name: str,
+        category: str,
+        aliases: Optional[List[str]] = None,
+        is_ambiguous: bool = False,
+        source: str = "manual",
+    ) -> Dict[str, Any]:
+        """Creates a new canonical skill with collision validation."""
+        cleaned_canonical = canonical_name.strip()
+        if not cleaned_canonical:
+            raise ValueError("Canonical skill name is required.")
+
+        self._check_canonical_collision(cleaned_canonical)
+
+        cleaned_category = category.strip().lower()
+        if not cleaned_category:
+            raise ValueError("Category is required.")
+
+        cleaned_aliases: List[str] = []
+        if aliases:
+            for alias in aliases:
+                a_clean = alias.strip()
+                if a_clean:
+                    self._check_alias_collision(a_clean)
+                    if a_clean not in cleaned_aliases:
+                        cleaned_aliases.append(a_clean)
+
+        new_id = f"skill-custom-{uuid.uuid4().hex[:8]}"
+        record = {
+            "id": new_id,
+            "canonical_name": cleaned_canonical,
+            "category": cleaned_category,
+            "aliases": cleaned_aliases,
+            "is_ambiguous": is_ambiguous,
+            "status": "approved",
+            "source": source,
+            "occurrence_count": 1,
+            "taxonomy_version": self.version,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self._register_record(record)
+        return record
+
     def approve_skill(
         self,
         skill_id: str,
@@ -265,20 +435,35 @@ class SkillTaxonomyService:
         category: Optional[str] = None,
         aliases: Optional[List[str]] = None
     ) -> Optional[Dict[str, Any]]:
-        """Promotes a pending skill to approved canonical status."""
+        """Promotes a pending skill to approved canonical status with collision checks."""
         record = self._skills_by_id.get(skill_id)
         if not record:
             return None
 
+        target_canonical = canonical_name.strip() if canonical_name else record["canonical_name"]
+        if not target_canonical:
+            raise ValueError("Canonical skill name cannot be empty.")
+
+        # Check canonical collision against other skills
+        self._check_canonical_collision(target_canonical, current_skill_id=record["id"])
+
+        # Check alias collisions against other skills
+        if aliases is not None:
+            for alias in aliases:
+                a_clean = alias.strip()
+                if a_clean:
+                    self._check_alias_collision(a_clean, current_skill_id=record["id"])
+
+        # Passed all checks! Now update record safely:
         self._remove_lookup_entries(record)
-        if canonical_name:
-            record["canonical_name"] = canonical_name
+        record["canonical_name"] = target_canonical
 
         if category:
-            record["category"] = category
+            record["category"] = category.strip().lower()
 
         if aliases is not None:
-            record["aliases"] = list(dict.fromkeys(record.get("aliases", []) + aliases))
+            combined = record.get("aliases", []) + [a.strip() for a in aliases if a.strip()]
+            record["aliases"] = list(dict.fromkeys(combined))
 
         record["status"] = "approved"
         record["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -298,15 +483,24 @@ class SkillTaxonomyService:
         record["updated_at"] = datetime.now(timezone.utc).isoformat()
         return record
 
-    def add_alias(self, canonical_name: str, new_alias: str) -> Optional[Dict[str, Any]]:
-        """Adds a new alias to an existing approved canonical skill."""
-        record = self.get_skill_by_canonical(canonical_name)
+    def add_alias(self, canonical_name_or_id: str, new_alias: str) -> Optional[Dict[str, Any]]:
+        """Adds a new alias to an existing approved canonical skill with collision checks."""
+        record = self.get_skill_by_canonical(canonical_name_or_id)
+        if not record:
+            record = self.get_skill_by_id(canonical_name_or_id)
         if not record:
             return None
 
         cleaned_alias = new_alias.strip()
-        if cleaned_alias and cleaned_alias not in record["aliases"]:
+        if not cleaned_alias:
+            raise ValueError("Alias cannot be empty.")
+
+        # Check alias collision against other skills
+        self._check_alias_collision(cleaned_alias, current_skill_id=record["id"])
+
+        if cleaned_alias not in record["aliases"]:
             record["aliases"].append(cleaned_alias)
+            record["updated_at"] = datetime.now(timezone.utc).isoformat()
             self._register_record(record)
 
         return record
