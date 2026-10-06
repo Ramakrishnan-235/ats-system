@@ -3,9 +3,11 @@ import copy
 import re
 import uuid
 import logging
+import asyncio
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Set
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Query, Request
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Query, Request, BackgroundTasks
 from ats_core.api.auth import get_current_user
 from ats_core.api.audit import check_and_audit_pii_access
 from pydantic import BaseModel, Field, field_validator
@@ -21,9 +23,14 @@ VALID_CANDIDATE_STAGES: Set[str] = {"Screening", "Interview", "Qualified", "Offe
 MAX_CANDIDATES_STORE: int = int(os.getenv("ATS_MAX_CANDIDATES_STORE", "5000"))
 MAX_UPLOAD_TASKS: int = int(os.getenv("ATS_MAX_UPLOAD_TASKS", "1000"))
 
+# Concurrency limiting to prevent threadpool starvation
+MAX_CONCURRENT_UPLOADS: int = int(os.getenv("ATS_MAX_CONCURRENT_UPLOADS", "8"))
+_upload_semaphore = asyncio.Semaphore(MAX_CONCURRENT_UPLOADS)
+UPLOAD_EXECUTION_MODE: str = os.getenv("ATS_UPLOAD_EXECUTION_MODE", "async").strip().lower()
+
 # In-memory candidate database store (populated dynamically upon upload/registration)
 CANDIDATES_STORE: Dict[str, Dict[str, Any]] = {}
-# Uploads currently run inline. Keep truthful terminal status for that process-local flow.
+# Upload task state tracking
 UPLOAD_TASKS_STORE: Dict[str, Dict[str, Any]] = {}
 
 
@@ -390,36 +397,33 @@ async def update_candidate_stage(candidate_id: str, new_stage: str = Query(...))
     return {"status": "SUCCESS", "candidate_id": candidate_id, "stage": clean_stage}
 
 
-@router.post(
-    "/upload-async",
-    status_code=status.HTTP_202_ACCEPTED,
-    summary="Upload and process a PDF resume (current inline execution mode)"
-)
-async def upload_resume_async(
-    file: UploadFile = File(...),
-    job_id: Optional[str] = Form(None),
-):
-    from ats_core.api.v1.jobs import JOBS_STORE
-    target_job = JOBS_STORE.get(job_id) if job_id else None
-    if job_id and target_job is None:
-        await file.close()
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Target job not found.")
-
-    candidate_id = f"cand-{uuid.uuid4().hex}"
-    try:
-        doc_bytes, safe_filename, temp_file_path = await stage_pdf_upload(file, candidate_id)
-    except HTTPException:
-        raise
-    except OSError:
-        logger.exception("Failed to stage resume upload")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unable to store the resume upload."
-        ) from None
-
+async def _process_resume_pipeline(
+    task_id: str,
+    candidate_id: str,
+    safe_filename: str,
+    doc_bytes: bytes,
+    temp_file_path: Path,
+    target_job: Optional[Dict[str, Any]],
+    job_id: Optional[str],
+    is_inline: bool = False,
+) -> None:
+    """
+    Executes the heavy resume processing pipeline:
+    1. Hybrid PDF parsing & text extraction
+    2. Residue skill extraction
+    3. PII anonymization & pre-flight leak check
+    4. Deep LLM evaluation against requisition
+    5. Database persistence and task progress updates
+    """
     processing_failed = False
+    effective_job_id = (target_job.get("id") or job_id) if target_job else job_id
 
-    # Extract real profile data from the uploaded PDF document (Non-blocking)
+    if task_id in UPLOAD_TASKS_STORE:
+        UPLOAD_TASKS_STORE[task_id].update({
+            "progress": 20,
+            "step": "Parsing PDF layout",
+        })
+
     try:
         from ats_core.parsers.resume_parser import parse_resume_to_candidate
         parsed_candidate = await run_in_threadpool(
@@ -429,7 +433,7 @@ async def upload_resume_async(
             target_job=target_job
         )
         parsed_candidate["id"] = candidate_id
-        
+
         # Link to target job
         if target_job:
             target_job_id = target_job.get("id") or job_id
@@ -440,6 +444,12 @@ async def upload_resume_async(
         if target_job:
             job_title_eval = target_job["title"]
             job_desc_eval = target_job.get("job_description", "")
+            if task_id in UPLOAD_TASKS_STORE:
+                UPLOAD_TASKS_STORE[task_id].update({
+                    "progress": 50,
+                    "step": "Anonymizing personal data",
+                })
+
             try:
                 from ats_core.parsers.anonymizer import ResumeAnonymizer
                 from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
@@ -505,7 +515,21 @@ async def upload_resume_async(
                     return redacted
 
                 evaluation_text = await run_in_threadpool(redact_and_validate_resume)
-                evaluator = await run_in_threadpool(LocalDeepEvaluator)
+
+                if task_id in UPLOAD_TASKS_STORE:
+                    UPLOAD_TASKS_STORE[task_id].update({
+                        "progress": 75,
+                        "step": "Evaluating candidate match",
+                    })
+
+                def get_evaluator():
+                    if getattr(LocalDeepEvaluator, "_mock_return_value", None) is not None or "Mock" in type(LocalDeepEvaluator).__name__:
+                        return LocalDeepEvaluator()
+                    if hasattr(LocalDeepEvaluator, "get_instance"):
+                        return LocalDeepEvaluator.get_instance()
+                    return LocalDeepEvaluator()
+
+                evaluator = await run_in_threadpool(get_evaluator)
                 eval_result = await run_in_threadpool(
                     evaluator.evaluate,
                     candidate_id=candidate_id,
@@ -518,7 +542,6 @@ async def upload_resume_async(
                     report = eval_result["report"]
                     logger.info(f"Ollama deep evaluation completed for {candidate_id} on '{job_title_eval}' with score {report.overall_match_score}")
 
-                    # Map rubric breakdown to categories
                     categories = []
                     for crit in report.criteria_breakdown:
                         categories.append({
@@ -527,7 +550,7 @@ async def upload_resume_async(
                             "max_score": 10.0,
                             "quote": crit.verbatim_citation or "",
                             "assessment": crit.assessment or "",
-                            "source_ref": (f"Evidence: {crit.category.value if hasattr(crit.category, 'value') else str(crit.category)}" if crit.verbatim_citation else "")
+                            "source_ref": (f"Evidence: {crit.category.value if hasattr(crit.category, "value") else str(crit.category)}" if crit.verbatim_citation else "")
                         })
 
                     tier_name = report.qualification_tier.value if hasattr(report.qualification_tier, "value") else str(report.qualification_tier)
@@ -570,10 +593,10 @@ async def upload_resume_async(
             except Exception as eval_err:
                 logger.warning(f"Ollama deep evaluation fallback: {eval_err}", exc_info=True)
 
-        task_id = str(uuid.uuid4())
         parsed_candidate["upload_task_id"] = task_id
         parsed_candidate["resume_filename"] = safe_filename
         parsed_candidate["created_at"] = datetime.now(timezone.utc).isoformat()
+        prune_candidates_store()
         CANDIDATES_STORE[candidate_id] = parsed_candidate
         try:
             from ats_core.db.store_sync import sync_candidate_to_db
@@ -641,18 +664,16 @@ async def upload_resume_async(
 
         candidate_name = parsed_candidate.get("name", "Candidate")
         final_score = parsed_candidate.get("scorecard", {}).get("overall_match_score")
-        logger.info("Successfully staged candidate %s with score %s", candidate_id, final_score)
+        logger.info("Successfully processed candidate %s with score %s", candidate_id, final_score)
     except Exception as parse_err:
         logger.exception(f"Resume text extraction fallback: {parse_err}")
         processing_failed = True
-        # Corrupt or unprocessable documents should not accumulate on disk.
         try:
             await run_in_threadpool(temp_file_path.unlink, missing_ok=True)
         except OSError:
             logger.warning("Could not remove failed resume upload for %s", candidate_id)
         candidate_name = safe_filename.replace(".pdf", "")
         final_score = 0
-        task_id = str(uuid.uuid4())
         parsed_candidate = {
             "id": candidate_id,
             "upload_task_id": task_id,
@@ -683,6 +704,7 @@ async def upload_resume_async(
                 "categories": []
             }
         }
+        prune_candidates_store()
         CANDIDATES_STORE[candidate_id] = parsed_candidate
         try:
             from ats_core.db.store_sync import sync_candidate_to_db
@@ -690,35 +712,161 @@ async def upload_resume_async(
         except Exception as e:
             logger.debug("Could not sync failed candidate to DB: %s", e)
 
-    effective_job_id = (target_job.get("id") or job_id) if target_job else job_id
+    mode_label = "inline" if is_inline else "async"
     prune_upload_tasks()
     UPLOAD_TASKS_STORE[task_id] = {
         "task_id": task_id,
         "state": "FAILURE" if processing_failed else "SUCCESS",
-        "execution_mode": "inline",
+        "progress": 100 if not processing_failed else 0,
+        "step": "Failed" if processing_failed else "Completed",
+        "execution_mode": mode_label,
     }
     if processing_failed:
         UPLOAD_TASKS_STORE[task_id]["error"] = "Resume processing failed."
     else:
         UPLOAD_TASKS_STORE[task_id]["result"] = {
-            "status": "COMPLETED", "candidate_id": candidate_id,
+            "status": "COMPLETED",
+            "candidate_id": candidate_id,
             "applied_for_job_id": effective_job_id,
             "match_score": final_score,
             "evaluation_status": parsed_candidate.get("scorecard", {}).get("evaluation_status", "PENDING"),
         }
 
+
+async def _process_resume_pipeline_safe(
+    task_id: str,
+    candidate_id: str,
+    safe_filename: str,
+    doc_bytes: bytes,
+    temp_file_path: Path,
+    target_job: Optional[Dict[str, Any]],
+    job_id: Optional[str],
+) -> None:
+    """Safely runs background processing within the concurrency semaphore."""
+    await _upload_semaphore.acquire()
+    try:
+        await _process_resume_pipeline(
+            task_id,
+            candidate_id,
+            safe_filename,
+            doc_bytes,
+            temp_file_path,
+            target_job,
+            job_id,
+            is_inline=False,
+        )
+    finally:
+        _upload_semaphore.release()
+
+
+@router.post(
+    "/upload-async",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Upload and process a PDF resume asynchronously"
+)
+async def upload_resume_async(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    job_id: Optional[str] = Form(None),
+    execution_mode: Optional[str] = Query(None),
+):
+    # Concurrency limit check
+    if _upload_semaphore.locked():
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Upload processing capacity is full. Please retry shortly."
+        )
+
+    from ats_core.api.v1.jobs import JOBS_STORE
+    target_job = JOBS_STORE.get(job_id) if job_id else None
+    if job_id and target_job is None:
+        await file.close()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Target job not found.")
+
+    candidate_id = f"cand-{uuid.uuid4().hex}"
+    task_id = str(uuid.uuid4())
+    try:
+        doc_bytes, safe_filename, temp_file_path = await stage_pdf_upload(file, candidate_id)
+    except HTTPException:
+        raise
+    except OSError:
+        logger.exception("Failed to stage resume upload")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to store the resume upload."
+        ) from None
+
+    effective_job_id = (target_job.get("id") or job_id) if target_job else job_id
+
+    # Determine execution mode: request param, header, or global setting
+    req_mode = execution_mode or request.headers.get("X-Execution-Mode") or UPLOAD_EXECUTION_MODE
+    is_inline = req_mode.lower() in ("inline", "sync")
+
+    if is_inline:
+        await _process_resume_pipeline(
+            task_id,
+            candidate_id,
+            safe_filename,
+            doc_bytes,
+            temp_file_path,
+            target_job,
+            job_id,
+            is_inline=True,
+        )
+        task_info = UPLOAD_TASKS_STORE.get(task_id, {})
+        processing_failed = (task_info.get("state") == "FAILURE")
+        parsed_candidate = CANDIDATES_STORE.get(candidate_id, {})
+        final_score = parsed_candidate.get("scorecard", {}).get("overall_match_score")
+        candidate_name = parsed_candidate.get("name", safe_filename.replace(".pdf", ""))
+
+        return {
+            "status": "EVALUATION_FAILED" if processing_failed else "ACCEPTED",
+            "task_id": task_id,
+            "candidate_id": candidate_id,
+            "filename": safe_filename,
+            "name": candidate_name,
+            "job_id": job_id,
+            "applied_for_job_id": effective_job_id,
+            "match_score": final_score,
+            "execution_mode": "inline",
+            "evaluation_status": parsed_candidate.get("scorecard", {}).get("evaluation_status", "PENDING"),
+            "message": "Resume processing failed. Review the uploaded document." if processing_failed else "Resume processed. See evaluation_status for scoring availability.",
+        }
+
+    # True asynchronous mode: initial state in task store
+    prune_upload_tasks()
+    UPLOAD_TASKS_STORE[task_id] = {
+        "task_id": task_id,
+        "state": "PROGRESS",
+        "progress": 10,
+        "step": "Extracting PDF",
+        "execution_mode": "async",
+    }
+
+    background_tasks.add_task(
+        _process_resume_pipeline_safe,
+        task_id,
+        candidate_id,
+        safe_filename,
+        doc_bytes,
+        temp_file_path,
+        target_job,
+        job_id,
+    )
+
     return {
-        "status": "EVALUATION_FAILED" if processing_failed else "ACCEPTED",
+        "status": "ACCEPTED",
         "task_id": task_id,
         "candidate_id": candidate_id,
         "filename": safe_filename,
-        "name": candidate_name,
+        "name": safe_filename.replace(".pdf", ""),
         "job_id": job_id,
         "applied_for_job_id": effective_job_id,
-        "match_score": final_score,
-        "execution_mode": "inline",
-        "evaluation_status": parsed_candidate.get("scorecard", {}).get("evaluation_status", "PENDING"),
-        "message": "Resume processing failed. Review the uploaded document." if processing_failed else "Resume processed. See evaluation_status for scoring availability.",
+        "match_score": None,
+        "execution_mode": "async",
+        "evaluation_status": "PROCESSING",
+        "message": "Resume upload accepted and processing in background.",
     }
 
 

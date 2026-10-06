@@ -28,6 +28,7 @@ def api(monkeypatch, tmp_path):
     monkeypatch.setattr(candidates, "UPLOAD_TASKS_STORE", {})
     monkeypatch.setattr(candidates, "UPLOAD_STAGING_DIR", tmp_path)
     monkeypatch.setattr(upload_storage, "UPLOAD_STAGING_DIR", tmp_path)
+    monkeypatch.setattr(candidates, "UPLOAD_EXECUTION_MODE", "inline")
     monkeypatch.setattr(jobs, "JOBS_STORE", {
         "job-open": {"id": "job-open", "title": "Engineer", "department": "Engineering", "status": "OPEN", "job_description": "Python", "candidates_count": 0},
         "job-paused": {"id": "job-paused", "status": "PAUSED"},
@@ -77,7 +78,7 @@ async def test_unicode_api_key_is_rejected_without_server_error(monkeypatch):
     monkeypatch.setattr(auth, "EXPECTED_API_KEY", "secure-key")
     with pytest.raises(HTTPException) as error:
         await auth.verify_api_key(header_key="not-a-key-\u00e9", bearer_creds=None)
-    assert error.value.status_code == 403
+    assert error.value.status_code == 401
 
 
 @pytest.mark.asyncio

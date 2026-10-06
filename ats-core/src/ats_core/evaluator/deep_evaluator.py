@@ -24,6 +24,8 @@ from ats_core.llm.sanitizer import (
     DEFAULT_XML_TAG_ESCAPE_PATTERN,
 )
 
+import threading
+
 logger = logging.getLogger("ats.evaluator.deep")
 
 SYSTEM_EVALUATION_MESSAGE = (
@@ -42,11 +44,36 @@ class LocalDeepEvaluator:
     Produces structured scorecards, evidence citations, and tailored interview plans.
     """
 
+    _instance: Optional["LocalDeepEvaluator"] = None
+    _instance_lock = threading.Lock()
+
     # Compiled regex patterns for prompt injection defenses (centralized in ats_core.llm.sanitizer)
     _CONTROL_TOKENS_PATTERN = CONTROL_TOKENS_PATTERN
     _ADVERSARIAL_DIRECTIVES_PATTERN = ADVERSARIAL_DIRECTIVES_PATTERN
     _ROLE_DELIMITER_PATTERN = ROLE_DELIMITER_PATTERN
     _XML_TAG_ESCAPE_PATTERN = DEFAULT_XML_TAG_ESCAPE_PATTERN
+
+    @classmethod
+    def get_instance(
+        cls,
+        base_url: Optional[str] = None,
+        model_name: Optional[str] = None,
+        api_key: Optional[str] = None,
+        temperature: float = 0.0,
+        max_retries: int = 3,
+    ) -> "LocalDeepEvaluator":
+        """Thread-safe cached singleton for default configuration."""
+        if cls._instance is None:
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = cls(
+                        base_url=base_url,
+                        model_name=model_name,
+                        api_key=api_key,
+                        temperature=temperature,
+                        max_retries=max_retries,
+                    )
+        return cls._instance
 
     def __init__(
         self,

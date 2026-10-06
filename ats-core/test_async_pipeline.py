@@ -53,8 +53,10 @@ def test_celery_task_configuration():
     print("✓ Celery worker & exponential backoff jitter settings verified!")
 
 
-def test_fastapi_async_upload_endpoint():
+def test_fastapi_async_upload_endpoint(monkeypatch=None):
     print("\n--- 2. Testing FastAPI Async Ingestion & Polling Endpoints ---")
+    from ats_core.api import auth
+    auth.ATS_AUTH_ENABLED = False
     client = TestClient(app)
 
     # A. Health Check

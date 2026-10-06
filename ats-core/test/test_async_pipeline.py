@@ -55,7 +55,9 @@ def test_celery_task_configuration():
     assert celery_app.conf.task_soft_time_limit == 240
 
 
-def test_fastapi_async_upload_endpoint():
+def test_fastapi_async_upload_endpoint(monkeypatch):
+    from ats_core.api import auth
+    monkeypatch.setattr(auth, "ATS_AUTH_ENABLED", False)
     client = TestClient(app)
 
     # Health Check

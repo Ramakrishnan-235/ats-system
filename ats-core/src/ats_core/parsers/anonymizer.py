@@ -40,6 +40,24 @@ NAME_DISQUALIFY_WORDS = {
 }
 
 
+import threading
+
+_ANALYZER_CACHE: Dict[str, AnalyzerEngine] = {}
+_ANONYMIZER_CACHE: Optional[AnonymizerEngine] = None
+_CACHE_LOCK = threading.Lock()
+_SHARED_ANONYMIZERS: Dict[Tuple[str, float], "ResumeAnonymizer"] = {}
+_SHARED_LOCK = threading.Lock()
+
+
+def get_shared_anonymizer(spacy_model: str = "en_core_web_sm", min_score_threshold: float = 0.55) -> "ResumeAnonymizer":
+    """Returns a cached, shared ResumeAnonymizer instance avoiding duplicate allocations."""
+    key = (spacy_model, min_score_threshold)
+    with _SHARED_LOCK:
+        if key not in _SHARED_ANONYMIZERS:
+            _SHARED_ANONYMIZERS[key] = ResumeAnonymizer(spacy_model=spacy_model, min_score_threshold=min_score_threshold)
+        return _SHARED_ANONYMIZERS[key]
+
+
 class ResumeAnonymizer:
     """
     Sanitizes PII from resumes using deterministic parser-extracted metadata,
@@ -57,38 +75,46 @@ class ResumeAnonymizer:
     def __init__(self, spacy_model: str = "en_core_web_sm", min_score_threshold: float = 0.6):
         """
         Initializes Presidio with explicit spaCy configuration and custom operator mappings.
+        Reuses cached NLP engine and analyzer instances to prevent reloading spaCy on every call.
         """
         self.min_score_threshold = min_score_threshold
 
-        nlp_config = {
-            "nlp_engine_name": "spacy",
-            "models": [
-                {
-                    "lang_code": "en",
-                    "model_name": spacy_model,
-                    "ner_model_configuration": {
-                        "labels_to_ignore": [
-                            "CARDINAL",
-                            "MONEY",
-                            "PERCENT",
-                            "PRODUCT",
-                            "QUANTITY",
-                            "ORDINAL",
-                            "TIME",
-                            "LAW",
-                            "LANGUAGE",
-                            "EVENT",
-                        ]
-                    },
-                }
-            ],
-        }
-        provider = NlpEngineProvider(nlp_configuration=nlp_config)
-        nlp_engine = provider.create_engine()
+        global _ANONYMIZER_CACHE
+        if spacy_model not in _ANALYZER_CACHE or _ANONYMIZER_CACHE is None:
+            with _CACHE_LOCK:
+                if spacy_model not in _ANALYZER_CACHE:
+                    nlp_config = {
+                        "nlp_engine_name": "spacy",
+                        "models": [
+                            {
+                                "lang_code": "en",
+                                "model_name": spacy_model,
+                                "ner_model_configuration": {
+                                    "labels_to_ignore": [
+                                        "CARDINAL",
+                                        "MONEY",
+                                        "PERCENT",
+                                        "PRODUCT",
+                                        "QUANTITY",
+                                        "ORDINAL",
+                                        "TIME",
+                                        "LAW",
+                                        "LANGUAGE",
+                                        "EVENT",
+                                    ]
+                                },
+                            }
+                        ],
+                    }
+                    provider = NlpEngineProvider(nlp_configuration=nlp_config)
+                    nlp_engine = provider.create_engine()
+                    _ANALYZER_CACHE[spacy_model] = AnalyzerEngine(nlp_engine=nlp_engine, supported_languages=["en"])
 
-        # 2. Instantiate Analyzer and Anonymizer Engines
-        self.analyzer = AnalyzerEngine(nlp_engine=nlp_engine, supported_languages=["en"])
-        self.anonymizer = AnonymizerEngine()
+                if _ANONYMIZER_CACHE is None:
+                    _ANONYMIZER_CACHE = AnonymizerEngine()
+
+        self.analyzer = _ANALYZER_CACHE[spacy_model]
+        self.anonymizer = _ANONYMIZER_CACHE
 
         # 3. Define standardized replacement tags for each entity
         self.operators = {
