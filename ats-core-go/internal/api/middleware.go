@@ -6,7 +6,10 @@ import (
 	"crypto/subtle"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"ats-core-go/internal/config"
@@ -118,4 +121,104 @@ func AuthMiddleware(cfg *config.Config) func(http.Handler) http.Handler {
 		})
 	}
 }
+
+// SlidingWindowRateLimiter tracks per-client request counts in a 60-second rolling window.
+type SlidingWindowRateLimiter struct {
+	mu                sync.Mutex
+	requestsPerMinute int
+	window            time.Duration
+	history           map[string][]time.Time
+	lastCleanup       time.Time
+}
+
+func NewSlidingWindowRateLimiter(rpm int) *SlidingWindowRateLimiter {
+	return &SlidingWindowRateLimiter{
+		requestsPerMinute: rpm,
+		window:            time.Minute,
+		history:           make(map[string][]time.Time),
+		lastCleanup:       time.Now(),
+	}
+}
+
+func (l *SlidingWindowRateLimiter) IsAllowed(key string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := time.Now()
+	windowStart := now.Add(-l.window)
+
+	// Periodic cleanup of stale keys
+	if now.Sub(l.lastCleanup) > 2*time.Minute {
+		for k, timestamps := range l.history {
+			if len(timestamps) == 0 || timestamps[len(timestamps)-1].Before(windowStart) {
+				delete(l.history, k)
+			}
+		}
+		l.lastCleanup = now
+	}
+
+	timestamps := l.history[key]
+	var validTimestamps []time.Time
+	for _, t := range timestamps {
+		if t.After(windowStart) {
+			validTimestamps = append(validTimestamps, t)
+		}
+	}
+
+	if len(validTimestamps) >= l.requestsPerMinute {
+		l.history[key] = validTimestamps
+		return false
+	}
+
+	validTimestamps = append(validTimestamps, now)
+	l.history[key] = validTimestamps
+	return true
+}
+
+func (l *SlidingWindowRateLimiter) Reset() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.history = make(map[string][]time.Time)
+	l.lastCleanup = time.Now()
+}
+
+func RateLimitMiddleware(next http.Handler) http.Handler {
+	rpm := 120
+	if rpmStr := os.Getenv("ATS_RATE_LIMIT_PER_MINUTE"); rpmStr != "" {
+		if val, err := strconv.Atoi(rpmStr); err == nil && val > 0 {
+			rpm = val
+		}
+	}
+	limiter := NewSlidingWindowRateLimiter(rpm)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if enabled := strings.ToLower(strings.TrimSpace(os.Getenv("ATS_RATE_LIMIT_ENABLED"))); enabled == "false" || enabled == "0" || enabled == "no" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		path := r.URL.Path
+		if path == "/health" || path == "/api/v1/health" || r.Method == http.MethodOptions {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		clientKey := strings.TrimSpace(r.Header.Get("X-API-Key"))
+		if clientKey == "" {
+			clientKey = strings.TrimSpace(r.Header.Get("X-User-Id"))
+		}
+		if clientKey == "" {
+			clientKey = r.RemoteAddr
+		}
+
+		if !limiter.IsAllowed(clientKey) {
+			w.Header().Set("Retry-After", "60")
+			writeError(w, http.StatusTooManyRequests, "Rate limit exceeded. Please try again later.")
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 

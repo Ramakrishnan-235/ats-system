@@ -1,13 +1,14 @@
+import os
 import copy
 import re
 import uuid
 import logging
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Set
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Query, Request
 from ats_core.api.auth import get_current_user
 from ats_core.api.audit import check_and_audit_pii_access
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from starlette.concurrency import run_in_threadpool
 from ats_core.api.upload_storage import UPLOAD_STAGING_DIR, resume_path, stage_pdf_upload
 
@@ -15,10 +16,37 @@ logger = logging.getLogger("ats.api.candidates")
 
 router = APIRouter(prefix="/candidates", tags=["Candidates & Evaluations"])
 
+VALID_CANDIDATE_STAGES: Set[str] = {"Screening", "Interview", "Qualified", "Offer", "Hired", "Rejected"}
+
+MAX_CANDIDATES_STORE: int = int(os.getenv("ATS_MAX_CANDIDATES_STORE", "5000"))
+MAX_UPLOAD_TASKS: int = int(os.getenv("ATS_MAX_UPLOAD_TASKS", "1000"))
+
 # In-memory candidate database store (populated dynamically upon upload/registration)
 CANDIDATES_STORE: Dict[str, Dict[str, Any]] = {}
 # Uploads currently run inline. Keep truthful terminal status for that process-local flow.
 UPLOAD_TASKS_STORE: Dict[str, Dict[str, Any]] = {}
+
+
+def prune_candidates_store() -> None:
+    """Bounded map eviction to prevent unlimited memory growth."""
+    while len(CANDIDATES_STORE) >= MAX_CANDIDATES_STORE:
+        oldest_key = next(iter(CANDIDATES_STORE))
+        del CANDIDATES_STORE[oldest_key]
+
+
+def prune_upload_tasks() -> None:
+    """Bounded task store eviction to prevent unlimited memory growth."""
+    while len(UPLOAD_TASKS_STORE) >= MAX_UPLOAD_TASKS:
+        pruned = False
+        for tid, tdata in list(UPLOAD_TASKS_STORE.items()):
+            state = tdata.get("state") or tdata.get("status")
+            if state in ("COMPLETED", "FAILED", "SUCCESS", "FAILURE", "ERROR"):
+                del UPLOAD_TASKS_STORE[tid]
+                pruned = True
+                break
+        if not pruned:
+            oldest_tid = next(iter(UPLOAD_TASKS_STORE))
+            del UPLOAD_TASKS_STORE[oldest_tid]
 
 
 def mask_candidate_pii(cand_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -154,6 +182,7 @@ def register_candidate_profile(
         "linkedin": cand_dict.get("linkedin") or "N/A",
         "highest_education": cand_dict.get("highest_education") or "N/A",
     }
+    prune_candidates_store()
     CANDIDATES_STORE[cand_id] = candidate
     try:
         from ats_core.db.store_sync import sync_candidate_to_db
@@ -164,8 +193,28 @@ def register_candidate_profile(
 
 
 class NoteCreateRequest(BaseModel):
-    content: str
-    author: str = "Recruiter Admin"
+    content: str = Field(..., min_length=1, max_length=5000, description="Note content")
+    author: Optional[str] = Field(default=None, max_length=100, description="Author display name")
+
+    @field_validator("content")
+    @classmethod
+    def validate_content_not_empty(cls, v: str) -> str:
+        s = v.strip() if isinstance(v, str) else ""
+        if not s:
+            raise ValueError("Note content cannot be empty")
+        if len(s) > 5000:
+            raise ValueError("Note content exceeds maximum length of 5000 characters")
+        return s
+
+    @field_validator("author")
+    @classmethod
+    def validate_author_length(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            s = v.strip()
+            if len(s) > 100:
+                raise ValueError("Author exceeds maximum length of 100 characters")
+            return s
+        return v
 
 
 @router.get("", response_model=List[Dict[str, Any]])
@@ -259,7 +308,7 @@ async def get_candidate_scorecard(candidate_id: str):
 
 
 @router.post("/{candidate_id}/notes")
-async def add_candidate_note(candidate_id: str, note: NoteCreateRequest):
+async def add_candidate_note(request: Request, candidate_id: str, note: NoteCreateRequest):
     if candidate_id not in CANDIDATES_STORE:
         try:
             from ats_core.db.store_sync import sync_candidate_by_id_from_db
@@ -273,13 +322,24 @@ async def add_candidate_note(candidate_id: str, note: NoteCreateRequest):
             detail=f"Candidate with ID '{candidate_id}' not found."
         )
     cand = CANDIDATES_STORE[candidate_id]
+
+    # Anti-spoofing: enforce authenticated actor identity if present
+    user = get_current_user(request)
+    if user and (user.email or user.user_id):
+        author_name = (user.email or user.user_id).strip()
+        author_role = user.role.capitalize() if user.role else "Recruiter"
+    else:
+        author_name = note.author.strip() if note.author and note.author.strip() else "Recruiter Admin"
+        author_role = "Recruiter"
+
+    clean_content = note.content.strip()
     new_note = {
         "id": f"note-{uuid.uuid4().hex[:6]}",
-        "author": note.author,
-        "initials": "".join([part[0] for part in note.author.split()]).upper() or "RA",
-        "role": "Recruiter",
+        "author": author_name,
+        "initials": "".join([part[0] for part in author_name.split() if part]).upper() or "RA",
+        "role": author_role,
         "timestamp": "Just now",
-        "content": note.content
+        "content": clean_content
     }
     if "scorecard" not in cand:
         cand["scorecard"] = {}
@@ -298,6 +358,13 @@ async def add_candidate_note(candidate_id: str, note: NoteCreateRequest):
 
 @router.patch("/{candidate_id}/stage")
 async def update_candidate_stage(candidate_id: str, new_stage: str = Query(...)):
+    clean_stage = new_stage.strip() if isinstance(new_stage, str) else ""
+    if clean_stage not in VALID_CANDIDATE_STAGES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid candidate stage"
+        )
+
     if candidate_id not in CANDIDATES_STORE:
         try:
             from ats_core.db.store_sync import sync_candidate_by_id_from_db
@@ -311,8 +378,8 @@ async def update_candidate_stage(candidate_id: str, new_stage: str = Query(...))
             detail=f"Candidate with ID '{candidate_id}' not found."
         )
     cand = CANDIDATES_STORE[candidate_id]
-    cand["stage"] = new_stage
-    cand["status"] = new_stage
+    cand["stage"] = clean_stage
+    cand["status"] = clean_stage
 
     try:
         from ats_core.db.store_sync import sync_candidate_to_db
@@ -320,7 +387,7 @@ async def update_candidate_stage(candidate_id: str, new_stage: str = Query(...))
     except Exception as e:
         logger.debug("Could not persist candidate stage to DB: %s", e)
 
-    return {"status": "SUCCESS", "candidate_id": candidate_id, "stage": new_stage}
+    return {"status": "SUCCESS", "candidate_id": candidate_id, "stage": clean_stage}
 
 
 @router.post(
@@ -624,6 +691,7 @@ async def upload_resume_async(
             logger.debug("Could not sync failed candidate to DB: %s", e)
 
     effective_job_id = (target_job.get("id") or job_id) if target_job else job_id
+    prune_upload_tasks()
     UPLOAD_TASKS_STORE[task_id] = {
         "task_id": task_id,
         "state": "FAILURE" if processing_failed else "SUCCESS",

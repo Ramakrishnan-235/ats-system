@@ -138,14 +138,30 @@ func (h *CandidatesHandler) AddNote(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if strings.TrimSpace(req.Content) == "" {
-		writeError(w, http.StatusBadRequest, "Note content is required")
+	content := strings.TrimSpace(req.Content)
+	if content == "" || len(content) > 5000 {
+		writeError(w, http.StatusBadRequest, "Note content is required (max 5000 characters)")
 		return
 	}
-	if req.Author == "" {
-		req.Author = "Recruiter"
+	user := GetUserIdentity(r)
+	author := ""
+	if user != nil && (user.Email != "" || user.UserID != "") {
+		// Anti-spoofing: attribute to authenticated user identity
+		if user.Email != "" {
+			author = user.Email
+		} else {
+			author = user.UserID
+		}
+	} else {
+		author = strings.TrimSpace(req.Author)
+		if author == "" {
+			author = "Recruiter"
+		}
 	}
-	note, err := h.store.AddCandidateNote(chi.URLParam(r, "candidate_id"), req.Author, req.Content)
+	if len(author) > 100 {
+		author = author[:100]
+	}
+	note, err := h.store.AddCandidateNote(chi.URLParam(r, "candidate_id"), author, content)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "Candidate not found")
 		return

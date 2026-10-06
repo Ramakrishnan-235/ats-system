@@ -30,6 +30,9 @@ func NewRouter(cfg *config.Config, st *store.Store, eval *services.LLMEvaluator,
 		MaxAge:           300,
 	}))
 
+	// 3. Rate Limit Middleware
+	r.Use(RateLimitMiddleware)
+
 	// Health check
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

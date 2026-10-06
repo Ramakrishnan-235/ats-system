@@ -67,8 +67,9 @@ func (h *JobsHandler) CreateJob(w http.ResponseWriter, r *http.Request) {
 	nowISO := time.Now().UTC().Format(time.RFC3339)
 
 	payload.Title = strings.TrimSpace(payload.Title)
-	if payload.Title == "" || strings.TrimSpace(payload.JobDescription) == "" || payload.MinYearsExperience < 0 {
-		writeError(w, http.StatusBadRequest, "Title, job description, and non-negative experience are required")
+	payload.JobDescription = strings.TrimSpace(payload.JobDescription)
+	if payload.Title == "" || len(payload.Title) < 2 || len(payload.Title) > 200 || payload.JobDescription == "" || len(payload.JobDescription) < 10 || len(payload.JobDescription) > 50000 || payload.MinYearsExperience < 0 {
+		writeError(w, http.StatusBadRequest, "Title (2-200 chars), job description (10-50000 chars), and non-negative experience are required")
 		return
 	}
 	if payload.RunAIMatch {
@@ -147,7 +148,19 @@ func (h *JobsHandler) UpdateJob(w http.ResponseWriter, r *http.Request) {
 	}
 	if updates.Title != nil {
 		title := strings.TrimSpace(*updates.Title)
+		if len(title) < 2 || len(title) > 200 {
+			writeError(w, http.StatusBadRequest, "Title must be between 2 and 200 characters")
+			return
+		}
 		updates.Title = &title
+	}
+	if updates.JobDescription != nil {
+		jd := strings.TrimSpace(*updates.JobDescription)
+		if len(jd) < 10 || len(jd) > 50000 {
+			writeError(w, http.StatusBadRequest, "Job description must be between 10 and 50000 characters")
+			return
+		}
+		updates.JobDescription = &jd
 	}
 	job, ok := h.store.UpdateJob(id, store.JobUpdate{Title: updates.Title, Department: updates.Department, Location: updates.Location, JobDescription: updates.JobDescription, RequiredSkills: updates.RequiredSkills, MinYearsExperience: updates.MinYearsExperience})
 	if !ok {

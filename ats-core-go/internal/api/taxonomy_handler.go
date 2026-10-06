@@ -87,6 +87,16 @@ type CreateSkillPayload struct {
 	Source        string   `json:"source"`
 }
 
+var validCategories = map[string]bool{
+	"language": true, "framework": true, "database": true, "platform": true,
+	"tool": true, "library": true, "domain": true, "soft_skill": true, "methodology": true,
+}
+
+var validSources = map[string]bool{
+	"lightcast": true, "esco": true, "onet": true, "stackoverflow": true,
+	"llm": true, "resume_parser": true, "freeform_cascade": true, "manual": true, "admin": true, "seed": true,
+}
+
 func (h *TaxonomyHandler) CreateSkill(w http.ResponseWriter, r *http.Request) {
 	user := GetUserIdentity(r)
 	if !user.CanManageTaxonomy() {
@@ -105,19 +115,38 @@ func (h *TaxonomyHandler) CreateSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	category := strings.ToLower(strings.TrimSpace(payload.Category))
+	if !validCategories[category] {
+		writeError(w, http.StatusBadRequest, "Invalid skill category")
+		return
+	}
+
+	source := strings.ToLower(strings.TrimSpace(payload.Source))
+	if source == "" {
+		source = "manual"
+	} else if !validSources[source] {
+		writeError(w, http.StatusBadRequest, "Invalid skill source")
+		return
+	}
+
 	if conflict, reason := h.store.CheckSkillCollision(payload.CanonicalName, payload.Aliases, ""); conflict {
 		writeError(w, http.StatusConflict, reason)
 		return
 	}
 
+	if h.store.SkillCount() >= store.MaxSkillsLimit {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("Taxonomy skills limit (%d) reached", store.MaxSkillsLimit))
+		return
+	}
+
 	skill := &models.TaxonomySkill{
 		ID:              fmt.Sprintf("skill-custom-%s", uuid.New().String()[:8]),
-		CanonicalName:   strings.TrimSpace(payload.CanonicalName),
-		Category:        strings.ToLower(strings.TrimSpace(payload.Category)),
+		CanonicalName:   payload.CanonicalName,
+		Category:        category,
 		Aliases:         payload.Aliases,
 		IsAmbiguous:     payload.IsAmbiguous,
 		Status:          "approved",
-		Source:          payload.Source,
+		Source:          source,
 		OccurrenceCount: 1,
 		TaxonomyVersion: "2026.1",
 		CreatedAt:       models.NowUTC(),
@@ -162,6 +191,14 @@ func (h *TaxonomyHandler) ApproveSkill(w http.ResponseWriter, r *http.Request) {
 	if payload.CanonicalName != nil && strings.TrimSpace(*payload.CanonicalName) == "" {
 		writeError(w, http.StatusBadRequest, "Canonical skill name is required")
 		return
+	}
+	if payload.Category != nil {
+		cat := strings.ToLower(strings.TrimSpace(*payload.Category))
+		if !validCategories[cat] {
+			writeError(w, http.StatusBadRequest, "Invalid skill category")
+			return
+		}
+		payload.Category = &cat
 	}
 	skill, ok := h.store.ApproveSkill(id, payload.CanonicalName, payload.Category, payload.Aliases)
 	if !ok {

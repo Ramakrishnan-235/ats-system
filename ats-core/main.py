@@ -40,6 +40,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+from ats_core.api.rate_limiter import RateLimitMiddleware
+
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
@@ -50,6 +52,9 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-User-Id", "X-User-Role", "X-User-Email"],
 )
+
+# Rate Limiting Middleware
+app.add_middleware(RateLimitMiddleware)
 
 # Mount API Routers with Security Authentication Dependency
 app.include_router(dashboard_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])

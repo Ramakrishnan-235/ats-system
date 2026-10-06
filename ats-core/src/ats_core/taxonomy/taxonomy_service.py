@@ -78,6 +78,7 @@ class SkillTaxonomyService:
     def __init__(self):
         self.version = TAXONOMY_VERSION
         self.max_pending_skills: int = int(os.getenv("ATS_MAX_PENDING_SKILLS", "1000"))
+        self.max_total_skills: int = int(os.getenv("ATS_MAX_TOTAL_SKILLS", "10000"))
         # Master in-memory store: id -> record
         self._skills_by_id: Dict[str, Dict[str, Any]] = {}
         # Canonical index: canonical_name_lower -> record
@@ -482,6 +483,9 @@ class SkillTaxonomyService:
         cleaned_canonical = canonical_name.strip()
         if not cleaned_canonical:
             raise ValueError("Canonical skill name is required.")
+
+        if len(self._skills_by_id) >= self.max_total_skills:
+            raise ValueError(f"Taxonomy skills capacity reached ({self.max_total_skills}). Cannot add more skills.")
 
         self._check_canonical_collision(cleaned_canonical)
 

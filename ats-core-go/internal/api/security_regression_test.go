@@ -794,3 +794,153 @@ func TestTaxonomyRoleGatingAndCollisionPrevention(t *testing.T) {
 	}
 }
 
+func TestInputValidationAndBounds(t *testing.T) {
+	cfg := &config.Config{
+		AuthEnabled: true,
+		APIKey:      "secret-key-bounds-27",
+	}
+	st := store.NewStore()
+	st.SaveCandidate(&models.Candidate{
+		ID:        "cand-test-1",
+		Name:      "Alex Mercer",
+		Stage:     "Screening",
+		Scorecard: models.Scorecard{TeamNotes: []models.Note{}},
+	})
+	st.SaveJob(&models.Job{
+		ID:    "job-test-1",
+		Title: "Staff Engineer",
+	})
+
+	router := NewRouter(cfg, st, nil, nil, nil)
+
+	// 1. Note Content Length and Anti-Spoofing
+	// 1a. Empty note content rejected
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/candidates/cand-test-1/notes", strings.NewReader(`{"content":"   ","author":"Alice"}`))
+	req.Header.Set("X-API-Key", "secret-key-bounds-27")
+	req.Header.Set("X-User-Role", "recruiter")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for empty note content, got %d", rr.Code)
+	}
+
+	// 1b. Oversized note content (>5000 chars) rejected
+	hugeContent := strings.Repeat("a", 5001)
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/candidates/cand-test-1/notes", strings.NewReader(fmt.Sprintf(`{"content":%q,"author":"Alice"}`, hugeContent)))
+	req.Header.Set("X-API-Key", "secret-key-bounds-27")
+	req.Header.Set("X-User-Role", "recruiter")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for oversized note content, got %d", rr.Code)
+	}
+
+	// 1c. Author spoofing prevented - binds to authenticated user identity
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/candidates/cand-test-1/notes", strings.NewReader(`{"content":"Solid technical interview","author":"Hacker Impersonator"}`))
+	req.Header.Set("X-API-Key", "secret-key-bounds-27")
+	req.Header.Set("X-User-Role", "recruiter")
+	req.Header.Set("X-User-Email", "real.recruiter@corp.com")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 when adding note, got %d", rr.Code)
+	}
+	cand, _ := st.GetCandidate("cand-test-1", true)
+	if len(cand.Scorecard.TeamNotes) == 0 {
+		t.Fatalf("expected note to be saved")
+	}
+	savedNote := cand.Scorecard.TeamNotes[0]
+	if savedNote.Author != "real.recruiter@corp.com" {
+		t.Fatalf("expected author to be bound to authenticated identity 'real.recruiter@corp.com', got '%s'", savedNote.Author)
+	}
+
+	// 2. Stage Validation
+	req = httptest.NewRequest(http.MethodPatch, "/api/v1/candidates/cand-test-1/stage?new_stage=ArbitraryStage", nil)
+	req.Header.Set("X-API-Key", "secret-key-bounds-27")
+	req.Header.Set("X-User-Role", "recruiter")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid candidate stage, got %d", rr.Code)
+	}
+
+	// 3. Job Title and Description Validation
+	// 3a. Short title (<2 chars) rejected
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/jobs", strings.NewReader(`{"title":"A","job_description":"Long enough valid description here"}`))
+	req.Header.Set("X-API-Key", "secret-key-bounds-27")
+	req.Header.Set("X-User-Role", "recruiter")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for short job title, got %d", rr.Code)
+	}
+
+	// 3b. Short job description (<10 chars) rejected
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/jobs", strings.NewReader(`{"title":"Staff Engineer","job_description":"Too short"}`))
+	req.Header.Set("X-API-Key", "secret-key-bounds-27")
+	req.Header.Set("X-User-Role", "recruiter")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for short job description, got %d", rr.Code)
+	}
+
+	// 4. Taxonomy Category and Source Validation
+	// 4a. Invalid category rejected
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/taxonomy/skills", strings.NewReader(`{"canonical_name":"NovelSkill","category":"invalid_category_xyz"}`))
+	req.Header.Set("X-API-Key", "secret-key-bounds-27")
+	req.Header.Set("X-User-Role", "recruiter")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid taxonomy category, got %d", rr.Code)
+	}
+
+	// 4b. Invalid source rejected
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/taxonomy/skills", strings.NewReader(`{"canonical_name":"NovelSkill2","category":"tool","source":"untrusted_random_src"}`))
+	req.Header.Set("X-API-Key", "secret-key-bounds-27")
+	req.Header.Set("X-User-Role", "recruiter")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid taxonomy source, got %d", rr.Code)
+	}
+
+	// 5. Rate Limiting Middleware
+	testLimiter := NewSlidingWindowRateLimiter(5)
+	for i := 0; i < 5; i++ {
+		if !testLimiter.IsAllowed("client-test-ip") {
+			t.Fatalf("expected request %d to be allowed under rate limit", i+1)
+		}
+	}
+	if testLimiter.IsAllowed("client-test-ip") {
+		t.Fatalf("expected 6th request to be blocked by rate limiter")
+	}
+
+	// 6. Memory Store Capacity and Eviction
+	smallStore := store.NewStore()
+	// Fill candidates up to MaxCandidatesLimit
+	for i := 0; i < store.MaxCandidatesLimit+5; i++ {
+		smallStore.SaveCandidate(&models.Candidate{
+			ID:        fmt.Sprintf("cand-bulk-%d", i),
+			Name:      fmt.Sprintf("Cand %d", i),
+			CreatedAt: fmt.Sprintf("2026-01-01T%02d:00:00Z", i%24),
+		})
+	}
+	if smallStore.CandidateCount() > store.MaxCandidatesLimit {
+		t.Fatalf("expected candidates count <= %d, got %d", store.MaxCandidatesLimit, smallStore.CandidateCount())
+	}
+
+	// Fill tasks up to MaxTasksLimit
+	for i := 0; i < store.MaxTasksLimit+5; i++ {
+		smallStore.SaveTask(&models.UploadTask{
+			TaskID: fmt.Sprintf("task-bulk-%d", i),
+			State:  "SUCCESS",
+		})
+	}
+	if smallStore.TaskCount() > store.MaxTasksLimit {
+		t.Fatalf("expected task count <= %d, got %d", store.MaxTasksLimit, smallStore.TaskCount())
+	}
+}
+
+

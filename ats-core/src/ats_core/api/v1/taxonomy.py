@@ -5,9 +5,9 @@ Enforces role-based authorization, collision prevention, audit logging,
 and public service method encapsulation.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Set
 from fastapi import APIRouter, HTTPException, status, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ats_core.api.auth import get_current_user
 from ats_core.api.audit import audit_store
@@ -15,23 +15,59 @@ from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
 
 router = APIRouter(prefix="/taxonomy", tags=["Skill Taxonomy & Flywheel"])
 
+VALID_SKILL_CATEGORIES: Set[str] = {
+    "language", "framework", "database", "platform",
+    "tool", "library", "domain", "soft_skill", "methodology"
+}
+
+VALID_SKILL_SOURCES: Set[str] = {
+    "lightcast", "esco", "onet", "stackoverflow",
+    "llm", "resume_parser", "freeform_cascade", "manual", "admin", "seed"
+}
+
 
 class CreateSkillPayload(BaseModel):
-    canonical_name: str = Field(..., description="Canonical standard name (e.g. 'PostgreSQL').")
-    category: str = Field(..., description="Category (language|framework|database|platform|tool|library|domain|soft_skill).")
-    aliases: List[str] = Field(default_factory=list, description="Array of alternative names or abbreviations.")
+    canonical_name: str = Field(..., min_length=1, max_length=100, description="Canonical standard name (e.g. 'PostgreSQL').")
+    category: str = Field(..., max_length=50, description="Category (language|framework|database|platform|tool|library|domain|soft_skill|methodology).")
+    aliases: List[str] = Field(default_factory=list, max_length=50, description="Array of alternative names or abbreviations.")
     is_ambiguous: bool = Field(default=False, description="Whether this is a short token needing exact matching.")
-    source: str = Field(default="manual", description="Source (lightcast|esco|onet|stackoverflow|llm|resume_parser|manual).")
+    source: str = Field(default="manual", max_length=50, description="Source (lightcast|esco|onet|stackoverflow|llm|resume_parser|manual).")
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v: str) -> str:
+        s = v.strip().lower() if isinstance(v, str) else ""
+        if s not in VALID_SKILL_CATEGORIES:
+            raise ValueError(f"Invalid skill category '{v}'. Allowed categories: {sorted(list(VALID_SKILL_CATEGORIES))}")
+        return s
+
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, v: str) -> str:
+        s = v.strip().lower() if isinstance(v, str) else ""
+        if s not in VALID_SKILL_SOURCES:
+            raise ValueError(f"Invalid skill source '{v}'. Allowed sources: {sorted(list(VALID_SKILL_SOURCES))}")
+        return s
 
 
 class ApproveSkillPayload(BaseModel):
-    canonical_name: Optional[str] = None
-    category: Optional[str] = None
-    aliases: Optional[List[str]] = None
+    canonical_name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    category: Optional[str] = Field(default=None, max_length=50)
+    aliases: Optional[List[str]] = Field(default=None, max_length=50)
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            s = v.strip().lower()
+            if s not in VALID_SKILL_CATEGORIES:
+                raise ValueError(f"Invalid skill category '{v}'. Allowed categories: {sorted(list(VALID_SKILL_CATEGORIES))}")
+            return s
+        return v
 
 
 class AddAliasPayload(BaseModel):
-    alias: str = Field(..., description="New alias to associate with this canonical skill.")
+    alias: str = Field(..., min_length=1, max_length=100, description="New alias to associate with this canonical skill.")
 
 
 @router.get("/version")

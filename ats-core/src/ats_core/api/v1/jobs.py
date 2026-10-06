@@ -773,24 +773,40 @@ for i, item in enumerate(RAW_50_JOBS):
 
 
 class CreateJobRequest(BaseModel):
-    title: str = Field(..., description="Job Requisition Title")
-    department: str = Field(default="Software Engineering", description="Department name")
-    location: str = Field(default="Remote", description="Job location")
-    job_description: str = Field(..., description="Full text or HTML job description")
-    required_skills: List[str] = Field(default_factory=list, description="Extracted required skills")
+    title: str = Field(..., min_length=2, max_length=200, description="Job Requisition Title")
+    department: str = Field(default="Software Engineering", max_length=100, description="Department name")
+    location: str = Field(default="Remote", max_length=100, description="Job location")
+    job_description: str = Field(..., min_length=10, max_length=50000, description="Full text or HTML job description")
+    required_skills: List[str] = Field(default_factory=list, max_length=100, description="Extracted required skills")
     min_years_experience: float = Field(default=3.0, ge=0, le=70, description="Minimum years of experience")
     run_ai_match: bool = Field(default=True, description="Whether to trigger candidate matching")
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v: str) -> str:
+        s = v.strip() if isinstance(v, str) else ""
+        if len(s) < 2 or len(s) > 200:
+            raise ValueError("Job title must be between 2 and 200 characters")
+        return s
+
+    @field_validator("job_description")
+    @classmethod
+    def validate_job_description(cls, v: str) -> str:
+        s = v.strip() if isinstance(v, str) else ""
+        if len(s) < 10 or len(s) > 50000:
+            raise ValueError("Job description must be between 10 and 50,000 characters")
+        return s
 
 
 class UpdateJobRequest(BaseModel):
     """Editable requisition fields only; omitted fields keep their current values."""
     model_config = {"extra": "forbid"}
 
-    title: Optional[str] = None
-    department: Optional[str] = None
-    location: Optional[str] = None
-    job_description: Optional[str] = None
-    required_skills: Optional[List[str]] = None
+    title: Optional[str] = Field(default=None, max_length=200)
+    department: Optional[str] = Field(default=None, max_length=100)
+    location: Optional[str] = Field(default=None, max_length=100)
+    job_description: Optional[str] = Field(default=None, max_length=50000)
+    required_skills: Optional[List[str]] = Field(default=None, max_length=100)
 
     @field_validator("title", "department", "location", "job_description", "required_skills")
     @classmethod
@@ -798,6 +814,26 @@ class UpdateJobRequest(BaseModel):
         if value is None:
             raise ValueError("Editable job fields cannot be null")
         return value
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            s = v.strip()
+            if len(s) < 2 or len(s) > 200:
+                raise ValueError("Job title must be between 2 and 200 characters")
+            return s
+        return v
+
+    @field_validator("job_description")
+    @classmethod
+    def validate_job_description(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            s = v.strip()
+            if len(s) < 10 or len(s) > 50000:
+                raise ValueError("Job description must be between 10 and 50,000 characters")
+            return s
+        return v
 
 
 class JobResponse(BaseModel):
@@ -1266,6 +1302,13 @@ async def remove_job_candidate(request: Request, job_id: str, candidate_id: str,
 
 @router.patch("/{job_id}/candidates/{candidate_id}/stage")
 async def update_job_candidate_stage(request: Request, job_id: str, candidate_id: str, new_stage: str = Query(...), include_pii: bool = Query(False)):
+    clean_stage = new_stage.strip() if isinstance(new_stage, str) else ""
+    if clean_stage not in VALID_CANDIDATE_STAGES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid candidate stage",
+        )
+
     if include_pii:
         user = get_current_user(request)
         check_and_audit_pii_access(request, user, "UPDATE_JOB_CANDIDATE_STAGE_PII", "job_candidates", job_id)
@@ -1274,12 +1317,12 @@ async def update_job_candidate_stage(request: Request, job_id: str, candidate_id
     matched_candidate = None
     for c in current:
         if c.get("id") == candidate_id:
-            c["stage"] = new_stage
+            c["stage"] = clean_stage
             c["stageBadgeStyle"] = (
                 "bg-emerald-100 text-emerald-900"
-                if new_stage in ("Qualified", "Offer")
+                if clean_stage in ("Qualified", "Offer")
                 else "bg-[#ede8dc] text-zinc-800"
-                if new_stage == "Interview"
+                if clean_stage == "Interview"
                 else "bg-zinc-100 text-zinc-700"
             )
             matched_candidate = c

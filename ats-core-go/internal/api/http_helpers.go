@@ -43,7 +43,7 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 
 func validStage(stage string) bool {
 	switch stage {
-	case "Screening", "Interview", "Offer", "Hired", "Rejected":
+	case "Screening", "Interview", "Qualified", "Offer", "Hired", "Rejected":
 		return true
 	}
 	return false

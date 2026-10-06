@@ -23,6 +23,12 @@ type Store struct {
 	auditLogs     []*models.AuditLogEntry
 }
 
+const (
+	MaxCandidatesLimit = 5000
+	MaxTasksLimit      = 1000
+	MaxSkillsLimit     = 10000
+)
+
 var (
 	instance *Store
 	once     sync.Once
@@ -137,9 +143,29 @@ func (s *Store) GetCandidate(id string, includePII bool) (*models.Candidate, boo
 func (s *Store) SaveCandidate(cand *models.Candidate) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if cand != nil {
-		s.candidates[cand.ID] = cloneCandidate(cand)
+	if cand == nil {
+		return
 	}
+	if _, exists := s.candidates[cand.ID]; !exists && len(s.candidates) >= MaxCandidatesLimit {
+		var oldestID string
+		var oldestTime string
+		for id, c := range s.candidates {
+			if oldestID == "" || (c.CreatedAt != "" && c.CreatedAt < oldestTime) {
+				oldestID = id
+				oldestTime = c.CreatedAt
+			}
+		}
+		if oldestID != "" {
+			delete(s.candidates, oldestID)
+		}
+	}
+	s.candidates[cand.ID] = cloneCandidate(cand)
+}
+
+func (s *Store) CandidateCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.candidates)
 }
 
 func (s *Store) UpdateCandidateStage(id, stage string) bool {
@@ -474,9 +500,31 @@ func (s *Store) UpdateJobCandidateStage(jobID, candidateID, newStage string) (*m
 func (s *Store) SaveTask(task *models.UploadTask) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if task != nil {
-		s.uploadTasks[task.TaskID] = cloneTask(task)
+	if task == nil {
+		return
 	}
+	if _, exists := s.uploadTasks[task.TaskID]; !exists && len(s.uploadTasks) >= MaxTasksLimit {
+		var evictID string
+		for id, t := range s.uploadTasks {
+			if t.State == "SUCCESS" || t.State == "FAILURE" {
+				evictID = id
+				break
+			}
+			if evictID == "" {
+				evictID = id
+			}
+		}
+		if evictID != "" {
+			delete(s.uploadTasks, evictID)
+		}
+	}
+	s.uploadTasks[task.TaskID] = cloneTask(task)
+}
+
+func (s *Store) TaskCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.uploadTasks)
 }
 
 func (s *Store) GetTask(taskID string) (*models.UploadTask, bool) {
@@ -553,9 +601,40 @@ func (s *Store) ListSkills(category, status, search string, page, limit int) ([]
 func (s *Store) AddSkill(skill *models.TaxonomySkill) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if skill != nil {
-		s.skills[skill.ID] = cloneSkill(skill)
+	if skill == nil {
+		return
 	}
+	if _, exists := s.skills[skill.ID]; !exists && len(s.skills) >= MaxSkillsLimit {
+		var evictID string
+		for id, sk := range s.skills {
+			if sk.Status == "rejected" {
+				evictID = id
+				break
+			}
+			if sk.Status == "pending" && evictID == "" {
+				evictID = id
+			}
+			if sk.Source != "seed" && evictID == "" {
+				evictID = id
+			}
+		}
+		if evictID == "" {
+			for id := range s.skills {
+				evictID = id
+				break
+			}
+		}
+		if evictID != "" {
+			delete(s.skills, evictID)
+		}
+	}
+	s.skills[skill.ID] = cloneSkill(skill)
+}
+
+func (s *Store) SkillCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.skills)
 }
 
 func (s *Store) GetSkillByCanonical(name string) *models.TaxonomySkill {
