@@ -2,7 +2,9 @@ import uuid
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, status, Query
+from fastapi import APIRouter, HTTPException, status, Query, Request
+from ats_core.api.auth import get_current_user
+from ats_core.api.audit import check_and_audit_pii_access
 from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger("ats.api.jobs")
@@ -1064,13 +1066,19 @@ def _present_job_candidates(current, include_pii):
 
 
 @router.get("/{job_id}/candidates", response_model=List[Dict[str, Any]])
-async def get_job_candidates(job_id: str, include_pii: bool = Query(False)):
+async def get_job_candidates(request: Request, job_id: str, include_pii: bool = Query(False)):
+    if include_pii:
+        user = get_current_user(request)
+        check_and_audit_pii_access(request, user, "VIEW_JOB_CANDIDATES_PII", "job_candidates", job_id)
     current = get_or_create_job_candidates(job_id)
     return _present_job_candidates(current, include_pii)
 
 
 @router.post("/{job_id}/candidates", response_model=List[Dict[str, Any]])
-async def add_job_candidate(job_id: str, candidate: JobCandidatePayload, include_pii: bool = Query(False)):
+async def add_job_candidate(request: Request, job_id: str, candidate: JobCandidatePayload, include_pii: bool = Query(False)):
+    if include_pii:
+        user = get_current_user(request)
+        check_and_audit_pii_access(request, user, "ADD_JOB_CANDIDATE_PII", "job_candidates", job_id)
     current = get_or_create_job_candidates(job_id)
     job = JOBS_STORE[job_id]
 
@@ -1228,7 +1236,10 @@ async def add_job_candidate(job_id: str, candidate: JobCandidatePayload, include
 
 
 @router.delete("/{job_id}/candidates/{candidate_id}", response_model=List[Dict[str, Any]])
-async def remove_job_candidate(job_id: str, candidate_id: str, include_pii: bool = Query(False)):
+async def remove_job_candidate(request: Request, job_id: str, candidate_id: str, include_pii: bool = Query(False)):
+    if include_pii:
+        user = get_current_user(request)
+        check_and_audit_pii_access(request, user, "REMOVE_JOB_CANDIDATE_PII", "job_candidates", job_id)
     current = get_or_create_job_candidates(job_id)
 
     updated_list = [c for c in current if c.get("id") != candidate_id]
@@ -1254,7 +1265,10 @@ async def remove_job_candidate(job_id: str, candidate_id: str, include_pii: bool
 
 
 @router.patch("/{job_id}/candidates/{candidate_id}/stage")
-async def update_job_candidate_stage(job_id: str, candidate_id: str, new_stage: str = Query(...), include_pii: bool = Query(False)):
+async def update_job_candidate_stage(request: Request, job_id: str, candidate_id: str, new_stage: str = Query(...), include_pii: bool = Query(False)):
+    if include_pii:
+        user = get_current_user(request)
+        check_and_audit_pii_access(request, user, "UPDATE_JOB_CANDIDATE_STAGE_PII", "job_candidates", job_id)
     current = get_or_create_job_candidates(job_id)
 
     matched_candidate = None

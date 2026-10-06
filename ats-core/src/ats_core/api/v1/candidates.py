@@ -4,7 +4,9 @@ import uuid
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Query
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Query, Request
+from ats_core.api.auth import get_current_user
+from ats_core.api.audit import check_and_audit_pii_access
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from ats_core.api.upload_storage import UPLOAD_STAGING_DIR, resume_path, stage_pdf_upload
@@ -168,6 +170,7 @@ class NoteCreateRequest(BaseModel):
 
 @router.get("", response_model=List[Dict[str, Any]])
 async def list_candidates(
+    request: Request,
     search: Optional[str] = Query(None),
     stage: Optional[str] = Query(None),
     skill: Optional[str] = Query(None),
@@ -197,7 +200,10 @@ async def list_candidates(
             or any(s in sk.lower() for sk in c.get("core_skills", []))
         ]
 
-    if not include_pii:
+    if include_pii:
+        user = get_current_user(request)
+        check_and_audit_pii_access(request, user, "LIST_CANDIDATES_PII", "candidates", "all")
+    else:
         candidates = [mask_candidate_pii(c) for c in candidates]
 
     return candidates
@@ -205,6 +211,7 @@ async def list_candidates(
 
 @router.get("/{candidate_id}")
 async def get_candidate(
+    request: Request,
     candidate_id: str,
     include_pii: bool = Query(False, description="Set to true only when authorized to view unmasked PII")
 ):
@@ -226,10 +233,12 @@ async def get_candidate(
             detail=f"Candidate with ID '{candidate_id}' not found."
         )
 
-    if not include_pii:
-        return mask_candidate_pii(target)
+    if include_pii:
+        user = get_current_user(request)
+        check_and_audit_pii_access(request, user, "VIEW_CANDIDATE_PII", "candidate", candidate_id)
+        return target
 
-    return target
+    return mask_candidate_pii(target)
 
 
 @router.get("/{candidate_id}/scorecard")
@@ -692,8 +701,10 @@ async def locate_candidate_citation(
     "/{candidate_id}/resume-pdf",
     summary="Serve the actual uploaded PDF resume document"
 )
-async def get_candidate_resume_pdf(candidate_id: str):
+async def get_candidate_resume_pdf(request: Request, candidate_id: str):
     from fastapi.responses import FileResponse
+    user = get_current_user(request)
+    check_and_audit_pii_access(request, user, "DOWNLOAD_RESUME_PDF", "candidate_resume_pdf", candidate_id)
 
     path = await run_in_threadpool(_get_staged_resume_path, candidate_id)
     return FileResponse(

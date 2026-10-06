@@ -20,6 +20,7 @@ type Store struct {
 	jobCandidates map[string][]*models.JobCandidate
 	uploadTasks   map[string]*models.UploadTask
 	skills        map[string]*models.TaxonomySkill
+	auditLogs     []*models.AuditLogEntry
 }
 
 var (
@@ -44,6 +45,7 @@ func NewStore() *Store {
 		jobCandidates: make(map[string][]*models.JobCandidate),
 		uploadTasks:   make(map[string]*models.UploadTask),
 		skills:        make(map[string]*models.TaxonomySkill),
+		auditLogs:     make([]*models.AuditLogEntry, 0),
 	}
 }
 
@@ -828,3 +830,62 @@ func validEvaluationScore(scorecard models.Scorecard) bool {
 	score := *scorecard.OverallMatchScore
 	return !math.IsNaN(score) && !math.IsInf(score, 0) && score >= 0 && score <= 100
 }
+
+// ==================== AUDIT LOG OPERATIONS ====================
+
+func (s *Store) RecordAuditLog(entry *models.AuditLogEntry) {
+	if entry == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	item := *entry
+	if item.ID == "" {
+		item.ID = "aud-" + uuid.NewString()[:12]
+	}
+	if item.Timestamp == "" {
+		item.Timestamp = models.NowUTC()
+	}
+	s.auditLogs = append(s.auditLogs, &item)
+	if len(s.auditLogs) > 10000 {
+		s.auditLogs = s.auditLogs[len(s.auditLogs)-10000:]
+	}
+}
+
+func (s *Store) ListAuditLogs(limit int, actorFilter, actionFilter, resourceFilter string) []*models.AuditLogEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	actorFilter = strings.ToLower(strings.TrimSpace(actorFilter))
+	actionFilter = strings.ToLower(strings.TrimSpace(actionFilter))
+	resourceFilter = strings.ToLower(strings.TrimSpace(resourceFilter))
+
+	result := make([]*models.AuditLogEntry, 0)
+	for i := len(s.auditLogs) - 1; i >= 0; i-- {
+		entry := s.auditLogs[i]
+		if actorFilter != "" && strings.ToLower(entry.ActorID) != actorFilter {
+			continue
+		}
+		if actionFilter != "" && strings.ToLower(entry.Action) != actionFilter {
+			continue
+		}
+		if resourceFilter != "" && strings.ToLower(entry.ResourceType) != resourceFilter {
+			continue
+		}
+		copied := *entry
+		result = append(result, &copied)
+		if len(result) >= limit {
+			break
+		}
+	}
+	return result
+}
+

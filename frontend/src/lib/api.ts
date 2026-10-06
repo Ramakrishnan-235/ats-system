@@ -9,6 +9,12 @@ const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/
 // server credential or persist candidate PII in browser storage.
 let sessionApiKey = "";
 export function setSessionApiKey(key: string) { sessionApiKey = key.trim(); }
+let sessionUserId = "usr-recruiter-1";
+let sessionUserRole = "recruiter";
+export function setSessionUser(userId: string, role = "recruiter") {
+  sessionUserId = userId.trim();
+  sessionUserRole = role.trim();
+}
 export const requiresApiKey = process.env.NEXT_PUBLIC_REQUIRE_API_KEY !== "false";
 export function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "The request failed. Please try again.";
@@ -24,6 +30,8 @@ export class ApiError extends Error {
 async function request(path: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers);
   if (sessionApiKey) headers.set("X-API-Key", sessionApiKey);
+  if (sessionUserId) headers.set("X-User-Id", sessionUserId);
+  if (sessionUserRole) headers.set("X-User-Role", sessionUserRole);
   if (requiresApiKey && !sessionApiKey) {
     throw new ApiError("Enter your API key to connect to the backend.", 401);
   }
@@ -264,3 +272,21 @@ export const approveTaxonomySkill = (skillId: string, payload?: { canonical_name
 export const rejectTaxonomySkill = (skillId: string) => json<TaxonomySkillItem>(`/taxonomy/skills/${id(skillId)}/reject`, { method: "PATCH" });
 export const addAliasToTaxonomySkill = (skillId: string, alias: string) => json<TaxonomySkillItem>(`/taxonomy/skills/${id(skillId)}/aliases`, { method: "POST", ...body({ alias }) });
 export const createTaxonomySkill = (payload: { canonical_name: string; category: string; aliases: string[]; is_ambiguous?: boolean; source?: string }) => json<TaxonomySkillItem>("/taxonomy/skills", { method: "POST", ...body(payload) });
+
+export interface AuditLogItem {
+  id: string;
+  timestamp: string;
+  actor_id: string;
+  actor_role: string;
+  action: string;
+  resource_type: string;
+  resource_id: string;
+  decision: "ALLOWED" | "DENIED";
+  details: string;
+  ip_address?: string;
+  user_agent?: string;
+}
+
+export const fetchAuditLogs = (params?: { limit?: number; actor_id?: string; action?: string; resource_type?: string }) =>
+  json<AuditLogItem[]>(`/audit/logs${query(params)}`);
+

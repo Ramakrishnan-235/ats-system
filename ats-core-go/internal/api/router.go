@@ -24,7 +24,7 @@ func NewRouter(cfg *config.Config, st *store.Store, eval *services.LLMEvaluator,
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   cfg.CORSOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-API-Key"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-API-Key", "X-User-Id", "X-User-Role", "X-User-Email"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: false,
 		MaxAge:           300,
@@ -46,6 +46,7 @@ func NewRouter(cfg *config.Config, st *store.Store, eval *services.LLMEvaluator,
 	dashHandler := NewDashboardHandler(st)
 	matchHandler := NewMatchHandler(matchSvc)
 	taxHandler := NewTaxonomyHandler(st)
+	auditHandler := NewAuditHandler(st)
 
 	// API v1 group with optional Auth Middleware
 	r.Route("/api/v1", func(r chi.Router) {
@@ -96,6 +97,11 @@ func NewRouter(cfg *config.Config, st *store.Store, eval *services.LLMEvaluator,
 			r.Patch("/skills/{skill_id}/reject", taxHandler.RejectSkill)
 			r.Post("/skills/{skill_id}/aliases", taxHandler.AddAlias)
 			r.Post("/sync-seed", taxHandler.SyncSeed)
+		})
+
+		// Audit
+		r.Route("/audit", func(r chi.Router) {
+			r.Get("/logs", auditHandler.GetAuditLogs)
 		})
 	})
 

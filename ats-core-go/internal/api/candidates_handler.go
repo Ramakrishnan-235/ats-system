@@ -41,7 +41,37 @@ func NewCandidatesHandler(st *store.Store, eval *services.LLMEvaluator, parser *
 	return &CandidatesHandler{store: st, evaluator: eval, parser: parser, cfg: cfg}
 }
 func (h *CandidatesHandler) ListCandidates(w http.ResponseWriter, r *http.Request) {
-	candidates := h.store.ListCandidates(r.URL.Query().Get("search"), r.URL.Query().Get("stage"), r.URL.Query().Get("skill"), r.URL.Query().Get("include_pii") == "true")
+	includePII := r.URL.Query().Get("include_pii") == "true"
+	user := GetUserIdentity(r)
+	if includePII {
+		if !user.CanViewPII() {
+			h.store.RecordAuditLog(&models.AuditLogEntry{
+				ActorID:      user.UserID,
+				ActorRole:    string(user.Role),
+				Action:       "LIST_CANDIDATES_PII_DENIED",
+				ResourceType: "candidates",
+				ResourceID:   "all",
+				Decision:     "DENIED",
+				Details:      "Role unauthorized to view personal data (PII)",
+				IPAddress:    r.RemoteAddr,
+				UserAgent:    r.UserAgent(),
+			})
+			writeError(w, http.StatusForbidden, "Forbidden: role unauthorized to view personal data (PII)")
+			return
+		}
+		h.store.RecordAuditLog(&models.AuditLogEntry{
+			ActorID:      user.UserID,
+			ActorRole:    string(user.Role),
+			Action:       "LIST_CANDIDATES_PII",
+			ResourceType: "candidates",
+			ResourceID:   "all",
+			Decision:     "ALLOWED",
+			Details:      "Authorized candidate listing with unmasked PII",
+			IPAddress:    r.RemoteAddr,
+			UserAgent:    r.UserAgent(),
+		})
+	}
+	candidates := h.store.ListCandidates(r.URL.Query().Get("search"), r.URL.Query().Get("stage"), r.URL.Query().Get("skill"), includePII)
 	if candidates == nil {
 		candidates = []*models.Candidate{}
 	}
@@ -49,7 +79,38 @@ func (h *CandidatesHandler) ListCandidates(w http.ResponseWriter, r *http.Reques
 	_ = json.NewEncoder(w).Encode(candidates)
 }
 func (h *CandidatesHandler) GetCandidate(w http.ResponseWriter, r *http.Request) {
-	cand, ok := h.store.GetCandidate(chi.URLParam(r, "candidate_id"), r.URL.Query().Get("include_pii") == "true")
+	candID := chi.URLParam(r, "candidate_id")
+	includePII := r.URL.Query().Get("include_pii") == "true"
+	user := GetUserIdentity(r)
+	if includePII {
+		if !user.CanViewPII() {
+			h.store.RecordAuditLog(&models.AuditLogEntry{
+				ActorID:      user.UserID,
+				ActorRole:    string(user.Role),
+				Action:       "VIEW_CANDIDATE_PII_DENIED",
+				ResourceType: "candidate",
+				ResourceID:   candID,
+				Decision:     "DENIED",
+				Details:      "Role unauthorized to view personal data (PII)",
+				IPAddress:    r.RemoteAddr,
+				UserAgent:    r.UserAgent(),
+			})
+			writeError(w, http.StatusForbidden, "Forbidden: role unauthorized to view personal data (PII)")
+			return
+		}
+		h.store.RecordAuditLog(&models.AuditLogEntry{
+			ActorID:      user.UserID,
+			ActorRole:    string(user.Role),
+			Action:       "VIEW_CANDIDATE_PII",
+			ResourceType: "candidate",
+			ResourceID:   candID,
+			Decision:     "ALLOWED",
+			Details:      "Authorized candidate unmasked PII access",
+			IPAddress:    r.RemoteAddr,
+			UserAgent:    r.UserAgent(),
+		})
+	}
+	cand, ok := h.store.GetCandidate(candID, includePII)
 	if !ok {
 		writeError(w, http.StatusNotFound, "Candidate not found")
 		return
@@ -301,10 +362,38 @@ func (h *CandidatesHandler) LocateCitation(w http.ResponseWriter, r *http.Reques
 	_ = json.NewEncoder(w).Encode(map[string]any{"found": location != nil, "candidate_id": id, "search_phrase": req.SearchPhrase, "location": location})
 }
 func (h *CandidatesHandler) ServeResumePDF(w http.ResponseWriter, r *http.Request) {
-	path, ok := h.candidatePDFPath(w, chi.URLParam(r, "candidate_id"))
+	candID := chi.URLParam(r, "candidate_id")
+	path, ok := h.candidatePDFPath(w, candID)
 	if !ok {
 		return
 	}
+	user := GetUserIdentity(r)
+	if !user.CanViewPII() {
+		h.store.RecordAuditLog(&models.AuditLogEntry{
+			ActorID:      user.UserID,
+			ActorRole:    string(user.Role),
+			Action:       "DOWNLOAD_RESUME_PDF_DENIED",
+			ResourceType: "resume_pdf",
+			ResourceID:   candID,
+			Decision:     "DENIED",
+			Details:      "Role unauthorized to access candidate resume PDF",
+			IPAddress:    r.RemoteAddr,
+			UserAgent:    r.UserAgent(),
+		})
+		writeError(w, http.StatusForbidden, "Forbidden: role unauthorized to access candidate resume PDF")
+		return
+	}
+	h.store.RecordAuditLog(&models.AuditLogEntry{
+		ActorID:      user.UserID,
+		ActorRole:    string(user.Role),
+		Action:       "DOWNLOAD_RESUME_PDF",
+		ResourceType: "resume_pdf",
+		ResourceID:   candID,
+		Decision:     "ALLOWED",
+		Details:      "Authorized candidate resume PDF download",
+		IPAddress:    r.RemoteAddr,
+		UserAgent:    r.UserAgent(),
+	})
 	file, err := os.Open(path)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "PDF not found")

@@ -19,6 +19,7 @@ from ats_core.api.v1.match import router as match_router
 from ats_core.api.v1.jobs import router as jobs_router
 from ats_core.api.v1.dashboard import router as dashboard_router
 from ats_core.api.v1.taxonomy import router as taxonomy_router
+from ats_core.api.v1.audit import router as audit_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -47,7 +48,7 @@ app.add_middleware(
     ).split(",") if origin.strip()],
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-User-Id", "X-User-Role", "X-User-Email"],
 )
 
 # Mount API Routers with Security Authentication Dependency
@@ -56,7 +57,7 @@ app.include_router(jobs_router, prefix="/api/v1", dependencies=[Depends(verify_a
 app.include_router(candidates_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 app.include_router(match_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 app.include_router(taxonomy_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
-
+app.include_router(audit_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 
 
 @app.get("/health", tags=["System"])

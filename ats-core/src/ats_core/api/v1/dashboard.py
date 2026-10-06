@@ -1,6 +1,8 @@
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
+from ats_core.api.auth import get_current_user
+from ats_core.api.audit import check_and_audit_pii_access
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard & Metrics"])
@@ -55,7 +57,10 @@ class DashboardStatsResponse(BaseModel):
 
 
 @router.get("/stats", response_model=DashboardStatsResponse)
-async def get_dashboard_stats(include_pii: bool = Query(False)):
+async def get_dashboard_stats(request: Request, include_pii: bool = Query(False)):
+    if include_pii:
+        user = get_current_user(request)
+        check_and_audit_pii_access(request, user, "VIEW_DASHBOARD_PII", "dashboard", "stats")
     try:
         from ats_core.db.store_sync import sync_candidates_from_db, sync_jobs_from_db
         sync_candidates_from_db()

@@ -465,3 +465,232 @@ func TestUploadAsyncWithJobCompletesAndPreservesAppliedForJobID(t *testing.T) {
 	}
 }
 
+func TestPIIAccessGatedByRole(t *testing.T) {
+	st := store.NewStore()
+	cand := &models.Candidate{
+		ID:             "cand-pii-1",
+		Name:           "John Doe",
+		Email:          "john@example.com",
+		Phone:          "555-1234",
+		AnonymizedName: "Candidate #101",
+	}
+	st.SaveCandidate(cand)
+	job := &models.Job{ID: "job-pii-1", Title: "Dev", JobDescription: "Go"}
+	st.SaveJob(job)
+	st.AddJobCandidate("job-pii-1", &models.JobCandidate{ID: "cand-pii-1", Name: "John Doe"})
+
+	candH := &CandidatesHandler{store: st}
+	jobH := NewJobsHandler(st)
+	dashH := NewDashboardHandler(st)
+
+	// 1. Viewer requesting include_pii=true on Candidates -> 403
+	reqViewer := httptest.NewRequest(http.MethodGet, "/candidates?include_pii=true", nil)
+	reqViewer.Header.Set("X-User-Id", "viewer-1")
+	reqViewer.Header.Set("X-User-Role", "viewer")
+	rr := httptest.NewRecorder()
+	candH.ListCandidates(rr, reqViewer)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for viewer on ListCandidates, got %d", rr.Code)
+	}
+
+	// 2. Viewer requesting include_pii=true on GetCandidate -> 403
+	reqViewerCand := requestParam("GET", "/candidates/cand-pii-1?include_pii=true", "candidate_id", "cand-pii-1", nil)
+	reqViewerCand.Header.Set("X-User-Id", "viewer-1")
+	reqViewerCand.Header.Set("X-User-Role", "viewer")
+	rr = httptest.NewRecorder()
+	candH.GetCandidate(rr, reqViewerCand)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for viewer on GetCandidate, got %d", rr.Code)
+	}
+
+	// 3. Viewer requesting include_pii=true on GetJobCandidates -> 403
+	reqViewerJob := requestParam("GET", "/jobs/job-pii-1/candidates?include_pii=true", "job_id", "job-pii-1", nil)
+	reqViewerJob.Header.Set("X-User-Id", "viewer-1")
+	reqViewerJob.Header.Set("X-User-Role", "viewer")
+	rr = httptest.NewRecorder()
+	jobH.GetJobCandidates(rr, reqViewerJob)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for viewer on GetJobCandidates, got %d", rr.Code)
+	}
+
+	// 4. Viewer requesting include_pii=true on Dashboard -> 403
+	reqViewerDash := httptest.NewRequest(http.MethodGet, "/dashboard/stats?include_pii=true", nil)
+	reqViewerDash.Header.Set("X-User-Id", "viewer-1")
+	reqViewerDash.Header.Set("X-User-Role", "viewer")
+	rr = httptest.NewRecorder()
+	dashH.GetDashboardStats(rr, reqViewerDash)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for viewer on GetDashboardStats, got %d", rr.Code)
+	}
+
+	// 5. Viewer requesting include_pii=false -> 200 with masked data
+	reqViewerMasked := httptest.NewRequest(http.MethodGet, "/candidates", nil)
+	reqViewerMasked.Header.Set("X-User-Id", "viewer-1")
+	reqViewerMasked.Header.Set("X-User-Role", "viewer")
+	rr = httptest.NewRecorder()
+	candH.ListCandidates(rr, reqViewerMasked)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for viewer on masked ListCandidates, got %d", rr.Code)
+	}
+	var maskedList []*models.Candidate
+	_ = json.Unmarshal(rr.Body.Bytes(), &maskedList)
+	if len(maskedList) != 1 || maskedList[0].Name == "John Doe" {
+		t.Fatalf("expected masked name, got %s", maskedList[0].Name)
+	}
+
+	// 6. Recruiter requesting include_pii=true -> 200 with unmasked data
+	reqRecruiter := httptest.NewRequest(http.MethodGet, "/candidates?include_pii=true", nil)
+	reqRecruiter.Header.Set("X-User-Id", "recruiter-1")
+	reqRecruiter.Header.Set("X-User-Role", "recruiter")
+	rr = httptest.NewRecorder()
+	candH.ListCandidates(rr, reqRecruiter)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for recruiter on ListCandidates, got %d", rr.Code)
+	}
+	var unmaskedList []*models.Candidate
+	_ = json.Unmarshal(rr.Body.Bytes(), &unmaskedList)
+	if len(unmaskedList) != 1 || unmaskedList[0].Name != "John Doe" {
+		t.Fatalf("expected unmasked John Doe, got %s", unmaskedList[0].Name)
+	}
+}
+
+func TestResumePDFGatedByRole(t *testing.T) {
+	tempDir := t.TempDir()
+	st := store.NewStore()
+	candID := "cand-pdf-rbac"
+	st.SaveCandidate(&models.Candidate{ID: candID, ResumeFilename: "test.pdf"})
+	pdfPath := filepath.Join(tempDir, candID+".pdf")
+	_ = os.WriteFile(pdfPath, []byte("%PDF-1.4 mock content"), 0600)
+
+	h := &CandidatesHandler{store: st, cfg: &config.Config{UploadDir: tempDir}}
+
+	// Viewer -> 403
+	reqViewer := requestParam("GET", "/pdf", "candidate_id", candID, nil)
+	reqViewer.Header.Set("X-User-Id", "viewer-1")
+	reqViewer.Header.Set("X-User-Role", "viewer")
+	rr := httptest.NewRecorder()
+	h.ServeResumePDF(rr, reqViewer)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for viewer downloading resume PDF, got %d", rr.Code)
+	}
+
+	// Recruiter -> 200
+	reqRecruiter := requestParam("GET", "/pdf", "candidate_id", candID, nil)
+	reqRecruiter.Header.Set("X-User-Id", "recruiter-1")
+	reqRecruiter.Header.Set("X-User-Role", "recruiter")
+	rr = httptest.NewRecorder()
+	h.ServeResumePDF(rr, reqRecruiter)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for recruiter downloading resume PDF, got %d", rr.Code)
+	}
+}
+
+func TestAuditTrailAndAuditHandler(t *testing.T) {
+	st := store.NewStore()
+	cand := &models.Candidate{ID: "cand-aud-1", Name: "Jane Doe"}
+	st.SaveCandidate(cand)
+
+	candH := &CandidatesHandler{store: st}
+	auditH := NewAuditHandler(st)
+
+	// Attempt unauthorized access
+	reqViewer := requestParam("GET", "/candidates/cand-aud-1?include_pii=true", "candidate_id", "cand-aud-1", nil)
+	reqViewer.Header.Set("X-User-Id", "viewer-bad")
+	reqViewer.Header.Set("X-User-Role", "viewer")
+	rr := httptest.NewRecorder()
+	candH.GetCandidate(rr, reqViewer)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rr.Code)
+	}
+
+	// Authorized access
+	reqRecruiter := requestParam("GET", "/candidates/cand-aud-1?include_pii=true", "candidate_id", "cand-aud-1", nil)
+	reqRecruiter.Header.Set("X-User-Id", "recruiter-good")
+	reqRecruiter.Header.Set("X-User-Role", "recruiter")
+	rr = httptest.NewRecorder()
+	candH.GetCandidate(rr, reqRecruiter)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	// Viewer querying audit logs -> 403
+	reqViewerAudit := httptest.NewRequest(http.MethodGet, "/audit/logs", nil)
+	reqViewerAudit.Header.Set("X-User-Id", "viewer-bad")
+	reqViewerAudit.Header.Set("X-User-Role", "viewer")
+	rr = httptest.NewRecorder()
+	auditH.GetAuditLogs(rr, reqViewerAudit)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for viewer accessing audit logs, got %d", rr.Code)
+	}
+
+	// Admin querying audit logs -> 200 and sees records
+	reqAdminAudit := httptest.NewRequest(http.MethodGet, "/audit/logs", nil)
+	reqAdminAudit.Header.Set("X-User-Id", "admin-1")
+	reqAdminAudit.Header.Set("X-User-Role", "admin")
+	rr = httptest.NewRecorder()
+	auditH.GetAuditLogs(rr, reqAdminAudit)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for admin accessing audit logs, got %d", rr.Code)
+	}
+
+	var logs []*models.AuditLogEntry
+	_ = json.Unmarshal(rr.Body.Bytes(), &logs)
+	if len(logs) < 2 {
+		t.Fatalf("expected at least 2 audit entries, got %d", len(logs))
+	}
+	var deniedFound, allowedFound bool
+	for _, l := range logs {
+		if l.Decision == "DENIED" && l.ActorID == "viewer-bad" {
+			deniedFound = true
+		}
+		if l.Decision == "ALLOWED" && l.ActorID == "recruiter-good" {
+			allowedFound = true
+		}
+	}
+	if !deniedFound || !allowedFound {
+		t.Fatalf("missing expected audit entries: denied=%v, allowed=%v", deniedFound, allowedFound)
+	}
+}
+
+func TestSharedKeyWithoutRoleCannotAccessPII(t *testing.T) {
+	cfg := &config.Config{
+		AuthEnabled: true,
+		APIKey:      "secret-key-12345",
+	}
+	st := store.NewStore()
+	st.SaveCandidate(&models.Candidate{ID: "cand-1", Name: "Alice"})
+
+	router := NewRouter(cfg, st, nil, nil, nil)
+
+	// Case 1: Caller holds valid API key but NO role / identity headers
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/candidates?include_pii=true", nil)
+	req.Header.Set("X-API-Key", "secret-key-12345")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when shared key caller requests include_pii=true without role, got %d", rr.Code)
+	}
+
+	// Case 2: Caller holds valid API key with recruiter role
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/candidates?include_pii=true", nil)
+	req.Header.Set("X-API-Key", "secret-key-12345")
+	req.Header.Set("X-User-Id", "recruiter-alice")
+	req.Header.Set("X-User-Role", "recruiter")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 when recruiter requests include_pii=true, got %d", rr.Code)
+	}
+
+	// Case 3: Caller holds valid API key with viewer role -> 403
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/candidates?include_pii=true", nil)
+	req.Header.Set("X-API-Key", "secret-key-12345")
+	req.Header.Set("X-User-Id", "viewer-bob")
+	req.Header.Set("X-User-Role", "viewer")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when viewer requests include_pii=true, got %d", rr.Code)
+	}
+}
+

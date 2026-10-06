@@ -187,6 +187,35 @@ func (h *JobsHandler) UpdateJobStatus(w http.ResponseWriter, r *http.Request) {
 func (h *JobsHandler) GetJobCandidates(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "job_id")
 	includePII := strings.ToLower(r.URL.Query().Get("include_pii")) == "true"
+	user := GetUserIdentity(r)
+	if includePII {
+		if !user.CanViewPII() {
+			h.store.RecordAuditLog(&models.AuditLogEntry{
+				ActorID:      user.UserID,
+				ActorRole:    string(user.Role),
+				Action:       "VIEW_JOB_CANDIDATES_PII_DENIED",
+				ResourceType: "job_candidates",
+				ResourceID:   jobID,
+				Decision:     "DENIED",
+				Details:      "Role unauthorized to view personal data (PII)",
+				IPAddress:    r.RemoteAddr,
+				UserAgent:    r.UserAgent(),
+			})
+			writeError(w, http.StatusForbidden, "Forbidden: role unauthorized to view personal data (PII)")
+			return
+		}
+		h.store.RecordAuditLog(&models.AuditLogEntry{
+			ActorID:      user.UserID,
+			ActorRole:    string(user.Role),
+			Action:       "VIEW_JOB_CANDIDATES_PII",
+			ResourceType: "job_candidates",
+			ResourceID:   jobID,
+			Decision:     "ALLOWED",
+			Details:      "Authorized job candidates unmasked PII access",
+			IPAddress:    r.RemoteAddr,
+			UserAgent:    r.UserAgent(),
+		})
+	}
 
 	if _, ok := h.store.GetJob(jobID); !ok {
 		writeError(w, http.StatusNotFound, "Job not found")
@@ -203,6 +232,35 @@ func (h *JobsHandler) GetJobCandidates(w http.ResponseWriter, r *http.Request) {
 func (h *JobsHandler) AddJobCandidate(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "job_id")
 	includePII := strings.ToLower(r.URL.Query().Get("include_pii")) == "true"
+	user := GetUserIdentity(r)
+	if includePII {
+		if !user.CanViewPII() {
+			h.store.RecordAuditLog(&models.AuditLogEntry{
+				ActorID:      user.UserID,
+				ActorRole:    string(user.Role),
+				Action:       "ADD_JOB_CANDIDATE_PII_DENIED",
+				ResourceType: "job_candidates",
+				ResourceID:   jobID,
+				Decision:     "DENIED",
+				Details:      "Role unauthorized to view personal data (PII)",
+				IPAddress:    r.RemoteAddr,
+				UserAgent:    r.UserAgent(),
+			})
+			writeError(w, http.StatusForbidden, "Forbidden: role unauthorized to view personal data (PII)")
+			return
+		}
+		h.store.RecordAuditLog(&models.AuditLogEntry{
+			ActorID:      user.UserID,
+			ActorRole:    string(user.Role),
+			Action:       "ADD_JOB_CANDIDATE_PII",
+			ResourceType: "job_candidates",
+			ResourceID:   jobID,
+			Decision:     "ALLOWED",
+			Details:      "Authorized add job candidate with unmasked PII",
+			IPAddress:    r.RemoteAddr,
+			UserAgent:    r.UserAgent(),
+		})
+	}
 
 	var jc models.JobCandidate
 	if !decodeJSON(w, r, &jc) {
@@ -292,6 +350,35 @@ func (h *JobsHandler) RemoveJobCandidate(w http.ResponseWriter, r *http.Request)
 	jobID := chi.URLParam(r, "job_id")
 	candID := chi.URLParam(r, "candidate_id")
 	includePII := strings.ToLower(r.URL.Query().Get("include_pii")) == "true"
+	user := GetUserIdentity(r)
+	if includePII {
+		if !user.CanViewPII() {
+			h.store.RecordAuditLog(&models.AuditLogEntry{
+				ActorID:      user.UserID,
+				ActorRole:    string(user.Role),
+				Action:       "REMOVE_JOB_CANDIDATE_PII_DENIED",
+				ResourceType: "job_candidates",
+				ResourceID:   jobID,
+				Decision:     "DENIED",
+				Details:      "Role unauthorized to view personal data (PII)",
+				IPAddress:    r.RemoteAddr,
+				UserAgent:    r.UserAgent(),
+			})
+			writeError(w, http.StatusForbidden, "Forbidden: role unauthorized to view personal data (PII)")
+			return
+		}
+		h.store.RecordAuditLog(&models.AuditLogEntry{
+			ActorID:      user.UserID,
+			ActorRole:    string(user.Role),
+			Action:       "REMOVE_JOB_CANDIDATE_PII",
+			ResourceType: "job_candidates",
+			ResourceID:   jobID,
+			Decision:     "ALLOWED",
+			Details:      "Authorized remove job candidate with unmasked PII",
+			IPAddress:    r.RemoteAddr,
+			UserAgent:    r.UserAgent(),
+		})
+	}
 
 	if _, ok := h.store.GetJob(jobID); !ok {
 		writeError(w, http.StatusNotFound, "Job not found")
