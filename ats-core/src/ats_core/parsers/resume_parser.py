@@ -1,3 +1,4 @@
+import os
 import re
 import logging
 from datetime import datetime
@@ -339,13 +340,16 @@ def extract_skills_from_text(raw_text: str) -> List[str]:
                 if clean_token and 2 <= len(clean_token) <= 30:
                     freeform_tokens.append(clean_token)
 
+    # Gate flywheel auto-registration on ATS_FLYWHEEL_AUTO_REGISTER (default: False)
+    enable_flywheel = os.getenv("ATS_FLYWHEEL_AUTO_REGISTER", "false").strip().lower() in ("true", "1", "yes")
+
     # 3. LLM Residue Pass (Step 5) with strict verbatim containment verification
     try:
         residue_extractor = LLMResidueExtractor.get_instance()
         residue_skills = residue_extractor.extract_residue_skills(
             resume_text=raw_text,
             skills_already_found=found_skills,
-            register_flywheel=True
+            register_flywheel=enable_flywheel
         )
         for r_skill in residue_skills:
             if r_skill.get("name"):
@@ -355,7 +359,7 @@ def extract_skills_from_text(raw_text: str) -> List[str]:
 
     # 4. Resolve freeform tokens through the 4-Layer Normalization Cascade (Step 6)
     if freeform_tokens:
-        resolved_items = resolve_skills_batch(freeform_tokens, register_pending=True)
+        resolved_items = resolve_skills_batch(freeform_tokens, register_pending=enable_flywheel)
         for item in resolved_items:
             cname = item["canonical_name"]
             if cname and cname not in found_skills:
@@ -365,12 +369,12 @@ def extract_skills_from_text(raw_text: str) -> List[str]:
     for skill in TECH_SKILLS_CATALOG:
         pattern = r"(?<!\w)" + re.escape(skill) + r"(?![\w+#])"
         if re.search(pattern, raw_text, re.I):
-            normalized = normalize_skill(skill)
+            normalized = normalize_skill(skill, register_flywheel=enable_flywheel)
             if normalized not in found_skills:
                 found_skills.append(normalized)
 
     # Normalize and deduplicate
-    normalized_list = normalize_skills_list(found_skills)
+    normalized_list = normalize_skills_list(found_skills, register_flywheel=enable_flywheel)
 
     # Add HTML / CSS split if HTML/CSS is present
     if "HTML/CSS" in normalized_list:

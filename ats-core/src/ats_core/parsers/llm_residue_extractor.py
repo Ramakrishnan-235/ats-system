@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
 
-from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
+from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService, RESUME_PROSE_STOPWORDS
 from ats_core.llm.client import get_openrouter_chat_model, get_structured_llm, get_llm_config
 from ats_core.llm.sanitizer import sanitize_prompt_text
 
@@ -140,16 +140,23 @@ class LLMResidueExtractor:
         self,
         resume_text: str,
         skills_already_found: List[str],
-        register_flywheel: bool = True
+        register_flywheel: Optional[bool] = None
     ) -> List[Dict[str, Any]]:
         """
         Executes residue extraction pass:
         1. Redacts resume PII before accessing the LLM; uses local rules if unavailable.
         2. Strict verification: Discards any item where evidence is NOT in resume_text verbatim.
-        3. Persists valid unmapped items to Flywheel queue with status='pending', source='llm'.
+        3. Persists valid unmapped items to Flywheel queue with status='pending', source='llm'
+           (bounded per resume and gated by ATS_FLYWHEEL_AUTO_REGISTER).
         """
         if not resume_text or not resume_text.strip():
             return []
+
+        if register_flywheel is None:
+            register_flywheel = os.getenv("ATS_FLYWHEEL_AUTO_REGISTER", "false").strip().lower() in ("true", "1", "yes")
+
+        max_flywheel_per_resume = int(os.getenv("ATS_MAX_FLYWHEEL_PER_RESUME", "5"))
+        flywheel_registered_count = 0
 
         verified_skills: List[Dict[str, Any]] = []
         try:
@@ -220,14 +227,20 @@ class LLMResidueExtractor:
             if any(clean_name.lower() == s.lower() for s in skills_already_found):
                 continue
 
-            # Register into Flywheel review queue
+            # Register into Flywheel review queue (bounded per resume)
             registered_row = {}
-            if register_flywheel and hasattr(taxonomy_service, "record_unknown_skill"):
+            if (
+                register_flywheel
+                and flywheel_registered_count < max_flywheel_per_resume
+                and hasattr(taxonomy_service, "record_unknown_skill")
+            ):
                 registered_row = taxonomy_service.record_unknown_skill(
                     raw_skill=clean_name,
                     source="llm",
                     context=clean_evidence
                 )
+                if registered_row and isinstance(registered_row, dict) and registered_row.get("id"):
+                    flywheel_registered_count += 1
 
             verified_skills.append({
                 "name": clean_name,
@@ -247,21 +260,38 @@ class LLMResidueExtractor:
     ) -> List[LLMResidueSkill]:
         """
         Deterministic fallback if local LLM is offline.
-        Inspects capitalized technical terms in project/experience lines.
+        Inspects strictly validated technical terms (CamelCase or technical suffixes)
+        in project/experience lines while filtering prose stopwords and generic words.
         """
         lines = resume_text.split("\n")
         already_set = {s.lower() for s in skills_already_found}
-        results = []
+        results: List[LLMResidueSkill] = []
+
+        # Technical token matchers:
+        # 1. CamelCase (e.g. DeltaLake, LangChain, RoboFlow, TensorFlow, PyTorch, AirFlow)
+        # 2. Mandatory technical suffix (e.g. ChromaDB, DuckDB, GraphQL, LangFlow, DevOps, RESTAPI)
+        camel_pattern = re.compile(r"\b[A-Z][a-z0-9]+[A-Z][a-zA-Z0-9]*\b")
+        tech_suffix_pattern = re.compile(r"\b[A-Z][a-zA-Z0-9]{2,18}(?:DB|SQL|Engine|Flow|Stack|Hub|API|SDK|CLI|Ops)\b")
 
         for line in lines:
             if not line.strip() or len(line) < 20:
                 continue
-            # Look for technical tokens like 'LangChain', 'Manim', 'Spline', 'Roboflow', 'ChromaDB'
-            matches = re.finditer(r"\b([A-Z][a-zA-Z0-9_]{3,20}(?:DB|Engine|AI|Flow|Stack|Hub|API)?)\b", line)
-            for m in matches:
-                tok = m.group(1).strip()
-                if tok.lower() not in already_set and tok.lower() not in {"software", "engineer", "developer", "experience", "education", "project", "university", "college", "summary", "skills"}:
-                    results.append(LLMResidueSkill(name=tok, evidence=line.strip()[:100]))
-                    already_set.add(tok.lower())
 
-        return results[:5]
+            matched_tokens = set(camel_pattern.findall(line) + tech_suffix_pattern.findall(line))
+            for tok in sorted(matched_tokens):
+                tok_clean = tok.strip()
+                tok_lower = tok_clean.lower()
+
+                if len(tok_clean) < 3 or len(tok_clean) > 25:
+                    continue
+                if tok_lower in already_set:
+                    continue
+                if tok_lower in RESUME_PROSE_STOPWORDS:
+                    continue
+
+                results.append(LLMResidueSkill(name=tok_clean, evidence=line.strip()[:100]))
+                already_set.add(tok_lower)
+                if len(results) >= 5:
+                    return results
+
+        return results

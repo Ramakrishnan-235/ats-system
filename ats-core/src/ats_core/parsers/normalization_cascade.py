@@ -11,6 +11,7 @@ Layer 3: Dense embedding cosine similarity with margin check -> Confidence: 0.7
 Layer 4: Give up gracefully -> Enters status='pending' Flywheel review queue -> Confidence: 0.4
 """
 
+import os
 import re
 import logging
 from typing import Dict, Any, List, Optional, Tuple, NamedTuple
@@ -102,7 +103,7 @@ def resolve_skill(
     raw: str,
     taxonomy_service: Optional[SkillTaxonomyService] = None,
     embeddings_index: Optional[SkillEmbeddingsIndex] = None,
-    register_pending: bool = True
+    register_pending: Optional[bool] = None
 ) -> Tuple[Dict[str, Any], float, str]:
     """
     Executes the 4-layer Normalization Cascade:
@@ -115,6 +116,9 @@ def resolve_skill(
     key = re.sub(r"[^\w\s+#.]", "", cleaned.lower()).strip()
     if not key:
         return {}, 0.0, "empty"
+
+    if register_pending is None:
+        register_pending = os.getenv("ATS_FLYWHEEL_AUTO_REGISTER", "false").strip().lower() in ("true", "1", "yes")
 
     taxonomy = taxonomy_service or SkillTaxonomyService.get_instance()
 
@@ -135,25 +139,24 @@ def resolve_skill(
 
     # =========================================================================
     # LAYER 2: Fuzzy Match for Typos (Length-Gated > 3, Never Short/Ambiguous)
+    # Uses cached pre-computed candidate keys from taxonomy service (O(1) memory)
     # =========================================================================
     if len(key) > 3 and key not in SHORT_EXACT_SKILLS:
-        alias_keys = [
-            k for k in taxonomy._alias_index.keys()
-            if len(k) > 3 and k not in taxonomy._ambiguous_tokens
-        ]
-        if alias_keys:
+        fuzzy_keys = taxonomy.get_fuzzy_keys()
+        if fuzzy_keys:
             match = process.extractOne(
                 key,
-                alias_keys,
+                fuzzy_keys,
                 scorer=fuzz.ratio,
                 score_cutoff=88.0
             )
             if match:
                 matched_key = match[0]
-                canonical_name = taxonomy._alias_index[matched_key]
-                rec = taxonomy.get_skill_by_canonical(canonical_name)
-                if rec and rec.get("status") == "approved":
-                    return rec, 0.9, "layer2_fuzzy"
+                canonical_name = taxonomy._alias_index.get(matched_key)
+                if canonical_name:
+                    rec = taxonomy.get_skill_by_canonical(canonical_name)
+                    if rec and rec.get("status") == "approved":
+                        return rec, 0.9, "layer2_fuzzy"
 
     # =========================================================================
     # LAYER 3: Embedding Similarity with Margin Check (Catches Paraphrases)
@@ -178,9 +181,10 @@ def resolve_skill(
     # =========================================================================
     if register_pending:
         pending_rec = taxonomy.record_unknown_skill(cleaned, source="freeform_cascade")
-        return pending_rec, 0.4, "layer4_pending"
+        if pending_rec and pending_rec.get("canonical_name"):
+            return pending_rec, 0.4, "layer4_pending"
 
-    # Synthetic fallback record if persistence is skipped
+    # Synthetic fallback record if persistence is skipped or rejected by capacity/stopwords
     return {
         "id": f"skill-unresolved-{key[:8]}",
         "canonical_name": cleaned.capitalize() if cleaned[0].islower() else cleaned,
@@ -194,11 +198,14 @@ def resolve_skills_batch(
     raw_skills: List[str],
     taxonomy_service: Optional[SkillTaxonomyService] = None,
     embeddings_index: Optional[SkillEmbeddingsIndex] = None,
-    register_pending: bool = True
+    register_pending: Optional[bool] = None
 ) -> List[Dict[str, Any]]:
     """
     Resolves a batch of freeform skill strings through the 4-layer cascade.
     """
+    if register_pending is None:
+        register_pending = os.getenv("ATS_FLYWHEEL_AUTO_REGISTER", "false").strip().lower() in ("true", "1", "yes")
+
     results: List[Dict[str, Any]] = []
     seen_canonical: set = set()
 

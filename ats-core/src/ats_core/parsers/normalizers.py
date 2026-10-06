@@ -1,3 +1,4 @@
+import os
 import re
 import logging
 from typing import Optional, List, Dict, Tuple, Set, Any
@@ -315,7 +316,7 @@ SKILL_ALIASES: Dict[str, str] = {
 def normalize_skill(
     raw: str,
     fuzzy_cutoff: float = 88.0,
-    register_flywheel: bool = True,
+    register_flywheel: Optional[bool] = None,
     source: str = "resume_parser",
     context: Optional[str] = None
 ) -> str:
@@ -324,7 +325,8 @@ def normalize_skill(
     1. Exact short-skill guard (prevents 'C', 'R', 'Go', 'JS' from fuzzy overmatching).
     2. Direct alias lookup against taxonomy (~500+ skills).
     3. High-precision fuzzy matching using rapidfuzz WRatio.
-    4. Flywheel registration: Unrecognized skills are registered into status='pending'.
+    4. Flywheel registration: Unrecognized skills are registered into status='pending'
+       (disabled by default unless ATS_FLYWHEEL_AUTO_REGISTER=true or explicitly passed).
     5. Fallback: Preserves candidate's original clean wording without fabricating non-existent skills.
     """
     if not raw or not isinstance(raw, str):
@@ -333,6 +335,9 @@ def normalize_skill(
     cleaned = raw.strip()
     if not cleaned:
         return ""
+
+    if register_flywheel is None:
+        register_flywheel = os.getenv("ATS_FLYWHEEL_AUTO_REGISTER", "false").strip().lower() in ("true", "1", "yes")
 
     # Import taxonomy service
     from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
@@ -381,15 +386,18 @@ def normalize_skill(
 def normalize_skills_list(
     skills: List[str],
     fuzzy_cutoff: float = 88.0,
-    register_flywheel: bool = True,
+    register_flywheel: Optional[bool] = None,
     source: str = "resume_parser"
 ) -> List[str]:
     """
     Normalizes and deduplicates a list of extracted skills while preserving chronological insertion order.
-    Feeds unknown skills into the status='pending' Flywheel queue.
+    Feeds unknown skills into the status='pending' Flywheel queue if enabled.
     """
     if not skills:
         return []
+
+    if register_flywheel is None:
+        register_flywheel = os.getenv("ATS_FLYWHEEL_AUTO_REGISTER", "false").strip().lower() in ("true", "1", "yes")
 
     seen: Set[str] = set()
     normalized: List[str] = []

@@ -3,11 +3,12 @@ taxonomy_service.py
 Database-backed, versioned skill taxonomy service featuring:
 1. Fast dual-layer in-memory lookup cache compiled from database & seed ontology.
 2. Exact short-acronym ambiguity protection (prevents 'C', 'R', 'Go' from fuzzy corruption).
-3. RapidFuzz typo-tolerant canonical mapping.
-4. Autonomous Flywheel Queue for newly encountered / LLM-extracted unmapped skills.
-5. Administrative approval and alias-promotion lifecycle.
+3. RapidFuzz typo-tolerant canonical mapping with cached alias keys (eliminates per-lookup O(n) allocations).
+4. Autonomous Flywheel Queue with bounded capacity, prose stopword rejection, and O(1) pending index.
+5. Administrative approval and alias-promotion lifecycle with collision protection.
 """
 
+import os
 import re
 import uuid
 import logging
@@ -51,6 +52,22 @@ SHORT_EXACT_SKILLS = {
     "ai", "ml", "dl", "nlp", "cv", "ui", "ux", "ci", "cd", "qa", "k8s", "rn", "tf", "es", "sh"
 }
 
+# Generic resume prose and stop words rejected from auto-entering flywheel review queue
+RESUME_PROSE_STOPWORDS: Set[str] = {
+    "january", "february", "march", "april", "may", "june", "july", "august",
+    "september", "october", "november", "december", "monday", "tuesday", "wednesday",
+    "thursday", "friday", "saturday", "sunday", "bachelor", "master", "doctor",
+    "phd", "degree", "university", "college", "school", "education", "experience",
+    "summary", "project", "projects", "manager", "director", "president", "engineer",
+    "developer", "analyst", "consultant", "intern", "associate", "company", "corporation",
+    "department", "responsibilities", "achievements", "managed", "designed", "developed",
+    "created", "implemented", "responsible", "building", "leading", "working", "skills",
+    "united", "states", "america", "remote", "hybrid", "onsite", "present", "current",
+    "overview", "objective", "profile", "contact", "phone", "email", "address", "resume",
+    "curriculum", "vitae", "references", "available", "upon", "request", "team", "client",
+    "years", "year", "months", "month", "lead", "senior", "junior", "principal", "staff",
+}
+
 
 class SkillTaxonomyService:
     """
@@ -60,14 +77,20 @@ class SkillTaxonomyService:
 
     def __init__(self):
         self.version = TAXONOMY_VERSION
+        self.max_pending_skills: int = int(os.getenv("ATS_MAX_PENDING_SKILLS", "1000"))
         # Master in-memory store: id -> record
         self._skills_by_id: Dict[str, Dict[str, Any]] = {}
         # Canonical index: canonical_name_lower -> record
         self._canonical_index: Dict[str, Dict[str, Any]] = {}
         # Alias lookup index: alias_lower -> canonical_name
         self._alias_index: Dict[str, str] = {}
+        # O(1) pending index: canonical_key -> pending_record
+        self._pending_index: Dict[str, Dict[str, Any]] = {}
         # Ambiguous tokens set
         self._ambiguous_tokens: Set[str] = set(SHORT_EXACT_SKILLS)
+        # Pre-allocated cached key arrays for fast fuzzy lookups (invalidated on mutation)
+        self._cached_fuzzy_keys: Optional[List[str]] = None
+        self._cached_alias_keys: Optional[List[str]] = None
 
         # Initialize from seed data
         self.sync_seed()
@@ -77,6 +100,29 @@ class SkillTaxonomyService:
         if cls._instance is None:
             cls._instance = SkillTaxonomyService()
         return cls._instance
+
+    def _invalidate_lookup_cache(self) -> None:
+        """Invalidates cached alias lists when taxonomy is mutated."""
+        self._cached_fuzzy_keys = None
+        self._cached_alias_keys = None
+
+    def get_fuzzy_keys(self) -> List[str]:
+        """
+        Returns cached list of alias keys eligible for fuzzy matching (len >= 4, non-ambiguous).
+        Avoids rebuilding list on every fuzzy lookup.
+        """
+        if self._cached_fuzzy_keys is None:
+            self._cached_fuzzy_keys = [
+                k for k in self._alias_index.keys()
+                if len(k) >= 4 and k not in self._ambiguous_tokens
+            ]
+        return self._cached_fuzzy_keys
+
+    def get_alias_keys(self) -> List[str]:
+        """Returns cached list of all alias keys."""
+        if self._cached_alias_keys is None:
+            self._cached_alias_keys = list(self._alias_index.keys())
+        return self._cached_alias_keys
 
     def sync_seed(self) -> Dict[str, Any]:
         """
@@ -138,6 +184,14 @@ class SkillTaxonomyService:
                 }
                 self._register_record(record)
                 added_count += 1
+
+        # Re-index active pending skills into O(1) index
+        self._pending_index = {
+            self._normalize_key(s["canonical_name"]): s
+            for s in self._skills_by_id.values()
+            if s.get("status") == "pending"
+        }
+        self._invalidate_lookup_cache()
 
         logger.info(
             f"Taxonomy seed synced: {added_count} new skills added, "
@@ -244,6 +298,8 @@ class SkillTaxonomyService:
             if record.get("is_ambiguous") and len(canonical_key) <= 3:
                 self._ambiguous_tokens.add(canonical_key)
 
+        self._invalidate_lookup_cache()
+
     def _remove_lookup_entries(self, record: Dict[str, Any]) -> None:
         """Remove a record's old resolution entries before renaming or rejecting it."""
         for key, value in list(self._canonical_index.items()):
@@ -252,6 +308,7 @@ class SkillTaxonomyService:
         for key, canonical_name in list(self._alias_index.items()):
             if canonical_name == record["canonical_name"]:
                 del self._alias_index[key]
+        self._invalidate_lookup_cache()
 
     def _normalize_key(self, token: str) -> str:
         if not token:
@@ -265,7 +322,7 @@ class SkillTaxonomyService:
         Resolves a raw candidate skill string to its canonical taxonomy record.
         1. Exact short-acronym protection.
         2. Direct canonical & alias dictionary lookup.
-        3. High-precision fuzzy matching for typos (tokens >= 4 chars).
+        3. High-precision fuzzy matching for typos (tokens >= 4 chars) using pre-cached alias array.
         """
         if not raw_skill or not isinstance(raw_skill, str):
             return None
@@ -298,18 +355,21 @@ class SkillTaxonomyService:
             return self.get_skill_by_canonical(canonical_name)
 
         # 3. High-Precision Fuzzy Matching (only for words >= 4 chars)
+        # Uses cached list of fuzzy-eligible alias keys; avoids O(N) allocation on each call.
         if len(key) >= 4:
-            match = process.extractOne(
-                key,
-                list(self._alias_index.keys()),
-                scorer=fuzz.WRatio,
-                score_cutoff=fuzzy_cutoff
-            )
-            if match:
-                matched_alias = match[0]
-                if matched_alias not in self._ambiguous_tokens and len(matched_alias) >= 4:
-                    canonical_name = self._alias_index[matched_alias]
-                    return self.get_skill_by_canonical(canonical_name)
+            fuzzy_keys = self.get_fuzzy_keys()
+            if fuzzy_keys:
+                match = process.extractOne(
+                    key,
+                    fuzzy_keys,
+                    scorer=fuzz.WRatio,
+                    score_cutoff=fuzzy_cutoff
+                )
+                if match:
+                    matched_alias = match[0]
+                    canonical_name = self._alias_index.get(matched_alias)
+                    if canonical_name:
+                        return self.get_skill_by_canonical(canonical_name)
 
         return None
 
@@ -328,26 +388,52 @@ class SkillTaxonomyService:
         context: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        The Flywheel: Captures any unrecognized skill into status='pending'
-        for administrative review and automated compound growth.
+        The Flywheel: Captures unrecognized novel skills into status='pending'
+        with strict token validation, stopword filtration, O(1) pending index lookup,
+        and bounded queue capacity (DoS defense).
         """
+        if not raw_skill or not isinstance(raw_skill, str):
+            return {}
+
         cleaned = raw_skill.strip()
-        if not cleaned or len(cleaned) < 2 or len(cleaned) > 50:
+        if not cleaned or len(cleaned) < 2 or len(cleaned) > 40:
+            return {}
+
+        # 1. Reject pure digits (e.g. '2024')
+        if cleaned.isdigit():
+            return {}
+
+        # 2. Reject common generic resume prose words
+        if cleaned.lower() in RESUME_PROSE_STOPWORDS:
+            return {}
+
+        # 3. Validate token format (must be plausible technical name)
+        if not re.match(r"^[A-Za-z0-9][A-Za-z0-9\s.+#/_-]{0,38}[A-Za-z0-9+#]$", cleaned) and len(cleaned) > 1:
             return {}
 
         key = self._normalize_key(cleaned)
-        
-        # Check if already in pending index first
-        for skill in self._skills_by_id.values():
-            if self._normalize_key(skill["canonical_name"]) == key and skill["status"] == "pending":
-                skill["occurrence_count"] = skill.get("occurrence_count", 1) + 1
-                skill["updated_at"] = datetime.now(timezone.utc).isoformat()
-                return skill
+        if not key:
+            return {}
 
-        # If it already resolves to an approved record, return that
+        # 4. O(1) Pending index check (avoids scanning all skills O(N))
+        if key in self._pending_index:
+            pending_rec = self._pending_index[key]
+            pending_rec["occurrence_count"] = pending_rec.get("occurrence_count", 1) + 1
+            pending_rec["updated_at"] = datetime.now(timezone.utc).isoformat()
+            return pending_rec
+
+        # 5. If it already resolves to an approved record, return that
         existing = self.lookup_skill(cleaned)
         if existing and existing.get("status") == "approved":
             return existing
+
+        # 6. Queue capacity limit (DoS / poisoning prevention)
+        if len(self._pending_index) >= self.max_pending_skills:
+            logger.warning(
+                f"Flywheel pending review queue at capacity ({self.max_pending_skills}); "
+                f"dropping candidate skill '{cleaned}' to protect system resources."
+            )
+            return {}
 
         # Create new pending entry
         new_id = f"skill-pending-{uuid.uuid4().hex[:6]}"
@@ -380,7 +466,8 @@ class SkillTaxonomyService:
         }
 
         self._register_record(pending_record)
-        logger.info(f"Flywheel registered new pending skill '{cleaned}' from source={source}.")
+        self._pending_index[key] = pending_record
+        logger.info(f"Flywheel registered new pending skill '{cleaned}' from source={source} (pending count: {len(self._pending_index)}).")
         return pending_record
 
     def create_skill(
@@ -454,6 +541,10 @@ class SkillTaxonomyService:
                 if a_clean:
                     self._check_alias_collision(a_clean, current_skill_id=record["id"])
 
+        # Remove from pending index
+        old_canonical_key = self._normalize_key(record["canonical_name"])
+        self._pending_index.pop(old_canonical_key, None)
+
         # Passed all checks! Now update record safely:
         self._remove_lookup_entries(record)
         record["canonical_name"] = target_canonical
@@ -473,10 +564,13 @@ class SkillTaxonomyService:
         return record
 
     def reject_skill(self, skill_id: str) -> Optional[Dict[str, Any]]:
-        """Marks a pending skill as rejected (ignored)."""
+        """Marks a pending skill as rejected (ignored) and removes from pending index."""
         record = self._skills_by_id.get(skill_id)
         if not record:
             return None
+
+        canonical_key = self._normalize_key(record["canonical_name"])
+        self._pending_index.pop(canonical_key, None)
 
         self._remove_lookup_entries(record)
         record["status"] = "rejected"
@@ -545,6 +639,10 @@ class SkillTaxonomyService:
         start = (page - 1) * limit
         end = start + limit
         return skills[start:end], total
+
+    def get_pending_skills(self) -> List[Dict[str, Any]]:
+        """Returns all currently pending skills in the flywheel review queue."""
+        return list(self._pending_index.values())
 
     def get_taxonomy_stats(self) -> Dict[str, Any]:
         """Returns overview statistics of the taxonomy and flywheel review queue."""
