@@ -7,6 +7,7 @@ from langchain_core.runnables import Runnable
 
 from ats_core.schema.candidate import CandidateProfile
 from ats_core.llm.client import get_openrouter_chat_model, get_structured_llm, get_llm_config
+from ats_core.llm.sanitizer import sanitize_prompt_text
 
 logger = logging.getLogger("ats.parsers.candidate_extractor")
 
@@ -96,13 +97,7 @@ class OllamaCandidateExtractor:
 
     def _sanitize_text(self, text: str) -> str:
         """Neutralizes prompt injection directives in candidate resumes."""
-        if not text:
-            return ""
-        sanitized = text.replace("```", "'''")
-        sanitized = sanitized.replace("<|im_start|>", "").replace("<|im_end|>", "")
-        sanitized = sanitized.replace("[INST]", "").replace("[/INST]", "")
-        sanitized = sanitized.replace("System:", "Resume Content:").replace("SYSTEM:", "Resume Content:")
-        return sanitized.strip()
+        return sanitize_prompt_text(text)
 
     def extract_profile(self, anonymized_text: str) -> CandidateProfile:
         """

@@ -57,21 +57,65 @@ type LLMEvaluationResult struct {
 }
 
 var emailPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}`)
-var urlPattern = regexp.MustCompile(`(?i)\b(?:https?://|www\.)[^\s]+|\b(?:linkedin\.com|github\.com)/[^\s]+`)
-var phonePattern = regexp.MustCompile(`\+?\d[\d ().\-]{7,}\d`)
+var urlPattern = regexp.MustCompile(`(?i)\b(?:https?://|www\.)[^\s<>'"]+|\b(?:[a-z0-9_-]+\.)*(?:linkedin\.com|github\.com|gitlab\.com)/[^\s<>'"]+`)
 
-// RedactKnownPII removes explicit identifiers, not all identifying prose.
+// Date interval patterns that must NEVER be wiped as phone numbers (e.g. 2019 - 2023, Jan 2019 - Dec 2023)
+var (
+	yearRangePattern      = regexp.MustCompile(`\b(?:19|20)\d{2}\s*(?:-|–|—|to)\s*(?:(?:19|20)\d{2}|[Pp]resent|[Cc]urrent|[Nn]ow)\b`)
+	monthYearRangePattern = regexp.MustCompile(`(?i)\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|\d{1,2}[/.-])\s*(?:19|20)\d{2}\s*(?:-|–|—|to)\s*(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|\d{1,2}[/.-])\s*(?:19|20)\d{2}|present|current|now)\b`)
+	slashDateRangePattern = regexp.MustCompile(`\b\d{1,2}/\d{2,4}\s*(?:-|–|—|to)\s*(?:\d{1,2}/\d{2,4}|[Pp]resent|[Cc]urrent|[Nn]ow)\b`)
+)
+
+var phoneStructuralPattern = regexp.MustCompile(`(?i)(?:\b(?:phone|tel|mobile|cell)[:\s]*)?(?:\+\d{1,3}[-.\s]*)?(?:\(\d{2,4}\)|\b\d{2,4})[-.\s]*\d{3,4}[-.\s]*\d{3,4}\b`)
+var phoneIntlPattern = regexp.MustCompile(`\+\d{1,3}[\d ().\-]{6,}\d`)
+
+// redactPhonesPreservingDates removes phone numbers while safeguarding date ranges like 2019 - 2023.
+func redactPhonesPreservingDates(text string) string {
+	placeholders := make(map[string]string)
+	counter := 0
+
+	stash := func(match string) string {
+		token := fmt.Sprintf("__DATE_INTERVAL_%d__", counter)
+		counter++
+		placeholders[token] = match
+		return token
+	}
+
+	// 1. Stash employment date ranges so phone scrubber cannot touch them
+	text = yearRangePattern.ReplaceAllStringFunc(text, stash)
+	text = monthYearRangePattern.ReplaceAllStringFunc(text, stash)
+	text = slashDateRangePattern.ReplaceAllStringFunc(text, stash)
+
+	// 2. Redact phone numbers
+	text = phoneStructuralPattern.ReplaceAllString(text, "[PHONE]")
+	text = phoneIntlPattern.ReplaceAllString(text, "[PHONE]")
+
+	// 3. Restore preserved date ranges
+	for token, original := range placeholders {
+		text = strings.ReplaceAll(text, token, original)
+	}
+
+	return text
+}
+
+// RedactKnownPII removes explicit identifiers, personal names, contact info and URLs while preserving date intervals.
 func RedactKnownPII(text string, identifiers ...string) string {
 	for _, identifier := range identifiers {
-		if strings.TrimSpace(identifier) != "" {
-			text = regexp.MustCompile(`(?i)`+regexp.QuoteMeta(identifier)).ReplaceAllString(text, "[IDENTIFIER]")
+		trimmed := strings.TrimSpace(identifier)
+		if trimmed != "" && len(trimmed) >= 2 {
+			text = regexp.MustCompile(`(?i)\b`+regexp.QuoteMeta(trimmed)+`\b`).ReplaceAllString(text, "[IDENTIFIER]")
+			// Also redact exact match if no word boundary (e.g. email or URL substring)
+			if strings.Contains(text, trimmed) {
+				text = strings.ReplaceAll(text, trimmed, "[IDENTIFIER]")
+			}
 		}
 	}
 	text = emailPattern.ReplaceAllString(text, "[EMAIL]")
 	text = urlPattern.ReplaceAllString(text, "[PROFILE_URL]")
-	return phonePattern.ReplaceAllString(text, "[PHONE]")
+	return redactPhonesPreservingDates(text)
 }
-func (e *LLMEvaluator) EvaluateCandidate(ctx context.Context, summary, job string) (*models.Scorecard, error) {
+
+func (e *LLMEvaluator) EvaluateCandidate(ctx context.Context, summary, job string, identifiers ...string) (*models.Scorecard, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -89,8 +133,18 @@ func (e *LLMEvaluator) EvaluateCandidate(ctx context.Context, summary, job strin
 	if url == "" || model == "" {
 		return nil, errors.New("model provider is not configured")
 	}
-	safeSummary := RedactKnownPII(summary)
-	prompt, err := json.Marshal(map[string]string{"resume": safeSummary, "job_description": RedactKnownPII(job)})
+	safeSummary := RedactKnownPII(summary, identifiers...)
+	safeJob := RedactKnownPII(job, identifiers...)
+
+	// Pre-flight check: ensure none of the identifiers leaked into safeSummary
+	for _, id := range identifiers {
+		trimmed := strings.TrimSpace(id)
+		if trimmed != "" && len(trimmed) >= 3 && strings.Contains(strings.ToLower(safeSummary), strings.ToLower(trimmed)) {
+			safeSummary = regexp.MustCompile(`(?i)\b`+regexp.QuoteMeta(trimmed)+`\b`).ReplaceAllString(safeSummary, "[IDENTIFIER]")
+		}
+	}
+
+	prompt, err := json.Marshal(map[string]string{"resume": safeSummary, "job_description": safeJob})
 	if err != nil {
 		return nil, err
 	}

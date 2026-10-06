@@ -2,6 +2,7 @@ package services
 
 import (
 	"ats-core-go/internal/config"
+	"ats-core-go/internal/models"
 	"context"
 	"encoding/json"
 	"io"
@@ -92,6 +93,51 @@ func TestKnownIdentifiersRedacted(t *testing.T) {
 	for _, value := range []string{"Alex Smith", "alex@example.com", "555", "linkedin.com"} {
 		if strings.Contains(safe, value) {
 			t.Fatalf("identifier retained: %s", safe)
+		}
+	}
+}
+
+func TestPhoneRegexPreservesEmploymentDateRanges(t *testing.T) {
+	text := "Worked at Google (2019 - 2023), earlier at Acme (2015 – 2019). Tenure from Jan 2019 - Dec 2023 and 2020 - Present. Contact: +1 (555) 123-4567 or 555-867-5309."
+	safe := RedactKnownPII(text, "Candidate")
+
+	// Phone numbers MUST be redacted
+	if strings.Contains(safe, "123-4567") || strings.Contains(safe, "867-5309") {
+		t.Fatalf("phone numbers were not redacted: %s", safe)
+	}
+	if !strings.Contains(safe, "[PHONE]") {
+		t.Fatalf("expected [PHONE] placeholder: %s", safe)
+	}
+
+	// Date intervals MUST be preserved and NOT wiped as phone numbers
+	expectedDates := []string{
+		"2019 - 2023",
+		"2015 – 2019",
+		"Jan 2019 - Dec 2023",
+		"2020 - Present",
+	}
+	for _, dt := range expectedDates {
+		if !strings.Contains(safe, dt) {
+			t.Fatalf("date interval was wiped as phone number! Expected %q in: %s", dt, safe)
+		}
+	}
+}
+
+func TestRealCandidateNameAndPartsRedacted(t *testing.T) {
+	text := "Deva Kumar B is a Software Engineer. Deva built scalable services and Kumar managed deployments. Email: devakumar@example.com, GitHub: https://github.com/devakumar"
+	candidate := &models.Candidate{
+		Name:     "Deva Kumar B",
+		Email:    "devakumar@example.com",
+		Phone:    "+91 98765 43210",
+		Location: "Cuddalore, Tamil Nadu",
+		LinkedIn: "https://linkedin.com/in/devakumar",
+	}
+	identifiers := ProfileIdentifiers(candidate)
+	safe := RedactKnownPII(text, identifiers...)
+
+	for _, unallowed := range []string{"Deva Kumar B", "Deva", "Kumar", "devakumar@example.com", "github.com/devakumar"} {
+		if strings.Contains(safe, unallowed) {
+			t.Fatalf("unallowed candidate PII remained in redacted text: %q in %s", unallowed, safe)
 		}
 	}
 }

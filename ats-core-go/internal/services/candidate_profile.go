@@ -175,9 +175,32 @@ func extractEmployment(p *models.Candidate, lines []string) {
 
 // ProfileIdentifiers returns explicit identifiers to remove before scoring.
 func ProfileIdentifiers(p *models.Candidate) []string {
-	identifiers := []string{p.Email, p.Phone, p.Location, p.LinkedIn}
-	if p.Name != "Candidate" && strings.IndexFunc(p.Name, unicode.IsLetter) >= 0 {
-		identifiers = append(identifiers, p.Name)
+	if p == nil {
+		return []string{}
+	}
+	identifiers := []string{}
+	if strings.TrimSpace(p.Email) != "" && !strings.EqualFold(p.Email, "N/A") {
+		identifiers = append(identifiers, strings.TrimSpace(p.Email))
+	}
+	if strings.TrimSpace(p.Phone) != "" && !strings.EqualFold(p.Phone, "N/A") {
+		identifiers = append(identifiers, strings.TrimSpace(p.Phone))
+	}
+	if strings.TrimSpace(p.Location) != "" && !strings.EqualFold(p.Location, "N/A") && !strings.EqualFold(p.Location, "Remote") {
+		identifiers = append(identifiers, strings.TrimSpace(p.Location))
+	}
+	if strings.TrimSpace(p.LinkedIn) != "" && !strings.EqualFold(p.LinkedIn, "N/A") {
+		identifiers = append(identifiers, strings.TrimSpace(p.LinkedIn))
+	}
+	if p.Name != "" && !strings.EqualFold(p.Name, "Candidate") && strings.IndexFunc(p.Name, unicode.IsLetter) >= 0 {
+		cleanName := strings.TrimSpace(p.Name)
+		identifiers = append(identifiers, cleanName)
+		// Also add individual name tokens (length >= 3) to redact first/last name occurrences
+		for _, token := range strings.Fields(cleanName) {
+			token = strings.Trim(token, ".,()[]")
+			if len(token) >= 3 && !profileNameNoise.MatchString(token) && !profileRole.MatchString(token) {
+				identifiers = append(identifiers, token)
+			}
+		}
 	}
 	return identifiers
 }

@@ -377,12 +377,67 @@ async def upload_resume_async(
                 from ats_core.parsers.anonymizer import ResumeAnonymizer
                 from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
 
-                # Configured models may run remotely. Never send the raw resume when
-                # the redaction dependency is unavailable or fails.
-                def redact_resume():
-                    return ResumeAnonymizer(min_score_threshold=0.55).anonymize(parsed_candidate.get("raw_text", ""))
+                # Configured models may run remotely (e.g. OpenRouter). Never send raw resume PII.
+                # Explicitly re-use all parser-extracted identifiers (name, email, phone, location, URLs).
+                def redact_and_validate_resume():
+                    anonymizer = ResumeAnonymizer(min_score_threshold=0.55)
+                    cand_name = parsed_candidate.get("name")
+                    cand_email = parsed_candidate.get("email")
+                    cand_phone = parsed_candidate.get("phone")
+                    cand_loc = parsed_candidate.get("location")
+                    cand_linkedin = parsed_candidate.get("linkedin")
+                    cand_urls = [cand_linkedin] if cand_linkedin and cand_linkedin != "N/A" else []
 
-                evaluation_text = await run_in_threadpool(redact_resume)
+                    redacted = anonymizer.anonymize(
+                        text=parsed_candidate.get("raw_text", ""),
+                        known_name=cand_name,
+                        known_email=cand_email,
+                        known_phone=cand_phone,
+                        known_location=cand_loc,
+                        known_urls=cand_urls,
+                    )
+
+                    # Pre-flight check: verify that redacted text contains NO residual PII before sending to external LLM
+                    check_fn = getattr(anonymizer, "check_preflight_leak", None)
+                    if callable(check_fn):
+                        check_res = check_fn(
+                            text=redacted,
+                            name=cand_name,
+                            email=cand_email,
+                            phone=cand_phone,
+                            urls=cand_urls,
+                        )
+                        if isinstance(check_res, tuple) and len(check_res) == 2:
+                            is_clean, leak_fields = check_res
+                            if not is_clean:
+                                logger.warning(
+                                    f"Pre-flight PII check found potential residual identifiers ({leak_fields}) for candidate {candidate_id}. Performing aggressive scrub."
+                                )
+                                scrub_fn = getattr(anonymizer, "scrub_residual_pii", None)
+                                if callable(scrub_fn):
+                                    redacted = scrub_fn(
+                                        text=redacted,
+                                        name=cand_name,
+                                        email=cand_email,
+                                        phone=cand_phone,
+                                        location=cand_loc,
+                                        urls=cand_urls,
+                                    )
+                                remaining_res = check_fn(
+                                    text=redacted,
+                                    name=cand_name,
+                                    email=cand_email,
+                                    phone=cand_phone,
+                                    urls=cand_urls,
+                                )
+                                if isinstance(remaining_res, tuple) and len(remaining_res) == 2:
+                                    clean_now, remaining = remaining_res
+                                    if not clean_now:
+                                        raise ValueError(f"Pre-flight leak validation failed: candidate text contains unredacted PII ({remaining})")
+
+                    return redacted
+
+                evaluation_text = await run_in_threadpool(redact_and_validate_resume)
                 evaluator = await run_in_threadpool(LocalDeepEvaluator)
                 eval_result = await run_in_threadpool(
                     evaluator.evaluate,

@@ -45,7 +45,7 @@ type stubEvaluator struct {
 	panic     bool
 }
 
-func (s stubEvaluator) EvaluateCandidate(ctx context.Context, summary, _ string) (*models.Scorecard, error) {
+func (s stubEvaluator) EvaluateCandidate(ctx context.Context, summary, _ string, _ ...string) (*models.Scorecard, error) {
 	if s.summary != nil {
 		s.summary <- summary
 	}

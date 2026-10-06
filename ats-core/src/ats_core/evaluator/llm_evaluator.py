@@ -7,6 +7,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
 
 from ats_core.llm.client import get_openrouter_chat_model, get_structured_llm, get_llm_config
+from ats_core.llm.sanitizer import sanitize_prompt_text
 
 logger = logging.getLogger("ats.evaluator.llm")
 
@@ -37,21 +38,8 @@ class EvaluationReport(BaseModel):
 
 
 def _sanitize_untrusted_prompt_input(text: str) -> str:
-    """Sanitizes candidate input by neutralizing prompt injection triggers and fake system directives."""
-    if not text:
-        return ""
-    # Strip dangerous role framing tokens and injection payloads
-    sanitized = text.replace("```", "'''")
-    # Neutralize fake system/role prompts
-    sanitized = re.sub(r"<\|[^>]*\|>|\[/?INST\]", "", sanitized, flags=re.IGNORECASE)
-    sanitized = re.sub(
-        r"</?(?:untrusted_candidate_dossier|job_requisition)[^>]*>",
-        "[escaped_tag]", sanitized, flags=re.IGNORECASE,
-    )
-    sanitized = re.sub(
-        r"(?im)\b(?:system|assistant|user|human|evaluator)\s*:", "Applicant Note:", sanitized
-    )
-    return sanitized.strip()
+    """Sanitizes candidate input using the centralized PromptSanitizer."""
+    return sanitize_prompt_text(text)
 
 
 SYSTEM_EVALUATOR_PROMPT = (

@@ -23,7 +23,7 @@ import (
 )
 
 type candidateEvaluator interface {
-	EvaluateCandidate(context.Context, string, string) (*models.Scorecard, error)
+	EvaluateCandidate(context.Context, string, string, ...string) (*models.Scorecard, error)
 }
 type resumeParser interface {
 	ExtractText([]byte) (string, error)
@@ -282,7 +282,7 @@ func (h *CandidatesHandler) processUpload(taskID, candidateID, filename, pdfPath
 		normalizedName := strings.NewReplacer("_", " ", "-", " ").Replace(name)
 		identifiers := append(services.ProfileIdentifiers(profile), name, normalizedName)
 		summary := services.RedactKnownPII(text, identifiers...)
-		scorecard, err = h.evaluator.EvaluateCandidate(ctx, summary, job.JobDescription)
+		scorecard, err = h.evaluator.EvaluateCandidate(ctx, summary, job.JobDescription, identifiers...)
 		if err != nil || scorecard == nil {
 			return
 		}

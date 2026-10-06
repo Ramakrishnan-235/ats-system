@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import uuid
 from typing import Dict, Any, Optional, List
@@ -11,6 +12,21 @@ logger = logging.getLogger("ats.evaluator.audit")
 
 # Live in-memory audit registry for EEOC and compliance audits across services
 AUDIT_LOG_STORE: List[ScoringAudit] = []
+
+
+def sanitize_audit_prompt(prompt: Optional[str]) -> Optional[str]:
+    """
+    Prevents long-term retention of full prompts and potential candidate PII in ScoringAudit.
+    Computes a cryptographic SHA-256 fingerprint of the prompt for tamper verification
+    without persisting candidate resume text or raw requisition prompts indefinitely.
+    """
+    if not prompt or not str(prompt).strip():
+        return None
+    p = str(prompt).strip()
+    if p.startswith("sha256:"):
+        return p
+    digest = hashlib.sha256(p.encode("utf-8")).hexdigest()
+    return f"sha256:{digest}"
 
 
 class AuditLogger:
@@ -63,6 +79,8 @@ class AuditLogger:
         ]
         recruiter_summary = getattr(report, "executive_verdict", "") or "Candidate evaluation audit."
 
+        sanitized_prompt = sanitize_audit_prompt(raw_prompt)
+
         audit_entry = ScoringAudit(
             id=uuid.uuid4(),
             application_id=app_uuid,
@@ -77,7 +95,7 @@ class AuditLogger:
             recruiter_summary=recruiter_summary,
             llm_model=telemetry.get("model", "gemma4:e2b"),
             latency_ms=telemetry.get("latency_ms", 0),
-            raw_prompt=raw_prompt,
+            raw_prompt=sanitized_prompt,
         )
 
         AUDIT_LOG_STORE.append(audit_entry)

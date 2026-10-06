@@ -16,6 +16,13 @@ from ats_core.schema.evaluation import (
     QuestionCategory,
 )
 from ats_core.llm.client import get_openrouter_chat_model, get_structured_llm, get_llm_config
+from ats_core.llm.sanitizer import (
+    sanitize_prompt_text,
+    CONTROL_TOKENS_PATTERN,
+    ADVERSARIAL_DIRECTIVES_PATTERN,
+    ROLE_DELIMITER_PATTERN,
+    DEFAULT_XML_TAG_ESCAPE_PATTERN,
+)
 
 logger = logging.getLogger("ats.evaluator.deep")
 
@@ -35,21 +42,11 @@ class LocalDeepEvaluator:
     Produces structured scorecards, evidence citations, and tailored interview plans.
     """
 
-    # Compiled regex patterns for prompt injection defenses
-    _CONTROL_TOKENS_PATTERN = re.compile(
-        r"(<\|[^>]*\|>|\[/?INST\]|<<?/?SYS>>?|\[/?SYS\]|</?s>|</?turn>|</?start_of_turn>|</?end_of_turn>)",
-        re.IGNORECASE
-    )
-    _ADVERSARIAL_DIRECTIVES_PATTERN = re.compile(
-        r"(?i)\b(ignore\s+(all\s+)?(previous|prior)\s+instructions|system\s+prompt\s+override|disregard\s+(the\s+above|all\s+rules)|new\s+system\s+prompt)\b"
-    )
-    _ROLE_DELIMITER_PATTERN = re.compile(
-        r"(?im)(?:^|\b)(system|assistant|user|human|evaluator)\s*:",
-    )
-    _XML_TAG_ESCAPE_PATTERN = re.compile(
-        r"<\/?(untrusted_candidate_dossier|job_requisition)[^>]*>",
-        re.IGNORECASE
-    )
+    # Compiled regex patterns for prompt injection defenses (centralized in ats_core.llm.sanitizer)
+    _CONTROL_TOKENS_PATTERN = CONTROL_TOKENS_PATTERN
+    _ADVERSARIAL_DIRECTIVES_PATTERN = ADVERSARIAL_DIRECTIVES_PATTERN
+    _ROLE_DELIMITER_PATTERN = ROLE_DELIMITER_PATTERN
+    _XML_TAG_ESCAPE_PATTERN = DEFAULT_XML_TAG_ESCAPE_PATTERN
 
     def __init__(
         self,
@@ -101,27 +98,14 @@ class LocalDeepEvaluator:
 
     def _sanitize_text(self, text: str) -> str:
         """
-        Robustly sanitizes candidate and job description inputs:
+        Robustly sanitizes candidate and job description inputs using the centralized PromptSanitizer:
         1. Neutralizes triple-backtick markdown breakout sequences.
         2. Strips LLM chat control tokens (<|im_start|>, [INST], etc.).
         3. Neutralizes structural XML enclosure tags to prevent prompt escaping.
         4. Neutralizes fake conversational system/assistant prefixes.
         5. Defangs explicit jailbreak directives.
         """
-        if not text:
-            return ""
-
-        sanitized = text.replace("```", "'''")
-        # Prevent boundary breakout from enclosing XML tags
-        sanitized = self._XML_TAG_ESCAPE_PATTERN.sub("[escaped_tag]", sanitized)
-        # Strip LLM control sequences
-        sanitized = self._CONTROL_TOKENS_PATTERN.sub("", sanitized)
-        # Neutralize fake role prefixes
-        sanitized = self._ROLE_DELIMITER_PATTERN.sub("Applicant text:", sanitized)
-        # Defang jailbreak override directives
-        sanitized = self._ADVERSARIAL_DIRECTIVES_PATTERN.sub("[neutralized_directive]", sanitized)
-
-        return sanitized.strip()
+        return sanitize_prompt_text(text)
 
     def _build_evaluation_prompt(
         self,

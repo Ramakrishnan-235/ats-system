@@ -22,6 +22,7 @@ from langchain_core.runnables import Runnable
 
 from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
 from ats_core.llm.client import get_openrouter_chat_model, get_structured_llm, get_llm_config
+from ats_core.llm.sanitizer import sanitize_prompt_text
 
 logger = logging.getLogger("ats.parsers.llm_residue")
 
@@ -131,6 +132,10 @@ class LLMResidueExtractor:
             "[PROFILE_URL]", redacted, flags=re.IGNORECASE,
         )
 
+    def _sanitize_text(self, text: str) -> str:
+        """Neutralizes prompt injection directives in untrusted text."""
+        return sanitize_prompt_text(text)
+
     def extract_residue_skills(
         self,
         resume_text: str,
@@ -155,13 +160,16 @@ class LLMResidueExtractor:
             logger.warning("Residue PII redaction unavailable; using local rule extraction only.")
             raw_candidates = self._fallback_rule_residue(resume_text, skills_already_found)
         else:
+            safe_resume_text = sanitize_prompt_text(safe_resume_text)
+            safe_skills_list = [sanitize_prompt_text(s) for s in skills_already_found]
+            safe_skills_str = ", ".join(safe_skills_list)
             user_prompt = f"""
             <resume_text>
             {safe_resume_text}
             </resume_text>
 
             <skills_already_found>
-            {', '.join(skills_already_found)}
+            {safe_skills_str}
             </skills_already_found>
             """
             try:
@@ -181,7 +189,7 @@ class LLMResidueExtractor:
                 else:
                     raw_res = self.chain.invoke({
                         "safe_resume_text": safe_resume_text,
-                        "skills_already_found": ", ".join(skills_already_found),
+                        "skills_already_found": safe_skills_str,
                     })
                     if isinstance(raw_res, LLMResidueOutput):
                         res = raw_res
