@@ -54,7 +54,7 @@ def pipeline(monkeypatch, tmp_path):
 def test_worker_import_does_not_initialize_database_or_download_models():
     assert tasks.get_session_factory.cache_info().currsize == 0
     assert tasks.get_processing_components.cache_info().currsize == 0
-    assert tasks.BaseTaskWithRetry.dont_autoretry_for == (ValueError, FileNotFoundError)
+    assert {ValueError, FileNotFoundError}.issubset(set(tasks.BaseTaskWithRetry.dont_autoretry_for))
 
 
 def test_worker_rejects_invalid_uuid_before_loading_models(pipeline):

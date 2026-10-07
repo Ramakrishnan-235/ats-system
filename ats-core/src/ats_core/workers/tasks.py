@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import uuid
@@ -7,7 +8,9 @@ from typing import Dict, Any
 
 from celery import Task
 from celery.exceptions import SoftTimeLimitExceeded
+from pydantic import ValidationError
 from sqlalchemy import create_engine
+from sqlalchemy.exc import DataError, IntegrityError, ProgrammingError
 from sqlalchemy.orm import sessionmaker
 
 from ats_core.workers.celery_app import celery_app
@@ -57,11 +60,29 @@ def _validated_staged_path(file_path: str) -> Path:
 class BaseTaskWithRetry(Task):
     """Base task class with automatic exponential backoff retry configuration."""
     autoretry_for = (Exception,)
-    dont_autoretry_for = (ValueError, FileNotFoundError)
-    retry_kwargs = {"max_retries": 5}
+    dont_autoretry_for = (
+        ValueError,
+        FileNotFoundError,
+        ValidationError,
+        DataError,
+        IntegrityError,
+        ProgrammingError,
+        TypeError,
+        KeyError,
+    )
+    retry_kwargs = {"max_retries": int(os.getenv("ATS_CELERY_MAX_RETRIES", "5"))}
     retry_backoff = True           # Exponential backoff (1s, 2s, 4s, 8s, 16s...)
     retry_backoff_max = 300        # Max backoff delay capped at 5 minutes
     retry_jitter = True            # Adds random jitter: delay * random(0.5, 1.5)
+
+    def retry(self, args=None, kwargs=None, exc=None, throw=True, **options):
+        # Prevent retry multiplication for deterministic errors (even if wrapped as causes)
+        cause = getattr(exc, "__cause__", None) if exc else None
+        if exc and isinstance(exc, self.dont_autoretry_for):
+            raise exc
+        if cause and isinstance(cause, self.dont_autoretry_for):
+            raise exc
+        return super().retry(args=args, kwargs=kwargs, exc=exc, throw=throw, **options)
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         # Preserve files during retries, but remove them after terminal failure.
@@ -127,19 +148,30 @@ def _execute_resume_processing(
                     candidate_record = Candidate(id=cand_uuid)
                     session.add(candidate_record)
 
-                candidate_record.anonymized_name = profile.anonymized_name
-                candidate_record.target_headline = profile.target_role_or_headline
-                candidate_record.years_of_experience = profile.timeline.total_continuous_years
-                candidate_record.highest_education = (
-                    profile.education[0].degree if profile.education else "Not Specified"
-                )
+                # Truncate strings and clamp bounds to prevent DB column overflow (String(100), String(255), etc.)
+                candidate_record.anonymized_name = (profile.anonymized_name or "[CANDIDATE_NAME]")[:100]
+                candidate_record.target_headline = (profile.target_role_or_headline or "")[:255]
+                raw_exp = float(getattr(profile.timeline, "total_continuous_years", 0.0) or 0.0)
+                candidate_record.years_of_experience = max(0.0, min(99.9, round(raw_exp, 1)))
+                highest_edu = "Not Specified"
+                if profile.education:
+                    first_edu = profile.education[0]
+                    highest_edu = getattr(first_edu, "degree", getattr(first_edu, "degree_name", None)) or (
+                        first_edu.get("degree") or first_edu.get("degree_name") if isinstance(first_edu, dict) else None
+                    ) or "Not Specified"
+                candidate_record.highest_education = str(highest_edu)[:100]
+                candidate_record.location = (getattr(profile, "location", None) or "Remote")[:100]
                 candidate_record.core_skills = profile.skills.core_languages + profile.skills.frameworks_and_tools
                 candidate_record.raw_anonymized_text = sanitized_text
                 candidate_record.structured_profile = profile.model_dump(mode="json")
-                candidate_record.parsing_engine = engine_used
+                candidate_record.parsing_engine = (engine_used or "hybrid-pymupdf-docling")[:50]
                 candidate_record.embedding = vector
                 
                 session.commit()
+            except (DataError, IntegrityError, ProgrammingError) as det_err:
+                session.rollback()
+                logger.error(f"Deterministic database error for candidate {candidate_id}: {det_err}")
+                raise det_err
             except Exception as db_err:
                 session.rollback()
                 logger.error(f"Database update failed in worker for candidate {candidate_id}: {db_err}")

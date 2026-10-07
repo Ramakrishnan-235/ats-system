@@ -45,7 +45,7 @@ class OllamaCandidateExtractor:
         model_name: Optional[str] = None,
         api_key: Optional[str] = None,
         temperature: float = 0.0,
-        max_retries: int = 3,
+        max_retries: Optional[int] = None,
     ):
         config = get_llm_config(base_url=base_url, model_name=model_name, api_key=api_key)
         self.base_url = config["base_url"]
@@ -53,6 +53,8 @@ class OllamaCandidateExtractor:
         self.api_key = config["api_key"]
         self.is_openrouter = config["is_openrouter"]
         self.temperature = temperature
+        if max_retries is None:
+            max_retries = int(os.getenv("ATS_LLM_MAX_RETRIES", "1"))
         self.max_retries = max_retries
 
         # LangChain Chat Model connected to OpenRouter / Ollama
