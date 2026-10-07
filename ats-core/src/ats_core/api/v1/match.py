@@ -1,4 +1,7 @@
+import asyncio
+import inspect
 import logging
+import os
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, status
@@ -255,38 +258,68 @@ async def match_and_evaluate_candidates(request: MatchRequest):
         stage2_candidates = stage1_candidates[:request.stage2_rerank_limit]
 
     # -------------------------------------------------------------------------
-    # STAGE 3: Deep LLM Evaluation (Top candidates only) (Non-blocking worker thread)
+    # STAGE 3: Deep LLM Evaluation (Top candidates only) (Concurrent bounded evaluation)
     # -------------------------------------------------------------------------
     from ats_core.evaluator.llm_evaluator import evaluate_candidate, EvaluationReport
-    final_results = []
-    failed_candidate_ids = []
-    for rank, cand in enumerate(stage2_candidates, start=1):
+
+    max_concurrency = int(os.getenv("ATS_MATCH_CONCURRENCY", "10"))
+    if max_concurrency < 1:
+        max_concurrency = 1
+    eval_semaphore = asyncio.Semaphore(max_concurrency)
+    eval_timeout = float(os.getenv("ATS_EVAL_TIMEOUT_SECONDS", "45.0"))
+
+    async def _evaluate_single_candidate(rank: int, cand: Dict[str, Any]):
         cand_id = cand.get("candidate_id", "unknown")
         cand_text = cand.get("text", cand.get("summary_text", ""))
-        try:
-            report: EvaluationReport = await run_in_threadpool(
-                evaluate_candidate,
-                candidate_summary=cand_text,
-                job_description=request.job_description
-            )
-            eval_data = (
-                report.model_dump()
-                if hasattr(report, "model_dump")
-                else (report.dict() if hasattr(report, "dict") else (vars(report) if hasattr(report, "__dict__") else {}))
-            )
-            final_results.append({
-                "candidate_id": cand_id,
-                "rerank_score": cand.get("rerank_score"),
-                "rerank_rank": cand.get("rerank_rank", rank),
-                "evaluation": eval_data,
-                "metadata": cand.get("metadata", {}),
-            })
-        except Exception as cand_err:
-            failed_candidate_ids.append(cand_id)
-            logger.error(
-                f"Stage 3 LLM evaluation failed for candidate '{cand_id}': {cand_err}",
-                exc_info=True
-            )
+        async with eval_semaphore:
+            try:
+                if inspect.iscoroutinefunction(evaluate_candidate):
+                    eval_coro = evaluate_candidate(
+                        candidate_summary=cand_text,
+                        job_description=request.job_description,
+                    )
+                else:
+                    eval_coro = run_in_threadpool(
+                        evaluate_candidate,
+                        candidate_summary=cand_text,
+                        job_description=request.job_description,
+                    )
+                report: EvaluationReport = await asyncio.wait_for(
+                    eval_coro,
+                    timeout=eval_timeout,
+                )
+                eval_data = (
+                    report.model_dump()
+                    if hasattr(report, "model_dump")
+                    else (report.dict() if hasattr(report, "dict") else (vars(report) if hasattr(report, "__dict__") else {}))
+                )
+                return {
+                    "candidate_id": cand_id,
+                    "rerank_score": cand.get("rerank_score"),
+                    "rerank_rank": cand.get("rerank_rank", rank),
+                    "evaluation": eval_data,
+                    "metadata": cand.get("metadata", {}),
+                }, None
+            except Exception as cand_err:
+                logger.error(
+                    f"Stage 3 LLM evaluation failed for candidate '{cand_id}': {cand_err}",
+                    exc_info=True,
+                )
+                return None, cand_id
+
+    eval_tasks = [
+        _evaluate_single_candidate(rank, cand)
+        for rank, cand in enumerate(stage2_candidates, start=1)
+    ]
+    eval_results = await asyncio.gather(*eval_tasks)
+
+    final_results = []
+    failed_candidate_ids = []
+    for eval_item, failed_id in eval_results:
+        if eval_item is not None:
+            final_results.append(eval_item)
+        if failed_id is not None:
+            failed_candidate_ids.append(failed_id)
 
     if not final_results and stage2_candidates:
         logger.error(

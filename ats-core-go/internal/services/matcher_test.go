@@ -5,8 +5,10 @@ import (
 	"ats-core-go/internal/models"
 	"ats-core-go/internal/store"
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
+	"time"
 )
 
 func TestMatchPreservesConcurrentRecruiterChanges(t *testing.T) {
@@ -59,5 +61,57 @@ func TestMatchJobForRequisitionLinksCandidates(t *testing.T) {
 	}
 	if candidates[0].MatchScore == nil || *candidates[0].MatchScore != 85 {
 		t.Fatalf("expected match score 85, got %v", candidates[0].MatchScore)
+	}
+}
+
+func TestConcurrentCandidateEvaluationAvoidsTimeout(t *testing.T) {
+	st := store.NewStore()
+	st.SaveJob(&models.Job{ID: "job-test-perf", Title: "Go Developer", CandidatesCount: 0})
+
+	const numCandidates = 10
+	for i := 0; i < numCandidates; i++ {
+		cid := fmt.Sprintf("cand-%d", i)
+		st.SaveCandidate(&models.Candidate{
+			ID:             cid,
+			Name:           fmt.Sprintf("Dev %d", i),
+			CoreSkills:     []string{"Go"},
+			TargetHeadline: "Go Backend Engineer",
+			RawText:        "Experienced Go software engineer building distributed backend services",
+		})
+	}
+
+	// Evaluator with 50ms simulated latency per candidate
+	e := fakeEvaluator(t, 200, `{"overall_match_score":88}`)
+	origTransport := e.httpClient.Transport
+	e.httpClient.Transport = transportFunc(func(r *http.Request) (*http.Response, error) {
+		time.Sleep(50 * time.Millisecond)
+		return origTransport.RoundTrip(r)
+	})
+
+	start := time.Now()
+	evals, _, _, failed, _, candidates := NewMatchService(st, e).MatchJobForRequisition(
+		context.Background(),
+		"job-test-perf",
+		"Go Developer",
+		"Go backend distributed systems developer",
+		numCandidates,
+		numCandidates,
+	)
+	elapsed := time.Since(start)
+
+	if len(failed) != 0 {
+		t.Fatalf("expected 0 failures, got %v", failed)
+	}
+	if len(evals) != numCandidates {
+		t.Fatalf("expected %d evaluations, got %d", numCandidates, len(evals))
+	}
+	if len(candidates) != numCandidates {
+		t.Fatalf("expected %d candidates, got %d", numCandidates, len(candidates))
+	}
+
+	// If run sequentially: 10 * 50ms = 500ms minimum.
+	// With concurrent evaluations (concurrency 10), it runs concurrently in ~50-150ms.
+	if elapsed > 400*time.Millisecond {
+		t.Fatalf("evaluations took too long (%v), expected concurrent execution under 400ms (sequential would take >=500ms)", elapsed)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync"
 
 	"ats-core-go/internal/models"
 	"ats-core-go/internal/store"
@@ -91,30 +92,75 @@ func (m *MatchService) MatchJobForRequisition(ctx context.Context, jobID, jobTit
 		stage2List = stage2List[:stage2Limit]
 	}
 
-	// Stage 3: Deep LLM Evaluation for Top Candidates
+	// Stage 3: Deep LLM Evaluation for Top Candidates (Concurrent with bounded concurrency)
+	type evalResult struct {
+		scorecard *models.Scorecard
+		failedID  string
+	}
+
+	results := make([]evalResult, len(stage2List))
+	maxConcurrency := 10
+	if len(stage2List) < maxConcurrency {
+		maxConcurrency = len(stage2List)
+	}
+	if maxConcurrency < 1 {
+		maxConcurrency = 1
+	}
+
+	sem := make(chan struct{}, maxConcurrency)
+	var wg sync.WaitGroup
+
+	for rank, item := range stage2List {
+		wg.Add(1)
+		go func(idx int, it CandidateScored) {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				results[idx] = evalResult{failedID: it.Candidate.ID}
+				return
+			}
+			defer func() { <-sem }()
+
+			if ctx.Err() != nil {
+				results[idx] = evalResult{failedID: it.Candidate.ID}
+				return
+			}
+
+			cand := it.Candidate
+			candSummary := cand.TargetHeadline + ". Skills: " + strings.Join(cand.CoreSkills, ", ")
+			if cand.RawText != "" {
+				candSummary += "\n" + cand.RawText
+			}
+
+			candSummary = RedactKnownPII(candSummary, cand.Name, cand.Email, cand.Phone, cand.LinkedIn)
+			scorecard, err := m.evaluator.EvaluateCandidate(ctx, candSummary, jobDescription)
+			if err != nil || scorecard == nil || scorecard.OverallMatchScore == nil {
+				results[idx] = evalResult{failedID: cand.ID}
+				return
+			}
+			results[idx] = evalResult{scorecard: scorecard}
+		}(rank, item)
+	}
+
+	wg.Wait()
+
 	finalEvals := []map[string]any{}
 	failedIDs := []string{}
 
 	for rank, item := range stage2List {
 		cand := item.Candidate
-		if ctx.Err() != nil {
-			for _, remaining := range stage2List[rank:] {
-				failedIDs = append(failedIDs, remaining.Candidate.ID)
-			}
-			break
+		res := results[rank]
+		if res.failedID != "" {
+			failedIDs = append(failedIDs, res.failedID)
+			continue
 		}
-		candSummary := cand.TargetHeadline + ". Skills: " + strings.Join(cand.CoreSkills, ", ")
-		if cand.RawText != "" {
-			candSummary += "\n" + cand.RawText
-		}
-
-		candSummary = RedactKnownPII(candSummary, cand.Name, cand.Email, cand.Phone, cand.LinkedIn)
-		scorecard, err := m.evaluator.EvaluateCandidate(ctx, candSummary, jobDescription)
-		if err != nil || scorecard == nil || scorecard.OverallMatchScore == nil {
+		if res.scorecard == nil || res.scorecard.OverallMatchScore == nil {
 			failedIDs = append(failedIDs, cand.ID)
 			continue
 		}
 
+		scorecard := res.scorecard
 		// Store updated scorecard in store
 		m.store.UpdateCandidateScorecard(cand.ID, *scorecard)
 
