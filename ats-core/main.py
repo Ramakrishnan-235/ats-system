@@ -30,6 +30,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         import logging
         logging.getLogger("ats.main").debug("Startup DB sync skipped or unavailable: %s", e)
+
+    try:
+        from ats_core.evaluator.langsmith_tracker import is_langsmith_enabled, get_langsmith_config
+        import logging
+        ls_logger = logging.getLogger("ats.main")
+        cfg = get_langsmith_config()
+        if is_langsmith_enabled():
+            ls_logger.info("LangSmith Observability: ENABLED (Project: %s, Endpoint: %s)", cfg["project"], cfg["endpoint"])
+        else:
+            ls_logger.info("LangSmith Observability: DISABLED (Tracing: %s; set LANGCHAIN_API_KEY to activate)", cfg["tracing_enabled"])
+    except Exception:
+        pass
     yield
 
 

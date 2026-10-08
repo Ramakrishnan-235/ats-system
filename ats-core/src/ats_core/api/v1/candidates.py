@@ -576,6 +576,11 @@ async def _process_resume_pipeline(
                             }
                         ]
                     }
+                    if eval_result.get("telemetry"):
+                        parsed_candidate["scorecard"]["telemetry"] = eval_result["telemetry"]
+                        if eval_result["telemetry"].get("langsmith_run_id"):
+                            parsed_candidate["scorecard"]["langsmith_run_id"] = eval_result["telemetry"]["langsmith_run_id"]
+                            parsed_candidate["scorecard"]["langsmith_url"] = eval_result["telemetry"].get("langsmith_url")
 
                     # Persist immutable scoring audit for EEOC and compliance tracking
                     try:

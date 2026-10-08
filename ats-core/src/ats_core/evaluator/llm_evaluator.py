@@ -1,14 +1,20 @@
 import logging
 import os
 import re
+import time
 import threading
 from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
+from langchain_core.tracers.context import collect_runs
 
 from ats_core.llm.client import get_openrouter_chat_model, get_structured_llm, get_llm_config
 from ats_core.llm.sanitizer import sanitize_prompt_text
+from ats_core.evaluator.langsmith_tracker import (
+    build_evaluation_run_config,
+    log_evaluation_feedback,
+)
 
 logger = logging.getLogger("ats.evaluator.llm")
 
@@ -109,13 +115,6 @@ class LLMEvaluator:
             f"Initialized LangChain LLMEvaluator with model: {self.model_name} "
             f"at {self.base_url} (OpenRouter: {self.is_openrouter})"
         )
-
-import time
-from langchain_core.tracers.context import collect_runs
-from ats_core.evaluator.langsmith_tracker import (
-    build_evaluation_run_config,
-    log_evaluation_feedback,
-)
 
     def evaluate(self, candidate_summary: str, job_description: str) -> EvaluationReport:
         """Evaluates a candidate profile against a job description producing an EvaluationReport."""

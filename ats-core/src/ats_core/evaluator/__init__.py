@@ -17,6 +17,17 @@ from ats_core.evaluator.langsmith_tracker import (
     get_run_url,
 )
 
+from ats_core.evaluator.benchmark_langsmith import (
+    run_candidate_benchmark,
+    sync_langsmith_benchmark_dataset,
+    evaluate_tier_accuracy,
+    evaluate_score_calibration,
+    evaluate_citation_grounding,
+    evaluate_injection_defense,
+    BENCHMARK_EXAMPLES,
+    BENCHMARK_JOB,
+)
+
 __all__ = [
     "LocalDeepEvaluator",
     "AuditLogger",
@@ -32,5 +43,14 @@ __all__ = [
     "log_evaluation_feedback",
     "compute_citation_validity",
     "get_run_url",
+    "run_candidate_benchmark",
+    "sync_langsmith_benchmark_dataset",
+    "evaluate_tier_accuracy",
+    "evaluate_score_calibration",
+    "evaluate_citation_grounding",
+    "evaluate_injection_defense",
+    "BENCHMARK_EXAMPLES",
+    "BENCHMARK_JOB",
 ]
+
 

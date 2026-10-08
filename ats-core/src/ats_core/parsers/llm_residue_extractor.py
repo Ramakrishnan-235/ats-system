@@ -24,6 +24,8 @@ from langchain_core.runnables import Runnable
 from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService, RESUME_PROSE_STOPWORDS
 from ats_core.llm.client import get_openrouter_chat_model, get_structured_llm, get_llm_config
 from ats_core.llm.sanitizer import sanitize_prompt_text
+from ats_core.evaluator.langsmith_tracker import build_evaluation_run_config
+
 
 logger = logging.getLogger("ats.parsers.llm_residue")
 
@@ -201,10 +203,16 @@ class LLMResidueExtractor:
                         ],
                     )
                 else:
+                    run_config = build_evaluation_run_config(
+                        candidate_id="residue_extract",
+                        job_title="Taxonomy Skill Extraction",
+                        model_name=self.model_name,
+                        evaluator_type="residue_extractor",
+                    )
                     raw_res = self.chain.invoke({
                         "safe_resume_text": safe_resume_text,
                         "skills_already_found": safe_skills_str,
-                    })
+                    }, config=run_config)
                     if isinstance(raw_res, LLMResidueOutput):
                         res = raw_res
                     elif isinstance(raw_res, dict):

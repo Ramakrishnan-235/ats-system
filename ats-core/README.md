@@ -38,4 +38,13 @@ uv run python test/test_schema.py
 uv run python test/resume_validation_gate.py
 uv run python benchmark_recall.py
 uv run python test/test_vector_search.py
+
+# LangSmith Model Performance Benchmark & Observability
+uv run python benchmark_model_performance.py
+uv run python test/test_langsmith_tracking.py
 ```
+
+## LangSmith Observability & Model Performance Tracking
+For complete instructions on configuring LangSmith tracing, logging online feedback metrics (score calibration, latency SLA, anti-hallucination citation grounding), and running cross-model benchmarks, see:
+👉 **[LANGSMITH_MODEL_PERFORMANCE_TRACKING.md](../../docs/LANGSMITH_MODEL_PERFORMANCE_TRACKING.md)**
+
