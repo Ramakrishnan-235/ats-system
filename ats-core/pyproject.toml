@@ -33,9 +33,10 @@ dependencies = [
     "redis>=5.0.0",
     "reportlab>=4.2.0",
     "rich>=13.8.0",
-    "sentence-transformers>=3.0.0",
+    "sentence-transformers>=6.1.0",
     "sqlalchemy>=2.0.0",
     "torch>=2.2.0",
+    "transformers>=5.19.0",
     "uvicorn[standard]>=0.30.0",
 ]
 

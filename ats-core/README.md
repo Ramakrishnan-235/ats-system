@@ -16,7 +16,7 @@ See the root **[WORKFLOW.md](../WORKFLOW.md)** for complete end-to-end architect
   - `skills.py`: `SkillsTaxonomy`, `ExtractedSkill`, `SkillCategory`, `SkillProficiency`
   - `timeline.py`: `EmploymentTimeline`, `WorkExperience`, `EmploymentGap`
 - `ats_core.search`:
-  - `dense_embedder.py`: `DenseEmbedder` (FastEmbed `BAAI/bge-small-en-v1.5`)
+  - `dense_embedder.py`: `DenseEmbedder` (Sentence Transformers `google/embeddinggemma-2`, 768 dimensions)
   - `bm25_indexer.py`: `BM25LexicalIndex` (BM25Okapi with technical tokenization)
   - `hybrid_retriever.py`: `HybridCandidateRetriever` (Reciprocal Rank Fusion)
 - `ats_core.db`:

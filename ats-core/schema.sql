@@ -29,8 +29,8 @@ CREATE TABLE IF NOT EXISTS candidates (
     raw_anonymized_text TEXT NOT NULL,
     structured_profile JSONB NOT NULL DEFAULT '{}'::jsonb,
     parsing_engine VARCHAR(50) DEFAULT 'hybrid-pymupdf-docling',
-    -- BAAI/bge-small-en-v1.5; existing databases need an explicit migration.
-    embedding vector(384),
+    -- google/embeddinggemma-2; existing databases need an explicit migration.
+    embedding vector(768),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -69,8 +69,8 @@ CREATE TABLE IF NOT EXISTS job_postings (
     status VARCHAR(20) NOT NULL DEFAULT 'OPEN' 
         CHECK (status IN ('DRAFT', 'OPEN', 'PAUSED', 'CLOSED')),
     structured_criteria JSONB NOT NULL DEFAULT '{}'::jsonb,
-    -- BAAI/bge-small-en-v1.5; existing databases need an explicit migration.
-    embedding vector(384),
+    -- google/embeddinggemma-2; existing databases need an explicit migration.
+    embedding vector(768),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

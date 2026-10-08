@@ -210,7 +210,7 @@ def run_benchmark_gate():
     logger.info(f"Generated {len(candidates)} candidates across {len(ARCHETYPES)} engineering domains.")
 
     # Step 2: Initialize Embedding and Search Engines
-    logger.info("Initializing Dense Embedder (BAAI/bge-small-en-v1.5) and BM25 Index...")
+    logger.info("Initializing Dense Embedder (EmbeddingGemma 2 (768 dimensions)) and BM25 Index...")
     dense_embedder = DenseEmbedder()
     bm25_index = BM25LexicalIndex()
     hybrid_retriever = HybridCandidateRetriever(dense_embedder=dense_embedder, bm25_index=bm25_index)

@@ -1,10 +1,10 @@
-"""Shared embedding contract for the configured BGE-small retrieval model."""
+"""Shared embedding contract for the EmbeddingGemma 2 retrieval model."""
 
 import math
 from collections.abc import Iterable
 
-DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
-EMBEDDING_DIMENSION = 384
+DEFAULT_EMBEDDING_MODEL = "google/embeddinggemma-2"
+EMBEDDING_DIMENSION = 768
 
 
 def validate_embedding(values: Iterable[float]) -> list[float]:

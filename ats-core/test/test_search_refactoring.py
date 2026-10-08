@@ -17,24 +17,27 @@ from ats_core.search.reranker import CandidateReranker
 
 
 def test_vector_contract_matches_sql_and_orm():
-    assert EMBEDDING_DIMENSION == 384
+    assert EMBEDDING_DIMENSION == 768
     assert Candidate.embedding.type.dim == JobPosting.embedding.type.dim == EMBEDDING_DIMENSION
     schema = (Path(__file__).resolve().parents[1] / "schema.sql").read_text()
     assert schema.count(f"embedding vector({EMBEDDING_DIMENSION})") == 2
-    assert validate_embedding([1.0] + [0.0] * 383) == [1.0] + [0.0] * 383
+    assert validate_embedding([1.0] + [0.0] * 767) == [1.0] + [0.0] * 767
 
 
-@pytest.mark.parametrize("vector", [[1.0] * 1536, [0.0] * 384, [float("nan")] * 384, [float("inf")] * 384])
+@pytest.mark.parametrize("vector", [[1.0] * 1536, [0.0] * 768, [float("nan")] * 768, [float("inf")] * 768])
 def test_vector_contract_rejects_invalid_vectors(vector):
     with pytest.raises(ValueError):
         validate_embedding(vector)
 
 
 def test_dense_encoder_rejects_model_dimension_drift():
-    embedder = DenseEmbedder.__new__(DenseEmbedder)
-    embedder.model = SimpleNamespace(embed=lambda docs: [SimpleNamespace(tolist=lambda: [1.0] * 1536)])
+    import httpx
+    embedder = DenseEmbedder(backend="ollama", transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json={"embeddings": [[1.0] * 384]})
+    ))
     with pytest.raises(ValueError):
         embedder.embed_documents(["resume"])
+    embedder.close()
 
 
 @pytest.mark.asyncio
@@ -51,14 +54,14 @@ async def test_invalid_query_vector_rejected_before_database_access():
     store = VectorStore.__new__(VectorStore)
     store.session_factory = Mock()
     with pytest.raises(ValueError):
-        await store.search_candidates_by_vector([float("nan")] * 384)
+        await store.search_candidates_by_vector([float("nan")] * 768)
     store.session_factory.assert_not_called()
 
 
 def test_candidate_embeddings_use_document_encoding():
     seen = []
-    embedder = SimpleNamespace(embed_documents=lambda docs: seen.append(docs) or [[1.0] * 384])
-    assert PgVectorStore(embedder).generate_embedding("resume") == [1.0] * 384
+    embedder = SimpleNamespace(embed_documents=lambda docs: seen.append(docs) or [[1.0] * 768])
+    assert PgVectorStore(embedder).generate_embedding("resume") == [1.0] * 768
     assert seen == [["resume"]]
 
 

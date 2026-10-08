@@ -36,7 +36,7 @@ def pipeline(monkeypatch, tmp_path):
     parser.parse_pdf.return_value = ("Jane Doe Python", "test-parser")
     redactor.anonymize.return_value = "[CANDIDATE] Python"
     extractor.extract_profile.return_value = profile
-    vectors.generate_embedding.return_value = [0.0] * 384
+    vectors.generate_embedding.return_value = [0.0] * 768
     components = MagicMock(return_value=(parser, redactor, extractor, vectors))
     monkeypatch.setattr(tasks, "get_processing_components", components)
     session = MagicMock()

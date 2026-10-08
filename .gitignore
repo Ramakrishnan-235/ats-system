@@ -62,3 +62,9 @@ docs/MICRO_SAAS_IMPROVEMENT_PLAN.md
 docs/RUST_CORE_PYTHON_AI_MIGRATION_PLAN.md
 docs/ZOHO_RECRUIT_BUILD_ROADMAP.md
 
+
+# Local database backups may contain private recruiting data
+.local-backups/
+ats-core/.env.example
+ats-core/uv.lock
+ats-core/uv.lock

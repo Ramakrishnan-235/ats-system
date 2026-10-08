@@ -12,5 +12,5 @@ class PgVectorStore:
         self.embedder = embedder or DenseEmbedder()
 
     def generate_embedding(self, text: str) -> List[float]:
-        """Generates 384-dimensional dense vector embedding for search and indexing."""
+        """Generates 768-dimensional dense vector embedding for search and indexing."""
         return self.embedder.embed_documents([text])[0]

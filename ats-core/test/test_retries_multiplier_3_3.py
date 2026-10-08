@@ -123,7 +123,7 @@ def test_execute_resume_processing_truncates_long_strings_before_db(tmp_path, mo
     parser.parse_pdf.return_value = ("Oversized candidate text", "ollama_hybrid_parser_name_that_is_very_long" * 3)
     redactor.anonymize.return_value = "Oversized candidate redacted text"
     extractor.extract_profile.return_value = profile
-    vectors.generate_embedding.return_value = [0.0] * 384
+    vectors.generate_embedding.return_value = [0.0] * 768
 
     components = MagicMock(return_value=(parser, redactor, extractor, vectors))
     monkeypatch.setattr(tasks, "get_processing_components", components)

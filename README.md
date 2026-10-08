@@ -11,7 +11,7 @@ An enterprise-grade, privacy-first, AI-driven Applicant Tracking System (ATS) co
 - 🔒 **PII Redaction & Bias Mitigation**: Presidio-powered redaction of candidate names, emails, phone numbers, and locations before LLM processing for strict compliance and unbiased screening.
 - 🧠 **Structured LLM Extraction & Evaluation**: Local LLM execution via Ollama (`gemma4:e2b`) using `instructor` strictly validated against Pydantic v2 schemas.
 - 🎯 **3-Stage Candidate Retrieval Funnel**:
-  - **Stage 1 (Hybrid Retrieval)**: Dense embeddings (`BAAI/bge-small-en-v1.5`) + domain-tailored BM25 lexical search with Reciprocal Rank Fusion (RRF) -> Top 100.
+  - **Stage 1 (Hybrid Retrieval)**: Dense embeddings (`google/embeddinggemma-2`) + domain-tailored BM25 lexical search with Reciprocal Rank Fusion (RRF) -> Top 100.
   - **Stage 2 (Cross-Encoder Re-Ranking)**: Deep full cross-attention via `BAAI/bge-reranker-large` -> Top 20 (filters false-positive keyword stuffers).
   - **Stage 3 (Deep LLM Scoring)**: Rubric criteria evaluation, verbatim citations, pros/cons, and recommended interview questions.
 - 🗄️ **PostgreSQL 16 + pgvector**: HNSW vector indexing (`vector_cosine_ops`) paired with multi-payload B-tree and GIN filter indexes.
