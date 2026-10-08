@@ -32,11 +32,13 @@ def get_llm_config(
     if openrouter_key:
         resolved_base_url = (
             base_url
+            or os.getenv("OPENROUTER_BASE_URL", "").strip()
             or os.getenv("LLM_BASE_URL", "").strip()
             or DEFAULT_OPENROUTER_BASE_URL
         )
         resolved_model = (
             model_name
+            or os.getenv("OPENROUTER_MODEL", "").strip()
             or os.getenv("LLM_MODEL", "").strip()
             or DEFAULT_OPENROUTER_MODEL
         )
