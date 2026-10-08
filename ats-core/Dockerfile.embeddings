@@ -1,0 +1,11 @@
+FROM python:3.12-slim@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f
+ENV PYTHONUNBUFFERED=1 HF_HOME=/models/huggingface ATS_EMBEDDING_DEVICE=cpu ATS_EMBEDDING_BATCH_SIZE=16 PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
+WORKDIR /app
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.13.0
+RUN pip install --no-cache-dir sentence-transformers==6.1.0 transformers==5.19.0 fastapi uvicorn httpx
+RUN pip install --no-cache-dir pillow
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torchvision==0.28.0
+RUN mkdir -p /app/ats_core/search && touch /app/ats_core/__init__.py /app/ats_core/search/__init__.py
+COPY src/ats_core/search/dense_embedder.py src/ats_core/search/embedding_config.py src/ats_core/search/embedding_server.py /app/ats_core/search/
+EXPOSE 8001
+CMD ["uvicorn", "ats_core.search.embedding_server:app", "--host", "0.0.0.0", "--port", "8001"]

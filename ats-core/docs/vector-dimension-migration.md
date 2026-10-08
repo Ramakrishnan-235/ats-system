@@ -81,3 +81,56 @@ and https://docs.ollama.com/api/embed
 - Verified real pgvector nearest-neighbor querying; all 50 stored job vectors have 768 dimensions.
 - Verified resumable reindex skips completed rows.
 - 109 focused retrieval/worker/API/evaluation tests passed; lockfile and Python checks passed.
+
+## Docker model services
+
+`docker compose up -d --build ollama embeddinggemma2` runs generation and embeddings
+in containers with persistent model volumes. Ollama runs `gemma4:e2b`; initialize it
+with `docker compose exec ollama ollama pull gemma4:e2b`.
+
+EmbeddingGemma 2's published Ollama package requires MLX and cannot run in a Linux
+Docker container. The `embeddinggemma2` service runs the exact Google checkpoint
+through Sentence Transformers instead. Its `/api/embed` endpoint always returns
+768 dimensions, enforces the 8192-token input limit, and accepts the already-prefixed
+inputs produced by the project's DenseEmbedder. It does not substitute another model.
+
+Host Python settings:
+
+```dotenv
+OLLAMA_BASE_URL=http://localhost:11435/v1
+OLLAMA_MODEL=gemma4:e2b
+LLM_BASE_URL=http://localhost:11435/v1
+LLM_MODEL=gemma4:e2b
+ATS_EMBEDDING_BACKEND=http
+ATS_EMBEDDING_BASE_URL=http://localhost:8001
+ATS_EMBEDDING_MODEL=google/embeddinggemma-2
+```
+
+Docker clients use `http://ollama:11434/v1` for generation and
+`http://embeddinggemma2:8001` for embeddings. The Go Compose service is configured
+for local Gemma generation; its matcher still uses lexical matching. Use
+`docker compose ps` and the embedding `/health` endpoint to verify readiness.
+The embedding port binds to localhost; model weights are kept in `embedding_models`.
+
+Ollama has GPU access on the verified RTX 2050 host, one parallel request, one
+loaded model and a five-minute keep-alive. Embeddings run on CPU. Hosts without
+an NVIDIA Docker GPU runtime must remove `gpus: all` to run generation on CPU.
+
+Docker Ollama binds to `127.0.0.1:11435` to avoid the native Windows Ollama
+listener on port 11434. Both published model-service ports are local-only.
+
+## Verified Docker setup on 2026-10-07
+
+- Built the text-only CPU image with Torch 2.13.0+cpu, Torchvision 0.28.0+cpu,
+  Sentence Transformers 6.1.0, Transformers 5.19.0 and the processor dependencies.
+- Seeded the persistent Docker model volume from the previously verified Google checkpoint cache.
+- The container starts successfully and its health endpoint reports 768 dimensions.
+- The project HTTP client generated real normalized 768-dimensional document/query vectors;
+  the relevant Python resume scored 0.8551 versus 0.6357 for the unrelated design resume.
+- Internal Docker-hostname embedding requests also returned real normalized 768-dimensional vectors.
+- 39 embedding service/client/retrieval regression checks passed.
+- Downloaded the complete `gemma4:e2b` package (4.6 GB) into the persistent Ollama volume.
+- Restarted Docker Ollama 0.35.1 with GPU access, localhost port 11435 and a model-aware health check.
+- Verified native generation returned `READY`; the project LLM client also returned `READY` through `/v1` in 15.86 seconds.
+- Ollama uses the RTX 2050 and keeps some model layers in system memory. The first cold request was slow; this is a setup smoke test, not an ATS quality or throughput benchmark.
+- Both model containers report healthy.

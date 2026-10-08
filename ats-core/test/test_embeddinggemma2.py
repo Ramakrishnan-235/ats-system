@@ -7,7 +7,8 @@ import pytest
 from ats_core.search.dense_embedder import DenseEmbedder
 
 
-def test_ollama_embeds_queries_and_documents_with_correct_contract(monkeypatch):
+@pytest.mark.parametrize("backend", ["ollama", "http"])
+def test_ollama_embeds_queries_and_documents_with_correct_contract(monkeypatch, backend):
     monkeypatch.delenv("ATS_EMBEDDING_MODEL", raising=False)
     seen = []
     def handle(request):
@@ -15,7 +16,7 @@ def test_ollama_embeds_queries_and_documents_with_correct_contract(monkeypatch):
         body = json.loads(request.content)
         seen.append((str(request.url), body))
         return httpx.Response(200, json={"embeddings": [[2.0] + [0.0]*767 for _ in body["input"]]})
-    encoder = DenseEmbedder(backend="ollama", base_url="http://model/v1", transport=httpx.MockTransport(handle))
+    encoder = DenseEmbedder(backend=backend, base_url="http://model/v1", transport=httpx.MockTransport(handle))
     documents = encoder.embed_documents(["Python resume", "Java resume"])
     query = encoder.embed_query("Python developer")
     assert seen[0][0] == "http://model/api/embed"

@@ -6,6 +6,16 @@ from ats_core.evaluator.llm_evaluator import (
     CriteriaScore,
     evaluate_candidate,
 )
+from ats_core.evaluator.langsmith_tracker import (
+    is_langsmith_enabled,
+    get_langsmith_config,
+    get_langsmith_client,
+    get_langsmith_project,
+    build_evaluation_run_config,
+    log_evaluation_feedback,
+    compute_citation_validity,
+    get_run_url,
+)
 
 __all__ = [
     "LocalDeepEvaluator",
@@ -14,4 +24,13 @@ __all__ = [
     "EvaluationReport",
     "CriteriaScore",
     "evaluate_candidate",
+    "is_langsmith_enabled",
+    "get_langsmith_config",
+    "get_langsmith_client",
+    "get_langsmith_project",
+    "build_evaluation_run_config",
+    "log_evaluation_feedback",
+    "compute_citation_validity",
+    "get_run_url",
 ]
+

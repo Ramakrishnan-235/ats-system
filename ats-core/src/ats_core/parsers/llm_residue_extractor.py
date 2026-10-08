@@ -15,6 +15,7 @@ import logging
 import os
 import json
 import re
+import threading
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
@@ -68,6 +69,7 @@ class LLMResidueExtractor:
     Executes the LLM residue extraction pass using LangChain with strict anti-hallucination substring verification.
     """
     _instance: Optional["LLMResidueExtractor"] = None
+    _instance_lock: threading.Lock = threading.Lock()
 
     def __init__(
         self,
@@ -84,6 +86,7 @@ class LLMResidueExtractor:
         self.temperature = temperature
         self._client: Any = None
         self._anonymizer = None
+        self._anonymizer_lock = threading.Lock()
 
         # LangChain Chat Model & Structured Runnable
         self.chat_model = get_openrouter_chat_model(
@@ -106,7 +109,9 @@ class LLMResidueExtractor:
     @classmethod
     def get_instance(cls) -> "LLMResidueExtractor":
         if cls._instance is None:
-            cls._instance = LLMResidueExtractor()
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = LLMResidueExtractor()
         return cls._instance
 
     @property
@@ -123,9 +128,11 @@ class LLMResidueExtractor:
     def _redact_for_llm(self, resume_text: str) -> str:
         """Initialize redaction on demand, before accessing any LLM client."""
         if self._anonymizer is None:
-            from ats_core.parsers.anonymizer import ResumeAnonymizer
+            with self._anonymizer_lock:
+                if self._anonymizer is None:
+                    from ats_core.parsers.anonymizer import ResumeAnonymizer
 
-            self._anonymizer = ResumeAnonymizer(min_score_threshold=0.55)
+                    self._anonymizer = ResumeAnonymizer(min_score_threshold=0.55)
         redacted = self._anonymizer.anonymize(resume_text)
         return re.sub(
             r"\b(?:https?://|www\.)[^\s]+|(?<!\w)(?:linkedin\.com|github\.com)/[^\s]+",

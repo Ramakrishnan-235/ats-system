@@ -23,15 +23,16 @@ class DenseEmbedder:
                  *, backend: str | None = None, base_url: str | None = None,
                  transport: httpx.BaseTransport | None = None):
         self.backend = backend or os.getenv("ATS_EMBEDDING_BACKEND", "sentence_transformers")
-        if self.backend not in ("sentence_transformers", "ollama"):
-            raise ValueError("ATS_EMBEDDING_BACKEND must be sentence_transformers or ollama")
-        default_model = DEFAULT_EMBEDDING_MODEL if self.backend == "sentence_transformers" else "embeddinggemma-2:270m"
+        if self.backend not in ("sentence_transformers", "ollama", "http"):
+            raise ValueError("ATS_EMBEDDING_BACKEND must be sentence_transformers, ollama or http")
+        default_model = DEFAULT_EMBEDDING_MODEL if self.backend != "ollama" else "embeddinggemma-2:270m"
         self.model_name = model_name or os.getenv("ATS_EMBEDDING_MODEL") or default_model
         self.batch_size = int(os.getenv("ATS_EMBEDDING_BATCH_SIZE", "16"))
         if self.batch_size <= 0 or threads <= 0:
             raise ValueError("Embedding batch size and threads must be positive")
-        if self.backend == "ollama":
-            url = (base_url or os.getenv("ATS_EMBEDDING_BASE_URL", "http://localhost:11434")).rstrip("/")
+        if self.backend in ("ollama", "http"):
+            default_url = "http://localhost:8001" if self.backend == "http" else "http://localhost:11434"
+            url = (base_url or os.getenv("ATS_EMBEDDING_BASE_URL", default_url)).rstrip("/")
             # The generation client commonly uses /v1; embeddings use native /api/embed.
             if url.endswith("/v1"):
                 url = url[:-3]
@@ -60,7 +61,7 @@ class DenseEmbedder:
         vectors = []
         for start in range(0, len(texts), self.batch_size):
             batch = texts[start:start + self.batch_size]
-            if self.backend == "ollama":
+            if self.backend in ("ollama", "http"):
                 response = self.client.post("/api/embed", json={
                     "model": self.model_name, "input": [prefix + text for text in batch],
                     "dimensions": EMBEDDING_DIMENSION, "truncate": False,
@@ -68,7 +69,7 @@ class DenseEmbedder:
                 response.raise_for_status()
                 result = response.json()
                 if result.get("error"):
-                    raise RuntimeError("Ollama failed to generate embeddings")
+                    raise RuntimeError("Embedding provider failed to generate embeddings")
                 encoded = result.get("embeddings")
             else:
                 encoded = self.model.encode(batch, prompt=prefix,
@@ -90,5 +91,5 @@ class DenseEmbedder:
         return self._encode([query], "task: search result | query: ")[0]
 
     def close(self):
-        if self.backend == "ollama":
+        if self.backend in ("ollama", "http"):
             self.client.close()

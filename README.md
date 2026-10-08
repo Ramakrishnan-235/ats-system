@@ -44,8 +44,13 @@ Navigate to `ats-core` and verify/create `.env` (a template is provided in `ats-
 
 ```bash
 # Environment Configuration
-OLLAMA_BASE_URL="http://localhost:11434/v1"
-OLLAMA_MODEL="deepseek-v4-flash:cloud" # or gemma4:e2b
+OLLAMA_BASE_URL="http://localhost:11435/v1"
+OLLAMA_MODEL="gemma4:e2b"
+LLM_BASE_URL="http://localhost:11435/v1"
+LLM_MODEL="gemma4:e2b"
+ATS_EMBEDDING_BACKEND="http"
+ATS_EMBEDDING_MODEL="google/embeddinggemma-2"
+ATS_EMBEDDING_BASE_URL="http://localhost:8001"
 
 # Database Configuration (PostgreSQL with pgvector)
 DATABASE_URL="postgresql+asyncpg://ats_user:ats_password@localhost:5433/ats_db"
@@ -73,7 +78,9 @@ for the implemented hardening and remaining persistence work.
 Create `frontend/.env.local` if you need custom API URLs (defaults to `http://localhost:8000/api/v1`):
 
 ```bash
-NEXT_PUBLIC_API_URL="http://localhost:8000/api/v1"
+NEXT_PUBLIC_API_URL="http://127.0.0.1:8000/api/v1"
+# Set false only when the backend explicitly has ATS_AUTH_ENABLED=false locally.
+NEXT_PUBLIC_REQUIRE_API_KEY="false"
 ```
 
 ---
@@ -81,21 +88,24 @@ NEXT_PUBLIC_API_URL="http://localhost:8000/api/v1"
 ## 🚀 How to Run the Project (Step-by-Step)
 
 ### Step 1: Start Infrastructure Services (Docker)
-From the root directory of the project, start PostgreSQL (pgvector), Redis, and Ollama:
+From the `ats-system` directory, start PostgreSQL, Redis and the Docker AI services.
+The following run instructions use the Python API for dense retrieval and evaluation:
 
 ```bash
-docker compose up -d
+docker compose up -d postgres redis ollama embeddinggemma2
 ```
 
-> **Verify Services**: Run `docker compose ps` to ensure `ats-postgres`, `ats-redis`, and `ollama` are healthy and running.
+> **Verify Services**: Run `docker compose ps` to ensure `ats-postgres`, `ats-redis`, `ollama`, and `ats-embeddinggemma2` are healthy and running.
 
-*(Optional)* Pull your target LLM model into Ollama:
+For a fresh Ollama model volume, pull Gemma into the container:
 ```bash
-# Pull model in local/container Ollama
-ollama pull deepseek-v4-flash:cloud
-# or
-ollama pull gemma4:e2b
+# Pull into Docker Ollama, rather than the native Windows installation
+docker compose exec ollama ollama pull gemma4:e2b
 ```
+
+EmbeddingGemma 2 runs in its separate CPU container because its published Ollama
+package requires MLX. See [the model setup and preserving database migration](ats-core/docs/vector-dimension-migration.md)
+for the embedding volume, 768-dimensional schema and reindex instructions.
 
 ---
 
@@ -128,7 +138,7 @@ In a **separate terminal**, start the **FastAPI Backend Server**:
 
 ```bash
 cd ats-core
-uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uv run uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 ---
@@ -161,7 +171,8 @@ Open your browser and navigate to:
 | **FastAPI Health Check** | [http://localhost:8000/health](http://localhost:8000/health) | API health endpoint |
 | **PostgreSQL (pgvector)** | `localhost:5433` | Database (`ats_db`, user: `ats_user`) |
 | **Redis** | `localhost:6379` | Celery broker & result backend |
-| **Ollama LLM** | `localhost:11434` | Local LLM inference server |
+| **Docker Ollama LLM** | `localhost:11435` | Gemma 4 E2B generation |
+| **Embedding service** | `localhost:8001` | EmbeddingGemma 2, 768 dimensions |
 
 ---
 

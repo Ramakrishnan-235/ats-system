@@ -11,7 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"ats-core-go/internal/config"
@@ -183,11 +185,88 @@ func (h *CandidatesHandler) UpdateStage(w http.ResponseWriter, r *http.Request) 
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "SUCCESS", "candidate_id": id, "stage": stage})
 }
 
-var uploadSlots = make(chan struct{}, 8)
+var (
+	uploadSlots         = make(chan struct{}, 8)
+	defaultUploadWg     sync.WaitGroup
+	defaultUploadMu     sync.RWMutex
+	defaultDraining     bool
+	defaultUploadCtx    context.Context
+	defaultUploadCancel context.CancelFunc
+	defaultUploadInit   sync.Once
+)
+
+func initDefaultUpload() {
+	defaultUploadInit.Do(func() {
+		defaultUploadCtx, defaultUploadCancel = context.WithCancel(context.Background())
+	})
+}
+
+// DrainUploads stops accepting new uploads and waits for all active
+// upload goroutines to complete, or until ctx is done.
+func DrainUploads(ctx context.Context) error {
+	initDefaultUpload()
+	defaultUploadMu.Lock()
+	defaultDraining = true
+	defaultUploadMu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		defaultUploadWg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		defaultUploadMu.RLock()
+		if defaultUploadCancel != nil {
+			defaultUploadCancel()
+		}
+		defaultUploadMu.RUnlock()
+
+		select {
+		case <-done:
+		case <-time.After(1 * time.Second):
+		}
+		return ctx.Err()
+	}
+}
+
+// ResetUploadState resets the upload waitgroup and context (primarily for testing).
+func ResetUploadState() {
+	defaultUploadMu.Lock()
+	defaultDraining = false
+	defaultUploadCtx, defaultUploadCancel = context.WithCancel(context.Background())
+	defaultUploadMu.Unlock()
+}
+
+func (h *CandidatesHandler) getContext() context.Context {
+	initDefaultUpload()
+	defaultUploadMu.RLock()
+	defer defaultUploadMu.RUnlock()
+	if defaultUploadCtx == nil {
+		return context.Background()
+	}
+	return defaultUploadCtx
+}
+
+func (h *CandidatesHandler) Drain(ctx context.Context) error {
+	return DrainUploads(ctx)
+}
 
 // UploadResumeAsync validates and persists a bounded PDF before starting processing.
 // Tasks and profiles are process-local; a restart cannot resume this work.
 func (h *CandidatesHandler) UploadResumeAsync(w http.ResponseWriter, r *http.Request) {
+	initDefaultUpload()
+	defaultUploadMu.RLock()
+	if defaultDraining {
+		defaultUploadMu.RUnlock()
+		writeError(w, http.StatusServiceUnavailable, "Server is shutting down")
+		return
+	}
+	defaultUploadMu.RUnlock()
+
 	select {
 	case uploadSlots <- struct{}{}:
 	default:
@@ -264,8 +343,20 @@ func (h *CandidatesHandler) UploadResumeAsync(w http.ResponseWriter, r *http.Req
 		return
 	}
 	h.store.SaveTask(&models.UploadTask{TaskID: taskID, State: "PROGRESS", ExecutionMode: "async_goroutine", Step: "Extracting PDF"})
+
+	defaultUploadMu.RLock()
+	if defaultDraining {
+		defaultUploadMu.RUnlock()
+		_ = os.Remove(pdfPath)
+		writeError(w, http.StatusServiceUnavailable, "Server is shutting down")
+		return
+	}
+	defaultUploadWg.Add(1)
+	defaultUploadMu.RUnlock()
+
 	transferred = true
 	go func() {
+		defer defaultUploadWg.Done()
 		defer func() { <-uploadSlots }()
 		h.processUpload(taskID, candidateID, filename, pdfPath, data, job)
 	}()
@@ -277,7 +368,7 @@ func (h *CandidatesHandler) processUpload(taskID, candidateID, filename, pdfPath
 	complete := false
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("Upload processing panic for task %s", taskID)
+			log.Printf("Upload processing panic for task %s: %v\n%s", taskID, recovered, debug.Stack())
 		}
 		if !complete {
 			_ = os.Remove(pdfPath)
@@ -292,7 +383,7 @@ func (h *CandidatesHandler) processUpload(taskID, candidateID, filename, pdfPath
 	scorecard := &models.Scorecard{EvaluationStatus: "PENDING", MatchTier: "Not Evaluated", Categories: []models.CategoryScore{}, TeamNotes: []models.Note{}}
 	if job != nil {
 		h.store.SaveTask(&models.UploadTask{TaskID: taskID, State: "PROGRESS", Progress: 40, Step: "Evaluating Match", ExecutionMode: "async_goroutine"})
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		ctx, cancel := context.WithTimeout(h.getContext(), 2*time.Minute)
 		defer cancel()
 		name := strings.TrimSuffix(filename, filepath.Ext(filename))
 		normalizedName := strings.NewReplacer("_", " ", "-", " ").Replace(name)

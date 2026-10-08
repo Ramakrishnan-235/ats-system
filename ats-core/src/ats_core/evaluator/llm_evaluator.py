@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import threading
 from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
@@ -109,10 +110,26 @@ class LLMEvaluator:
             f"at {self.base_url} (OpenRouter: {self.is_openrouter})"
         )
 
+import time
+from langchain_core.tracers.context import collect_runs
+from ats_core.evaluator.langsmith_tracker import (
+    build_evaluation_run_config,
+    log_evaluation_feedback,
+)
+
     def evaluate(self, candidate_summary: str, job_description: str) -> EvaluationReport:
         """Evaluates a candidate profile against a job description producing an EvaluationReport."""
         safe_candidate_text = _sanitize_untrusted_prompt_input(candidate_summary)
         safe_job_desc = _sanitize_untrusted_prompt_input(job_description)
+        t_start = time.time()
+        run_id: Optional[str] = None
+
+        run_config = build_evaluation_run_config(
+            candidate_id="summary_eval",
+            job_title="Job Requisition",
+            model_name=self.model_name,
+            evaluator_type="llm_evaluator",
+        )
 
         try:
             # Legacy mock compatibility
@@ -138,10 +155,14 @@ class LLMEvaluator:
                     ],
                 )
             else:
-                raw_report = self.chain.invoke({
-                    "job_desc": safe_job_desc,
-                    "candidate_text": safe_candidate_text,
-                })
+                with collect_runs() as cb:
+                    raw_report = self.chain.invoke({
+                        "job_desc": safe_job_desc,
+                        "candidate_text": safe_candidate_text,
+                    }, config=run_config)
+                    if cb.traced_runs:
+                        run_id = str(cb.traced_runs[0].id)
+
                 if isinstance(raw_report, EvaluationReport):
                     report = raw_report
                 elif isinstance(raw_report, dict):
@@ -149,13 +170,39 @@ class LLMEvaluator:
                 else:
                     report = EvaluationReport.model_validate(raw_report)
 
+            latency_ms = int((time.time() - t_start) * 1000)
+
             report.qualification_tier = (
                 "Strong Fit" if report.match_score >= 80
                 else "Potential Fit" if report.match_score >= 60
                 else "Low Match"
             )
+
+            if run_id:
+                log_evaluation_feedback(
+                    run_id=run_id,
+                    metrics={
+                        "overall_match_score": report.match_score,
+                        "latency_ms": latency_ms,
+                        "qualification_tier": report.qualification_tier,
+                        "criteria_count": len(report.criteria_breakdown),
+                        "pros_count": len(report.pros),
+                        "cons_count": len(report.cons_or_risks),
+                        "questions_count": len(report.recommended_interview_questions),
+                        "evaluation_success": 1.0,
+                    },
+                    tags=["llm_evaluator", self.model_name, report.qualification_tier],
+                )
+
             return report
         except Exception as e:
+            latency_ms = int((time.time() - t_start) * 1000)
+            if run_id:
+                log_evaluation_feedback(
+                    run_id=run_id,
+                    metrics={"evaluation_success": 0.0, "latency_ms": latency_ms},
+                    comment=f"Error: {str(e)}",
+                )
             logger.error(f"LLM evaluation via ({self.model_name}) failed: {e}")
             raise RuntimeError(f"LLM Evaluation service unavailable or failed: {e}") from e
 
@@ -165,9 +212,12 @@ LangChainEvaluator = LLMEvaluator
 
 # Module-level convenience function
 _default_evaluator: Optional[LLMEvaluator] = None
+_default_evaluator_lock: threading.Lock = threading.Lock()
 
 def evaluate_candidate(candidate_summary: str, job_description: str) -> EvaluationReport:
     global _default_evaluator
     if _default_evaluator is None:
-        _default_evaluator = LLMEvaluator()
+        with _default_evaluator_lock:
+            if _default_evaluator is None:
+                _default_evaluator = LLMEvaluator()
     return _default_evaluator.evaluate(candidate_summary, job_description)

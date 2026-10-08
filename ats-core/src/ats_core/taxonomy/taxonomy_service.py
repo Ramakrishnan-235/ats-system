@@ -12,6 +12,7 @@ import os
 import re
 import uuid
 import logging
+import threading
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple, Set
 from rapidfuzz import process, fuzz
@@ -74,6 +75,7 @@ class SkillTaxonomyService:
     Singleton service managing the versioned Skills Taxonomy and Flywheel review queue.
     """
     _instance: Optional["SkillTaxonomyService"] = None
+    _instance_lock: threading.Lock = threading.Lock()
 
     def __init__(self):
         self.version = TAXONOMY_VERSION
@@ -99,7 +101,9 @@ class SkillTaxonomyService:
     @classmethod
     def get_instance(cls) -> "SkillTaxonomyService":
         if cls._instance is None:
-            cls._instance = SkillTaxonomyService()
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = SkillTaxonomyService()
         return cls._instance
 
     def _invalidate_lookup_cache(self) -> None:

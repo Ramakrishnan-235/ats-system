@@ -11,6 +11,7 @@ Uses spaCy's PhraseMatcher for token-boundary accurate gazetteer matching:
 """
 
 import logging
+import threading
 from typing import Dict, Any, List, Optional, Tuple, Set
 
 from ats_core.parsers.section_anchor import anchor_sections
@@ -24,6 +25,7 @@ class SkillMatcher:
     High-performance Gazetteer Matcher leveraging spaCy PhraseMatcher.
     """
     _instance: Optional["SkillMatcher"] = None
+    _instance_lock: threading.Lock = threading.Lock()
 
     def __init__(self, taxonomy_rows: Optional[List[Dict[str, Any]]] = None):
         import spacy
@@ -44,7 +46,9 @@ class SkillMatcher:
     @classmethod
     def get_instance(cls) -> "SkillMatcher":
         if cls._instance is None:
-            cls._instance = SkillMatcher()
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = SkillMatcher()
         return cls._instance
 
     def reload(self, taxonomy_rows: Optional[List[Dict[str, Any]]] = None):

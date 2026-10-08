@@ -63,11 +63,16 @@ func main() {
 	<-stop
 	log.Println("Shutting down ATS Core gracefully...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		log.Printf("Server forced to shutdown: %v", err)
+	}
+
+	// Drain in-flight background upload goroutines and ensure staged files are not orphaned
+	if err := api.DrainUploads(ctx); err != nil {
+		log.Printf("Upload goroutines drain error: %v", err)
 	}
 
 	log.Println("ATS Core exited cleanly.")

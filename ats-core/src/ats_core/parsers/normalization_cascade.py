@@ -14,6 +14,7 @@ Layer 4: Give up gracefully -> Enters status='pending' Flywheel review queue -> 
 import os
 import re
 import logging
+import threading
 from typing import Dict, Any, List, Optional, Tuple, NamedTuple
 import numpy as np
 from rapidfuzz import process, fuzz
@@ -37,6 +38,7 @@ class SkillEmbeddingsIndex:
     Pre-indexes approved canonical taxonomy skills using DenseEmbedder.
     """
     _instance: Optional["SkillEmbeddingsIndex"] = None
+    _instance_lock: threading.Lock = threading.Lock()
 
     def __init__(self, embedder: Optional[DenseEmbedder] = None, taxonomy_service: Optional[SkillTaxonomyService] = None):
         self.embedder = embedder or DenseEmbedder()
@@ -48,7 +50,9 @@ class SkillEmbeddingsIndex:
     @classmethod
     def get_instance(cls) -> "SkillEmbeddingsIndex":
         if cls._instance is None:
-            cls._instance = SkillEmbeddingsIndex()
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = SkillEmbeddingsIndex()
         return cls._instance
 
     def _build_index(self):

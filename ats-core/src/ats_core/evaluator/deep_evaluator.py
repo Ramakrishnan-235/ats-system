@@ -6,6 +6,7 @@ import time
 from typing import Dict, Any, Optional
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
+from langchain_core.tracers.context import collect_runs
 
 from ats_core.schema.evaluation import (
     DeepCandidateEvaluationReport,
@@ -22,6 +23,13 @@ from ats_core.llm.sanitizer import (
     ADVERSARIAL_DIRECTIVES_PATTERN,
     ROLE_DELIMITER_PATTERN,
     DEFAULT_XML_TAG_ESCAPE_PATTERN,
+)
+from ats_core.evaluator.langsmith_tracker import (
+    build_evaluation_run_config,
+    log_evaluation_feedback,
+    compute_citation_validity,
+    get_langsmith_project,
+    get_run_url,
 )
 
 import threading
@@ -188,6 +196,7 @@ Generate the complete structured evaluation report adhering strictly to the sche
     ) -> Dict[str, Any]:
         """
         Executes deep evaluation using LangChain and returns structured report alongside performance telemetry.
+        Automatically instruments runs for LangSmith tracing and records performance feedback.
         """
         prompt = self._build_evaluation_prompt(
             candidate_id=candidate_id,
@@ -198,6 +207,14 @@ Generate the complete structured evaluation report adhering strictly to the sche
 
         system_message = SYSTEM_EVALUATION_MESSAGE
         t_start = time.time()
+        run_id: Optional[str] = None
+
+        run_config = build_evaluation_run_config(
+            candidate_id=candidate_id,
+            job_title=job_title,
+            model_name=self.model_name,
+            evaluator_type="deep_evaluator",
+        )
 
         try:
             # Check if legacy client was explicitly mocked by a test
@@ -213,7 +230,11 @@ Generate the complete structured evaluation report adhering strictly to the sche
                     ],
                 )
             else:
-                raw_report = self.chain.invoke({"eval_prompt": prompt})
+                with collect_runs() as cb:
+                    raw_report = self.chain.invoke({"eval_prompt": prompt}, config=run_config)
+                    if cb.traced_runs:
+                        run_id = str(cb.traced_runs[0].id)
+
                 if isinstance(raw_report, DeepCandidateEvaluationReport):
                     report = raw_report
                 elif isinstance(raw_report, dict):
@@ -243,30 +264,84 @@ Generate the complete structured evaluation report adhering strictly to the sche
                 else QualificationTier.LOW_MATCH
             )
 
+            # Compute anti-hallucination citation fidelity stats
+            citation_stats = compute_citation_validity(
+                report.criteria_breakdown,
+                candidate_profile_text,
+            )
+
+            tier_str = (
+                report.qualification_tier.value
+                if hasattr(report.qualification_tier, "value")
+                else str(report.qualification_tier)
+            )
+
+            # Record quantitative feedback metrics to LangSmith
+            if run_id:
+                log_evaluation_feedback(
+                    run_id=run_id,
+                    metrics={
+                        "overall_match_score": report.overall_match_score,
+                        "latency_ms": latency_ms,
+                        "qualification_tier": tier_str,
+                        "citation_validity_rate": citation_stats["citation_validity_rate"],
+                        "total_citations": citation_stats["total_citations"],
+                        "grounded_citations": citation_stats["grounded_citations"],
+                        "criteria_count": len(report.criteria_breakdown),
+                        "suggested_questions_count": len(report.suggested_interview_questions),
+                        "evaluation_success": 1.0,
+                    },
+                    tags=["deep_evaluator", self.model_name, tier_str],
+                )
+
             logger.info(
                 f"Candidate {candidate_id} evaluated: Score={report.overall_match_score} "
                 f"({report.qualification_tier}) in {latency_ms}ms"
             )
 
+            telemetry: Dict[str, Any] = {
+                "model": self.model_name,
+                "latency_ms": latency_ms,
+                "citation_validity_rate": citation_stats["citation_validity_rate"],
+            }
+            if run_id:
+                telemetry["langsmith_run_id"] = run_id
+                telemetry["langsmith_project"] = get_langsmith_project()
+                telemetry["langsmith_url"] = get_run_url(run_id)
+
             return {
                 "success": True,
                 "report": report,
-                "telemetry": {
-                    "model": self.model_name,
-                    "latency_ms": latency_ms,
-                },
+                "telemetry": telemetry,
             }
 
         except Exception as e:
             latency_ms = int((time.time() - t_start) * 1000)
             logger.error(f"Deep evaluation failed for candidate {candidate_id}: {str(e)}")
+
+            if run_id:
+                log_evaluation_feedback(
+                    run_id=run_id,
+                    metrics={
+                        "evaluation_success": 0.0,
+                        "latency_ms": latency_ms,
+                    },
+                    comment=f"Error: {str(e)}",
+                )
+
+            telemetry = {
+                "model": self.model_name,
+                "latency_ms": latency_ms,
+            }
+            if run_id:
+                telemetry["langsmith_run_id"] = run_id
+                telemetry["langsmith_project"] = get_langsmith_project()
+                telemetry["langsmith_url"] = get_run_url(run_id)
+
             return {
                 "success": False,
                 "error": str(e),
-                "telemetry": {
-                    "model": self.model_name,
-                    "latency_ms": latency_ms,
-                },
+                "telemetry": telemetry,
             }
 
 

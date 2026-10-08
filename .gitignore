@@ -65,6 +65,7 @@ docs/ZOHO_RECRUIT_BUILD_ROADMAP.md
 
 # Local database backups may contain private recruiting data
 .local-backups/
+.local-runtime/
 ats-core/.env.example
 ats-core/uv.lock
 ats-core/uv.lock

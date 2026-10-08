@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import logging
 import os
+import threading
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, status
@@ -13,22 +14,28 @@ logger = logging.getLogger("ats.api.match")
 router = APIRouter(prefix="/match", tags=["Candidate Matching"])
 
 _retriever = None
+_retriever_lock = threading.Lock()
 _reranker = None
+_reranker_lock = threading.Lock()
 
 
 def get_retriever():
     global _retriever
     if _retriever is None:
-        from ats_core.search.hybrid_retriever import HybridCandidateRetriever
-        _retriever = HybridCandidateRetriever()
+        with _retriever_lock:
+            if _retriever is None:
+                from ats_core.search.hybrid_retriever import HybridCandidateRetriever
+                _retriever = HybridCandidateRetriever()
     return _retriever
 
 
 def get_reranker():
     global _reranker
     if _reranker is None:
-        from ats_core.search.reranker import CandidateReranker
-        _reranker = CandidateReranker(model_name="BAAI/bge-reranker-large")
+        with _reranker_lock:
+            if _reranker is None:
+                from ats_core.search.reranker import CandidateReranker
+                _reranker = CandidateReranker(model_name="BAAI/bge-reranker-large")
     return _reranker
 
 
