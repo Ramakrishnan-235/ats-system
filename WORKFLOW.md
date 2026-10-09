@@ -1,4 +1,5 @@
 # AI-Powered Applicant Tracking System (ATS Core)
+The current Rust/Python service boundary, durable workflow, deployment and verification steps are documented in [ARCHITECTURE_IMPLEMENTATION.md](docs/ARCHITECTURE_IMPLEMENTATION.md). The remainder of this document describes the retained legacy engine and algorithm workflow.
 ## System Architecture & End-to-End Workflow
 
 This document provides a comprehensive technical overview of the AI-powered Applicant Tracking System (ATS Core) engine, its architectural components, asynchronous background ingestion worker pipelines, data schemas, 3-stage candidate search & re-ranking funnel, and deep evaluation workflows.

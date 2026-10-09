@@ -1,0 +1,119 @@
+name: ats-architecture
+services:
+  postgres-v2:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ats_migrator
+      POSTGRES_PASSWORD: ${ATS_DATABASE_PASSWORD:?Set ATS_DATABASE_PASSWORD}
+      POSTGRES_DB: ats_architecture
+      ATS_RUNTIME_DATABASE_PASSWORD: ${ATS_RUNTIME_DATABASE_PASSWORD:?Set ATS_RUNTIME_DATABASE_PASSWORD}
+    ports: ["127.0.0.1:5544:5432"]
+    volumes:
+      - architecture_db:/var/lib/postgresql/data
+      - ./deploy/init-runtime.sh:/docker-entrypoint-initdb.d/010-runtime.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ats_migrator -d ats_architecture"]
+      interval: 5s
+      retries: 15
+    restart: unless-stopped
+  redis-v2:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    ports: ["127.0.0.1:6380:6379"]
+    volumes: ["architecture_queue:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+  object-storage:
+    image: rustfs/rustfs@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_ACCESS_KEY: ${ATS_STORAGE_ACCESS_KEY:?Set ATS_STORAGE_ACCESS_KEY}
+      RUSTFS_SECRET_KEY: ${ATS_STORAGE_SECRET_KEY:?Set ATS_STORAGE_SECRET_KEY}
+    ports: ["127.0.0.1:9002:9000", "127.0.0.1:9003:9001"]
+    volumes: ["architecture_objects:/data"]
+    restart: unless-stopped
+  initialize-storage:
+    image: public.ecr.aws/aws-cli/aws-cli@sha256:3dacc5db57c923c4223e949795f538ecf1f2212b2b7d5a028b47b97f91564c0d
+    depends_on: [object-storage]
+    environment:
+      AWS_ACCESS_KEY_ID: ${ATS_STORAGE_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${ATS_STORAGE_SECRET_KEY}
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["/bin/sh", "-c"]
+    command: ['for i in $$(seq 1 60); do aws --endpoint-url http://object-storage:9000 s3api head-bucket --bucket ats-documents >/dev/null 2>&1 && exit 0; aws --endpoint-url http://object-storage:9000 s3api create-bucket --bucket ats-documents >/dev/null 2>&1 && exit 0; sleep 2; done; echo "Document bucket initialization failed" >&2; exit 1']
+  core:
+    build: ./backend-rust
+    environment:
+      ATS_BIND: 0.0.0.0:8080
+      DATABASE_URL: postgresql://ats_runtime:${ATS_RUNTIME_DATABASE_PASSWORD}@postgres-v2:5432/ats_architecture
+      ATS_MIGRATION_DATABASE_URL: postgresql://ats_migrator:${ATS_DATABASE_PASSWORD}@postgres-v2:5432/ats_architecture
+      ATS_SERVICE_KEY: ${ATS_SERVICE_KEY:?Set ATS_SERVICE_KEY}
+      ATS_AI_URL: http://ai:8100
+      ATS_CORS_ORIGINS: ${ATS_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      ATS_SECURE_COOKIE: ${ATS_SECURE_COOKIE:-true}
+      ATS_ALLOW_SIGNUP: ${ATS_ALLOW_SIGNUP:-false}
+      ATS_DEVELOPMENT_MODE: ${ATS_DEVELOPMENT_MODE:-false}
+      AWS_ENDPOINT: http://object-storage:9000
+      AWS_BUCKET: ats-documents
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${ATS_STORAGE_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${ATS_STORAGE_SECRET_KEY}
+      ATS_S3_ALLOW_HTTP: "true"
+      RUST_LOG: ats_backend=info,tower_http=info
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on:
+      postgres-v2: { condition: service_healthy }
+      initialize-storage: { condition: service_completed_successfully }
+    restart: unless-stopped
+  ai:
+    build: { context: ./ats-core, dockerfile: Dockerfile.ai }
+    environment: &ai-environment
+      ATS_SERVICE_KEY: ${ATS_SERVICE_KEY}
+      ATS_CORE_URL: http://core:8080
+      REDIS_URL: redis://redis-v2:6379/0
+      ATS_AI_ENABLE_LLM: ${ATS_AI_ENABLE_LLM:-true}
+      ATS_AI_ENABLE_EMBEDDINGS: ${ATS_AI_ENABLE_EMBEDDINGS:-true}
+      ATS_EMBEDDING_BACKEND: ${ATS_EMBEDDING_BACKEND:-sentence_transformers}
+      ATS_EMBEDDING_BASE_URL: ${ATS_EMBEDDING_BASE_URL:-http://host.docker.internal:8001}
+      ATS_EMBEDDING_MODEL: ${ATS_EMBEDDING_MODEL:-google/embeddinggemma-2}
+      HF_TOKEN: ${HF_TOKEN:-}
+      ATS_FLYWHEEL_AUTO_REGISTER: "false"
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:e2b}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-nvidia/nemotron-3.5-lightning:free}
+    volumes: ["architecture_models:/models"]
+    depends_on:
+      redis-v2: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')"]
+      interval: 15s
+      retries: 10
+    restart: unless-stopped
+  ai-worker:
+    build: { context: ./ats-core, dockerfile: Dockerfile.ai }
+    command: ["celery", "-A", "ats_core.ai_api.worker:celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    environment: *ai-environment
+    volumes: ["architecture_models:/models"]
+    depends_on:
+      redis-v2: { condition: service_healthy }
+      core: { condition: service_started }
+    restart: unless-stopped
+  frontend:
+    build: ./frontend
+    environment:
+      ATS_CORE_URL: http://core:8080
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on: [core]
+    restart: unless-stopped
+volumes:
+  architecture_db:
+  architecture_queue:
+  architecture_objects:
+  architecture_models:

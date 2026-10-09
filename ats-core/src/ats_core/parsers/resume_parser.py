@@ -307,7 +307,7 @@ def extract_education(raw_text: str) -> str:
 
     return "N/A"
 
-def extract_skills_from_text(raw_text: str) -> List[str]:
+def extract_skills_from_text(raw_text: str, taxonomy_rows=None, allow_llm: bool = True) -> List[str]:
     """
     Extracts and deterministically normalizes skills using the complete 6-step architecture:
     1. spaCy PhraseMatcher Gazetteer against active ~500+ taxonomy entries.
@@ -320,7 +320,7 @@ def extract_skills_from_text(raw_text: str) -> List[str]:
 
     # 1. Fast Token-Boundary Accurate Gazetteer Matching with spaCy PhraseMatcher (Step 3 & 4)
     try:
-        matcher = SkillMatcher.get_instance()
+        matcher = SkillMatcher(taxonomy_rows) if taxonomy_rows is not None else SkillMatcher.get_instance()
         gazetteer_skills = matcher.extract_canonical_skills(raw_text)
         found_skills.extend(gazetteer_skills)
     except Exception as e:
@@ -341,16 +341,16 @@ def extract_skills_from_text(raw_text: str) -> List[str]:
                     freeform_tokens.append(clean_token)
 
     # Gate flywheel auto-registration on ATS_FLYWHEEL_AUTO_REGISTER (default: False)
-    enable_flywheel = os.getenv("ATS_FLYWHEEL_AUTO_REGISTER", "false").strip().lower() in ("true", "1", "yes")
+    enable_flywheel = taxonomy_rows is None and os.getenv("ATS_FLYWHEEL_AUTO_REGISTER", "false").strip().lower() in ("true", "1", "yes")
 
     # 3. LLM Residue Pass (Step 5) with strict verbatim containment verification
     try:
-        residue_extractor = LLMResidueExtractor.get_instance()
+        residue_extractor = LLMResidueExtractor.get_instance() if allow_llm else None
         residue_skills = residue_extractor.extract_residue_skills(
             resume_text=raw_text,
             skills_already_found=found_skills,
             register_flywheel=enable_flywheel
-        )
+        ) if residue_extractor is not None else []
         for r_skill in residue_skills:
             if r_skill.get("name"):
                 freeform_tokens.append(r_skill["name"])
@@ -359,11 +359,25 @@ def extract_skills_from_text(raw_text: str) -> List[str]:
 
     # 4. Resolve freeform tokens through the 4-Layer Normalization Cascade (Step 6)
     if freeform_tokens:
-        resolved_items = resolve_skills_batch(freeform_tokens, register_pending=enable_flywheel)
+        if taxonomy_rows is not None:
+            # An immutable per-job snapshot avoids tenant-specific mutable singleton catalogs.
+            aliases = {}
+            for row in taxonomy_rows:
+                if row.get("status") == "approved":
+                    for alias in [row["canonical_name"], *row.get("aliases", [])]:
+                        aliases[alias.casefold()] = row["canonical_name"]
+            resolved_items = [{"canonical_name": aliases[token.casefold()]} for token in freeform_tokens if token.casefold() in aliases]
+        else:
+            resolved_items = resolve_skills_batch(freeform_tokens, register_pending=enable_flywheel)
         for item in resolved_items:
             cname = item["canonical_name"]
             if cname and cname not in found_skills:
                 found_skills.append(cname)
+
+    if taxonomy_rows is not None:
+        # A job snapshot is the complete approved vocabulary. Never consult the
+        # legacy process-wide normalization catalog or register customer skills.
+        return sorted(set(found_skills), key=str.casefold)
 
     # 5. Check catalog fallbacks
     for skill in TECH_SKILLS_CATALOG:
@@ -500,7 +514,8 @@ def calculate_candidate_experience_years(
 def parse_resume_to_candidate(
     file_bytes: bytes,
     filename: str = "resume.pdf",
-    target_job: Optional[Dict[str, Any]] = None
+    target_job: Optional[Dict[str, Any]] = None,
+    *, taxonomy_rows=None, allow_llm: bool = True,
 ) -> Dict[str, Any]:
     """
     Parses a PDF resume with high-precision extractors for candidate name,
@@ -538,7 +553,7 @@ def parse_resume_to_candidate(
     linkedin = extract_linkedin(raw_text)
 
     # 7. Verified Skills extraction
-    found_skills = extract_skills_from_text(raw_text)
+    found_skills = extract_skills_from_text(raw_text, taxonomy_rows=taxonomy_rows, allow_llm=allow_llm)
 
     # 8. Education extraction (or N/A)
     highest_education = extract_education(raw_text)
@@ -580,7 +595,8 @@ def parse_resume_to_candidate(
     enriched_skills = enrich_candidate_skills(
         raw_text=raw_text,
         experience_items=experience_items,
-        candidate_skills=found_skills
+        candidate_skills=found_skills,
+        taxonomy_rows=taxonomy_rows,
     )
 
     # 14. Step 8 Aggregation: Interval-Merged Candidate Skills & Scoring Engine Matrix

@@ -63,7 +63,7 @@ Second Company
 
 def test_parser_starts_with_pending_unevaluated_scorecard(monkeypatch):
     monkeypatch.setattr(resume_parser, "extract_text_from_document", lambda *args, **kwargs: ("Jane Doe\nSeeking employment", "test", "pdf"))
-    monkeypatch.setattr(resume_parser, "extract_skills_from_text", lambda text: [])
+    monkeypatch.setattr(resume_parser, "extract_skills_from_text", lambda text, **kwargs: [])
     monkeypatch.setattr(resume_parser, "enrich_candidate_skills", lambda **kwargs: [])
     profile = resume_parser.parse_resume_to_candidate(b"fake pdf")
     assert profile["core_skills"] == []

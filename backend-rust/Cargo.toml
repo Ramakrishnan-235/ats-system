@@ -1,0 +1,30 @@
+[package]
+name = "ats-backend"
+version = "0.1.0"
+edition = "2024"
+default-run = "ats-backend"
+
+[dependencies]
+anyhow = "1"
+regex = "1"
+argon2 = "0.5"
+axum = { version = "0.8", features = ["multipart"] }
+bytes = "1"
+chrono = { version = "0.4", features = ["serde"] }
+dotenvy = "0.15"
+object_store = { version = "0.12", features = ["aws"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "migrate", "macros"] }
+subtle = "2"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "limit"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+utoipa = { version = "5", features = ["uuid", "chrono"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

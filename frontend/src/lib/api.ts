@@ -4,7 +4,8 @@ import type {
   TeamNote, CitationLocation,
 } from "@/types/ats";
 
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1").replace(/\/$/, "");
+export const legacyBackend = process.env.NEXT_PUBLIC_ATS_BACKEND === "legacy";
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || (legacyBackend ? "http://localhost:8000/api/v1" : "/core-api/api/v1")).replace(/\/$/, "");
 // A user supplies this credential for the current browser session. Never bundle a
 // server credential or persist candidate PII in browser storage.
 let sessionApiKey = "";
@@ -15,7 +16,7 @@ export function setSessionUser(userId: string, role = "recruiter") {
   sessionUserId = userId.trim();
   sessionUserRole = role.trim();
 }
-export const requiresApiKey = process.env.NEXT_PUBLIC_REQUIRE_API_KEY !== "false";
+export const requiresApiKey = legacyBackend && process.env.NEXT_PUBLIC_REQUIRE_API_KEY !== "false";
 export function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "The request failed. Please try again.";
 }
@@ -29,20 +30,23 @@ export class ApiError extends Error {
 
 async function request(path: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers);
-  if (sessionApiKey) headers.set("X-API-Key", sessionApiKey);
-  if (sessionUserId) headers.set("X-User-Id", sessionUserId);
-  if (sessionUserRole) headers.set("X-User-Role", sessionUserRole);
+  if (legacyBackend) {
+    if (sessionApiKey) headers.set("X-API-Key", sessionApiKey);
+    if (sessionUserId) headers.set("X-User-Id", sessionUserId);
+    if (sessionUserRole) headers.set("X-User-Role", sessionUserRole);
+  }
   if (requiresApiKey && !sessionApiKey) {
     throw new ApiError("Enter your API key to connect to the backend.", 401);
   }
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers, cache: "no-store" });
+    response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers, credentials: "include", cache: "no-store" });
   } catch (error) {
     if (options.signal?.aborted) throw error;
     throw new ApiError("Cannot reach the backend. Check the API address and connection.");
   }
   if (!response.ok) {
+    if (!legacyBackend && response.status === 401 && !path.startsWith("/auth/") && typeof window !== "undefined") window.dispatchEvent(new Event("ats-session-expired"));
     let detail: unknown;
     try { detail = (await response.json()).detail; } catch { /* Non-JSON error response. */ }
     const message = typeof detail === "string" ? detail : `Request failed (${response.status}).`;
@@ -94,7 +98,8 @@ export const removeJobCandidate = (jobId: string, candidateId: string) => json<R
 export const updateJobCandidateStage = (jobId: string, candidateId: string, stage: string) => json<RankedCandidate>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}/stage${query({ new_stage: stage })}`, { method: "PATCH" });
 export const fetchCandidates = (params?: { search?: string; stage?: string; skill?: string; include_pii?: boolean }) => json<CandidateDetail[]>(`/candidates${query(params)}`);
 export const fetchCandidate = (candidateId: string, includePii = false) => json<CandidateDetail>(`/candidates/${id(candidateId)}?include_pii=${includePii}`);
-export const updateCandidateStage = (candidateId: string, stage: string) => json<{ status: string; stage: string }>(`/candidates/${id(candidateId)}/stage${query({ new_stage: stage })}`, { method: "PATCH" });
+export const fetchCandidateScorecard = (candidateId: string, jobId: string) => json<CandidateDetail["scorecard"]>(`/candidates/${id(candidateId)}/scorecard${query({ job_id: jobId })}`);
+export const updateCandidateStage = (candidateId: string, stage: string, jobId?: string) => json<{ status: string; stage: string }>(`/candidates/${id(candidateId)}/stage${query({ new_stage: stage, job_id: jobId })}`, { method: "PATCH" });
 export const addCandidateNote = (candidateId: string, content: string, author = "Recruiter") => json<TeamNote>(`/candidates/${id(candidateId)}/notes`, { method: "POST", ...body({ content, author }) });
 export const fetchResumePdf = async (candidateId: string, signal?: AbortSignal) => (await request(`/candidates/${id(candidateId)}/resume-pdf`, { signal })).blob();
 export const locateCandidateCitation = (candidateId: string, phrase: string) => json<{ found: boolean; location: CitationLocation | null }>(`/candidates/${id(candidateId)}/locate-citation`, { method: "POST", ...body({ search_phrase: phrase }) });
@@ -138,11 +143,12 @@ function sleepWithSignal(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-export function uploadResumeFile(file: File, jobId?: string, signal?: AbortSignal) {
+export function uploadResumeFile(file: File, jobId?: string, signal?: AbortSignal, options?: {candidateId?: string; idempotencyKey?: string}) {
   const data = new FormData();
   data.append("file", file);
   if (jobId) data.append("job_id", jobId);
-  return json<UploadResponse>("/candidates/upload-async", { method: "POST", body: data, signal });
+  if (options?.candidateId) data.append("candidate_id", options.candidateId);
+  return json<UploadResponse>("/candidates/upload-async", { method: "POST", body: data, signal, headers: legacyBackend ? undefined : { "Idempotency-Key": options?.idempotencyKey ?? crypto.randomUUID() } });
 }
 export const fetchUploadTask = (taskId: string, signal?: AbortSignal) => json<UploadTask>(`/candidates/tasks/${id(taskId)}`, { signal });
 
@@ -154,7 +160,7 @@ export async function uploadAndWait(
 ): Promise<UploadResponse> {
   let signal: AbortSignal | undefined;
   let pollIntervalMs = 500;
-  let timeoutMs = 120000;
+  let timeoutMs = legacyBackend ? 120000 : 600000;
   let onProgress = onProgressCallback;
 
   if (signalOrOptions instanceof AbortSignal) {
@@ -246,14 +252,29 @@ export interface MatchResponse {
   candidates: RankedCandidate[];
 }
 
-export function evaluateJobMatching(payload: {
+export async function evaluateJobMatching(payload: {
   job_id?: string;
   job_title: string;
   job_description: string;
   stage1_retrieve_limit?: number;
   stage2_rerank_limit?: number;
 }) {
-  return json<MatchResponse>("/match/evaluate-job", { method: "POST", ...body(payload) });
+  const response = await json<MatchResponse & { task_ids?: string[] }>("/match/evaluate-job", { method: "POST", ...body(payload) });
+  if (!response.task_ids) return response;
+  const started = Date.now();
+  const waiting = new Set(response.task_ids);
+  let failed = 0;
+  while (waiting.size) {
+    const tasks = await Promise.all([...waiting].map(async taskId => ({ taskId, task: await fetchUploadTask(taskId) })));
+    for (const { taskId, task } of tasks) {
+      if (task.state === "SUCCESS" || task.state === "FAILURE") { waiting.delete(taskId); if (task.state === "FAILURE") failed++; }
+    }
+    if (Date.now() - started > 600000) throw new ApiError("Matching is still processing. Reopen the job to check saved results.");
+    if (waiting.size) await sleepWithSignal(1500);
+  }
+  if (response.task_ids.length && failed === response.task_ids.length) throw new ApiError("AI evaluation failed. Candidates remain available for manual review.");
+  const candidates = response.job_id ? await fetchJobCandidates(response.job_id) : [];
+  return { ...response, candidates, status: failed ? "PARTIAL" : "COMPLETED", stage3_final_ranked: response.task_ids.length - failed, latency_ms: Date.now() - started };
 }
 
 export interface TaxonomySkillItem {
@@ -289,4 +310,26 @@ export interface AuditLogItem {
 
 export const fetchAuditLogs = (params?: { limit?: number; actor_id?: string; action?: string; resource_type?: string }) =>
   json<AuditLogItem[]>(`/audit/logs${query(params)}`);
+
+export interface SessionIdentity { user_id: string; tenant_id: string; role: string; name: string; email: string }
+export interface Workspace { id: string; name: string; kind: "corporate" | "agency"; role: string }
+export interface Session { user: SessionIdentity; workspaces: Workspace[]; development_mode?: boolean }
+export const fetchSession = () => json<Session>("/auth/me");
+export const fetchAuthConfig = () => json<{ registration_enabled: boolean }>("/auth/config");
+export const signIn = (email: string, password: string) => json("/auth/login", { method: "POST", ...body({ email, password }) });
+export const registerWorkspace = (payload: { email: string; password: string; name: string; workspace_name: string; workspace_kind: string }) => json("/auth/register", { method: "POST", ...body(payload) });
+export const signOut = () => json("/auth/logout", { method: "POST" });
+export const switchWorkspace = (tenantId: string) => json("/auth/workspace", { method: "POST", ...body({ tenant_id: tenantId }) });
+export interface WorkspaceMember { id: string; name: string; email: string; role: string }
+export const fetchMembers = () => json<WorkspaceMember[]>("/settings/members");
+export const addMember = (email: string, role: string) => json("/settings/members", { method: "POST", ...body({ email, role }) });
+export const updateWorkspace = (name: string) => json("/settings/workspace", {method: "PATCH", ...body({name})});
+export interface AnalyticsData { stages: {stage: string; count: number; average_score: number | null}[]; processing: {state: string; count: number}[]; hires: number; average_days_to_hire: number | null; generated_at: string }
+export const fetchAnalytics = () => json<AnalyticsData>("/analytics");
+export interface AgencyClient {id: string; name: string}
+export interface AgencySubmission {id: string; client_name: string; application_id: string; status: string; created_at: string}
+export const fetchClients = () => json<AgencyClient[]>("/clients");
+export const createClient = (name: string) => json<AgencyClient>("/clients", {method: "POST", ...body({name})});
+export const fetchSubmissions = () => json<AgencySubmission[]>("/submissions");
+export const createSubmission = (clientId: string, applicationId: string) => json("/submissions", {method: "POST", ...body({client_id: clientId, application_id: applicationId})});
 

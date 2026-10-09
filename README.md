@@ -1,5 +1,9 @@
 # AI-Powered Applicant Tracking System (ATS)
 
+The current implementation uses a **Rust public core, private Python AI workers, PostgreSQL/pgvector and private S3 storage**. Start with [the implementation and startup guide](docs/ARCHITECTURE_IMPLEMENTATION.md). The default Compose file now starts this architecture; older configuration is retained in `compose.legacy.yml`.
+
+The sections below describe the retained legacy AI engine and its algorithms. Public business ownership and the current startup procedure are documented in the new guide.
+
 An enterprise-grade, privacy-first, AI-driven Applicant Tracking System (ATS) core engine featuring asynchronous resume ingestion workers (Celery + Redis), intelligent layout parsing, PII de-identification, structured LLM extraction, multi-channel hybrid vector/lexical retrieval, and deep Cross-Encoder re-ranking.
 
 ---

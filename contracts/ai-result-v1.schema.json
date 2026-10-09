@@ -1,0 +1,162 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Contract Version",
+      "type": "integer"
+    },
+    "attempt_id": {
+      "format": "uuid",
+      "title": "Attempt Id",
+      "type": "string"
+    },
+    "document_id": {
+      "format": "uuid",
+      "title": "Document Id",
+      "type": "string"
+    },
+    "document_version": {
+      "minimum": 1,
+      "title": "Document Version",
+      "type": "integer"
+    },
+    "input_revision": {
+      "minimum": 1,
+      "title": "Input Revision",
+      "type": "integer"
+    },
+    "job_revision": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Job Revision"
+    },
+    "extraction_status": {
+      "enum": [
+        "COMPLETED",
+        "FAILED",
+        "SKIPPED"
+      ],
+      "title": "Extraction Status",
+      "type": "string"
+    },
+    "evaluation_status": {
+      "enum": [
+        "COMPLETED",
+        "FAILED",
+        "SKIPPED",
+        "PENDING"
+      ],
+      "title": "Evaluation Status",
+      "type": "string"
+    },
+    "profile": {
+      "additionalProperties": true,
+      "title": "Profile",
+      "type": "object"
+    },
+    "contact": {
+      "additionalProperties": true,
+      "title": "Contact",
+      "type": "object"
+    },
+    "sanitized_text": {
+      "default": "",
+      "maxLength": 500000,
+      "title": "Sanitized Text",
+      "type": "string"
+    },
+    "scorecard": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scorecard"
+    },
+    "embedding": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Embedding"
+    },
+    "embedding_model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Embedding Model"
+    },
+    "preprocessing_version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Preprocessing Version"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 100,
+      "title": "Warnings",
+      "type": "array"
+    },
+    "error_code": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Z0-9_]{1,100}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error Code"
+    }
+  },
+  "required": [
+    "attempt_id",
+    "document_id",
+    "document_version",
+    "input_revision",
+    "extraction_status",
+    "evaluation_status"
+  ],
+  "title": "AIResult",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

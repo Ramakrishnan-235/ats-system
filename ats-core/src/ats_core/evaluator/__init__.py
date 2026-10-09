@@ -1,5 +1,4 @@
 from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
-from ats_core.evaluator.audit_logger import AuditLogger
 from ats_core.evaluator.llm_evaluator import (
     LLMEvaluator,
     EvaluationReport,
@@ -52,5 +51,14 @@ __all__ = [
     "BENCHMARK_EXAMPLES",
     "BENCHMARK_JOB",
 ]
+
+
+def __getattr__(name):
+    # Private AI imports must not initialize the legacy database adapter.
+    if name == "AuditLogger":
+        from ats_core.evaluator.audit_logger import AuditLogger
+
+        return AuditLogger
+    raise AttributeError(name)
 
 

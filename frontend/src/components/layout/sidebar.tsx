@@ -16,6 +16,7 @@ import {
   Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSession } from "./api-session";
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/", icon: LayoutGrid },
@@ -30,6 +31,8 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { session, disconnect } = useSession();
+  const workspace = session?.workspaces.find(w => w.id === session.user.tenant_id);
 
   return (
     <aside className="w-60 shrink-0 bg-[#fbfbfa] border-r border-[#e8e6df] flex flex-col justify-between h-screen sticky top-0 select-none z-30 font-sans">
@@ -43,7 +46,7 @@ export function Sidebar() {
 
         {/* Navigation Items */}
         <nav className="px-3 space-y-1 mt-1">
-          {NAV_ITEMS.map((item) => {
+          {[...NAV_ITEMS, ...(workspace?.kind === "agency" ? [{label: "Clients & submissions", href: "/clients", icon: Users}] : [])].map((item) => {
             const isActive =
               item.href === "/"
                 ? pathname === "/"
@@ -83,17 +86,18 @@ export function Sidebar() {
             </div>
             <div className="flex flex-col">
               <span className="text-xs font-bold text-zinc-900 leading-tight">
-                Alex Rivet
+                {session?.user.name ?? "Legacy session"}
               </span>
-              <span className="text-[10px] text-zinc-400 font-medium">Admin</span>
+              <span className="text-[10px] text-zinc-400 font-medium">{session?.user.role ?? "API access"}</span>
             </div>
           </div>
-          <button
+          {!session?.development_mode && <button
             title="Sign out"
+            onClick={disconnect}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-950 hover:bg-zinc-100 transition-colors"
           >
             <LogOut className="w-3.5 h-3.5" />
-          </button>
+          </button>}
         </div>
       </div>
     </aside>

@@ -92,6 +92,9 @@ class LocalDeepEvaluator:
         api_key: Optional[str] = None,
         temperature: float = 0.0,
         max_retries: Optional[int] = None,
+        report_schema=DeepCandidateEvaluationReport,
+        structured_method: Optional[str] = None,
+        model_options: Optional[Dict[str, Any]] = None,
     ):
         config = get_llm_config(base_url=base_url, model_name=model_name, api_key=api_key)
         self.base_url = config["base_url"]
@@ -110,12 +113,14 @@ class LocalDeepEvaluator:
             api_key=self.api_key,
             temperature=self.temperature,
             max_retries=self.max_retries,
+            **(model_options or {}),
         )
 
         # Structured output bound to DeepCandidateEvaluationReport
         self.structured_llm = get_structured_llm(
-            schema=DeepCandidateEvaluationReport,
+            schema=report_schema,
             chat_model=self.chat_model,
+            method=structured_method,
         )
 
         # LangChain Prompt Template

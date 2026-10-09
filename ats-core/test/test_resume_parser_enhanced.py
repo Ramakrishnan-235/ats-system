@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import pytest
 from ats_core.parsers.resume_parser import (
     parse_resume_to_candidate,
@@ -86,7 +89,10 @@ def test_deva_kumar_education_extraction():
 
 
 def test_deva_kumar_skills_extraction():
-    skills = extract_skills_from_text(DEVA_KUMAR_RESUME_TEXT)
+    rows = json.loads((Path(__file__).resolve().parents[2] / "backend-rust" / "taxonomy-seed.json").read_text(encoding="utf-8"))
+    for index, row in enumerate(rows):
+        row.update(id=f"fixture-{index}", status="approved")
+    skills = extract_skills_from_text(DEVA_KUMAR_RESUME_TEXT, taxonomy_rows=rows, allow_llm=False)
     expected_skills = [
         "Python", "Java", "JavaScript", "SQL", "React", "Tailwind CSS", "HTML", "CSS",
         "Git", "Firebase", "Figma", "MySQL", "Pandas", "Matplotlib", "OpenCV", "Roboflow"

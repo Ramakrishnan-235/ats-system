@@ -224,7 +224,7 @@ class LLMResidueExtractor:
                 logger.warning(f"Residue pass unavailable ({e}); using local rule extraction.")
                 raw_candidates = self._fallback_rule_residue(resume_text, skills_already_found)
 
-        taxonomy_service = SkillTaxonomyService.get_instance()
+        taxonomy_service = SkillTaxonomyService.get_instance() if register_flywheel else None
 
         for cand in raw_candidates:
             clean_name = cand.name.strip()

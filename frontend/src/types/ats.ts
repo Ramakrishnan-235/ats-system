@@ -24,6 +24,8 @@ export interface AIMatchRate {
 
 export interface PipelineCandidateItem {
   id: string;
+  application_id?: string;
+  job_id?: string;
   name: string;
   role: string;
   avatar: string;
@@ -136,6 +138,9 @@ export interface CandidateDetail {
   applied_date: string;
   applied_for_job: string;
   applied_for_job_id?: string;
+  revision?: number;
+  processing_status?: string;
+  applications?: { id: string; job_id: string; job_title: string; stage: string; match_score: number | null }[];
   years_of_experience: number;
   highest_education: string;
   core_skills: string[];

@@ -14,7 +14,7 @@ import { AuditTrailTab } from "@/components/candidate/audit-trail-tab";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { fetchCandidate, updateCandidateStage, getErrorMessage } from "@/lib/api";
+import { fetchCandidate, fetchCandidateScorecard, updateCandidateStage, getErrorMessage } from "@/lib/api";
 import { CandidateDetail, CitationLocation } from "@/types/ats";
 
 export default function CandidateDetailPage() {
@@ -48,8 +48,8 @@ export default function CandidateDetailPage() {
 
   const handleStageChange = async (newStage: string) => {
     if (!candidate) return;
-    setCandidate((prev) => (prev ? { ...prev, stage: newStage, status: newStage } : null));
-    await updateCandidateStage(candidateId, newStage);
+    await updateCandidateStage(candidateId, newStage, candidate.applied_for_job_id);
+    setCandidate((prev) => (prev ? { ...prev, stage: newStage, status: newStage, applications: prev.applications?.map(a => a.job_id === prev.applied_for_job_id ? { ...a, stage: newStage } : a) } : null));
   };
 
   const handleSelectCitation = (citation: CitationLocation) => {
@@ -103,6 +103,17 @@ export default function CandidateDetailPage() {
           ) : (
             <>
               {/* Header Bar with Status & Stage Advancement */}
+              {!!candidate.applications?.length && <label className="block mb-4 text-sm font-semibold">Application
+                <select value={candidate.applied_for_job_id || ""} className="ml-3 border rounded-lg p-2 bg-white" onChange={async e => {
+                  const application = candidate.applications?.find(a => a.job_id === e.target.value);
+                  if (!application) return;
+                  try {
+                    const scorecard = await fetchCandidateScorecard(candidateId, application.job_id);
+                    setCandidate(prev => prev ? { ...prev, applied_for_job_id: application.job_id, applied_for_job: application.job_title, stage: application.stage, status: application.stage, scorecard } : null);
+                    setActiveCitation(null);
+                  } catch (error) { setError(getErrorMessage(error)); }
+                }}>{candidate.applications.map(a => <option key={a.id} value={a.job_id}>{a.job_title} — {a.stage}</option>)}</select>
+              </label>}
               <CandidateHeader candidate={candidate} onStageChange={handleStageChange} />
 
           {/* Split-View Mode (Side-by-Side Scorecard & Interactive PDF Viewer) */}

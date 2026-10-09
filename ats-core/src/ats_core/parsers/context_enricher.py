@@ -94,7 +94,8 @@ def classify_mention(section: str, sentence: str) -> Tuple[str, float, bool]:
 def enrich_candidate_skills(
     raw_text: str,
     experience_items: Optional[List[Dict[str, Any]]] = None,
-    candidate_skills: Optional[List[str]] = None
+    candidate_skills: Optional[List[str]] = None,
+    *, taxonomy_rows: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Full Context Enrichment:
@@ -107,7 +108,7 @@ def enrich_candidate_skills(
         return []
 
     lines, anchors = anchor_sections(raw_text)
-    matcher = SkillMatcher.get_instance()
+    matcher = SkillMatcher(taxonomy_rows=taxonomy_rows) if taxonomy_rows is not None else SkillMatcher.get_instance()
     rich_matches = matcher.find_rich(raw_text)
 
     # Build line span offsets

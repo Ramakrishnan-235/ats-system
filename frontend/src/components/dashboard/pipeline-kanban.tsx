@@ -74,7 +74,7 @@ export function PipelineKanban({ pipeline, onAddCandidate }: PipelineKanbanProps
 
                     return (
                       <Link
-                        key={candidate.id}
+                        key={candidate.application_id || candidate.id}
                         href={`/candidates/${candidate.id}`}
                         className="block group"
                       >

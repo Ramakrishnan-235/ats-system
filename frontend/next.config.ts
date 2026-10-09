@@ -51,6 +51,10 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  async rewrites() {
+    const core = (process.env.ATS_CORE_URL || "http://127.0.0.1:8080").replace(/\/$/, "");
+    return [{ source: "/core-api/:path*", destination: `${core}/:path*` }];
+  },
   async headers() {
     return [
       {
