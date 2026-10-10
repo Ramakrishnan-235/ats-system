@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import os
+import re
 import threading
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -54,6 +55,19 @@ def sanitize_fields(value: Any, contact: dict):
     if isinstance(value, dict):
         return {k: sanitize_fields(v, contact) for k, v in value.items()}
     return value
+
+
+def scoring_dossier(text: str, profile: dict) -> str:
+    """Give the scorer technical evidence without service-generated PII markers."""
+    clean = re.sub(r"\[(?:CANDIDATE_NAME|EMAIL_ADDRESS|PHONE_NUMBER|LOCATION|REDACTED)\]", "", text)
+    clean = "\n".join(line for line in clean.splitlines() if re.search(r"\w", line))
+    # The parser's extracted skills retain evidence that PII recognition may mask
+    # in prose (for example a tool incorrectly recognized as a person's name).
+    skills = profile.get("core_skills", [])
+    skills = [skill for skill in skills if isinstance(skill, str) and skill.strip()]
+    if skills:
+        clean += "\nSkills extracted from the resume: " + ", ".join(skills)
+    return clean
 
 
 def compute_result(payload: dict, document: bytes | None) -> AIResult:
@@ -118,7 +132,8 @@ def compute_result(payload: dict, document: bytes | None) -> AIResult:
             evaluator = get_evaluator()
             evaluation = evaluator.evaluate(
                 candidate_id=payload["candidate_id"],
-                candidate_profile_text=result.sanitized_text,
+                candidate_profile_text=scoring_dossier(result.sanitized_text, result.profile),
+                citation_source_text=result.sanitized_text,
                 job_title=payload["job"]["title"],
                 job_description=payload["job"]["job_description"],
             )

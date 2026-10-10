@@ -51,7 +51,10 @@ def evaluator():
         max_retries=0,
         model_options={
             "request_timeout": 180,
-            "max_tokens": 2048,
-            **({"reasoning_effort": "none"} if not config["is_openrouter"] else {}),
+            # Leave room for the complete rubric, citations and interview questions.
+            "max_tokens": 4096,
+            **({"reasoning_effort": "none"} if not config["is_openrouter"] else {
+                "extra_body": {"reasoning": {"enabled": False}},
+            }),
         },
     )

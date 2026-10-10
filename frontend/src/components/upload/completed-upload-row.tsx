@@ -27,7 +27,11 @@ export function CompletedUploadRow({ item }: CompletedUploadRowProps) {
             </span>
           </div>
           <p className="text-[11px] text-zinc-500 font-mono mt-0.5">
-            {item.taskId} • Processed in {item.duration} • Evaluation: {item.evaluationStatus || "Pending"}
+            Processed in {item.duration} • {item.evaluationStatus === "COMPLETED" && item.matchScore != null
+              ? `Job match: ${item.matchScore}/100`
+              : item.evaluationStatus === "SKIPPED" ? "Details extracted — no job selected"
+              : item.evaluationStatus === "FAILED" ? "Details extracted — scoring failed. Retry evaluation from the job."
+              : `Evaluation: ${item.evaluationStatus || "Pending"}`}
           </p>
         </div>
       </div>

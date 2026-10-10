@@ -115,6 +115,69 @@ def test_worker_keeps_incomplete_model_response_unscored(monkeypatch):
     assert "EVALUATION_UNAVAILABLE" in outcome.warnings
 
 
+def test_scoring_uses_technical_evidence_without_privacy_artifacts(monkeypatch):
+    from ats_core.ai_api import evaluation
+
+    monkeypatch.setenv("ATS_AI_ENABLE_LLM", "true")
+    monkeypatch.setenv("ATS_AI_ENABLE_EMBEDDINGS", "false")
+    model = Mock()
+    model.evaluate.return_value = {"success": False}
+    monkeypatch.setattr(evaluation, "evaluator", lambda: model)
+    text = "[CANDIDATE_NAME]\n[EMAIL_ADDRESS]\nDeveloped Python APIs and optimized SQL queries by 30%.\nPython, SQL, [CANDIDATE_NAME]"
+    payload = result().model_dump(mode="json")
+    payload.update(operation="evaluate", candidate_id=str(uuid4()),
+                   profile={"core_skills": ["Python", "SQL", "Docker"]}, sanitized_text=text,
+                   job={"title": "Developer", "job_description": "Python APIs"})
+    outcome = worker.compute_result(payload, None)
+    sent = model.evaluate.call_args.kwargs["candidate_profile_text"]
+    assert "[CANDIDATE_NAME]" not in sent and "[EMAIL_ADDRESS]" not in sent
+    assert "optimized SQL queries by 30%." in sent and "Docker" in sent
+    assert outcome.sanitized_text == text
+    assert model.evaluate.call_args.kwargs["citation_source_text"] == text
+    assert outcome.evaluation_status == "FAILED" and outcome.scorecard is None
+
+
+def test_added_skill_summary_cannot_become_a_verbatim_resume_quote():
+    from ats_core.ai_api.evaluation import VerifiedReport
+    from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
+
+    model = LocalDeepEvaluator(api_key="test-key", base_url="https://openrouter.ai/api/v1")
+    model.chain = Mock()
+    model.chain.invoke.return_value = VerifiedReport.model_validate({
+        "overall_match_score": 75, "executive_verdict": "Relevant Python evidence.",
+        "criteria_breakdown": [{"category": "Tech Stack Alignment", "score": 4,
+            "assessment": "Python and Docker are extracted skills.",
+            "verbatim_citation": "Skills extracted from the resume: Python, Docker"}],
+    })
+    evaluated = model.evaluate("synthetic", "Python APIs\nSkills extracted from the resume: Python, Docker",
+                               "Developer", "Python APIs", citation_source_text="Python APIs")
+    assert evaluated["success"]
+    assert evaluated["report"].criteria_breakdown[0].verbatim_citation is None
+
+
+@pytest.mark.parametrize("cloud", [False, True])
+def test_scoring_reserves_output_budget_without_reasoning(monkeypatch, cloud):
+    from ats_core.ai_api import evaluation
+    from ats_core.evaluator import deep_evaluator
+    from ats_core.llm import client
+
+    factory = Mock()
+    monkeypatch.setattr(deep_evaluator, "LocalDeepEvaluator", factory)
+    monkeypatch.setattr(client, "get_llm_config", lambda: {"is_openrouter": cloud})
+    evaluation.evaluator.cache_clear()
+    try:
+        evaluation.evaluator()
+        options = factory.call_args.kwargs["model_options"]
+        assert options["max_tokens"] == 4096
+        assert options["request_timeout"] == 180
+        if cloud:
+            assert options["extra_body"]["reasoning"]["enabled"] is False
+        else:
+            assert options["reasoning_effort"] == "none"
+    finally:
+        evaluation.evaluator.cache_clear()
+
+
 def test_worker_only_saves_through_core_and_persists_artifact_first(monkeypatch):
     job = str(uuid4())
     outcome = result()

@@ -206,6 +206,7 @@ export interface CompletedUpload {
   duration: string;
   candidateId: string;
   evaluationStatus?: string;
+  matchScore?: number | null;
 }
 
 export interface UploadIssue {

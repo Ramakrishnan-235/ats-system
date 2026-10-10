@@ -96,6 +96,12 @@ class LLMResidueExtractor:
             model_name=self.model_name,
             api_key=self.api_key,
             temperature=self.temperature,
+            # This optional enrichment must not hold up ingestion for minutes.
+            request_timeout=60,
+            max_retries=0,
+            max_tokens=2048,
+            **({"extra_body": {"reasoning": {"enabled": False}}} if self.is_openrouter
+               else {"reasoning_effort": "none"}),
         )
         self.structured_llm = get_structured_llm(
             schema=LLMResidueOutput,
