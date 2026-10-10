@@ -1,0 +1,17 @@
+Evan Fixture
+evan@example.invalid
++14155550105
+Chennai, Tamil Nadu
+
+TECHNICAL SKILLS
+Python
+
+EDUCATION
+B.Tech Computer Science - Example Institute
+
+EXPERIENCE
+Backend Developer
+Example Delivery Lab
+Jan 2023 - Dec 2024
+- Built services using Python.
+- Automated continuous integration and continuous delivery pipelines.

@@ -1,0 +1,7 @@
+TECHNICAL SKILLS
+SQL, OrbitQueryX
+
+PROJECTS
+Built SQL queries for a fictional inventory dataset.
+Used OrbitQueryX to inspect the results.
+

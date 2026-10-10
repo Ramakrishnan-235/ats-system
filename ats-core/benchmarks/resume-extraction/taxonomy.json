@@ -1,0 +1,1526 @@
+[
+  {
+    "canonical_name": "Agile",
+    "category": "domain",
+    "aliases": [
+      "scrum",
+      "kanban",
+      "sprint planning",
+      "agile development",
+      "standup"
+    ],
+    "is_ambiguous": false,
+    "source": "esco",
+    "id": "fixture-5b544f4841528d18",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Airflow",
+    "category": "tool",
+    "aliases": [
+      "apache airflow",
+      "airflow dags",
+      "workflow orchestration"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-d58222c0b47f9444",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Angular",
+    "category": "framework",
+    "aliases": [
+      "angularjs",
+      "angular 2+",
+      "angular.js",
+      "angular 17"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-e790528b387973d0",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Ansible",
+    "category": "tool",
+    "aliases": [
+      "ansible playbook",
+      "ansible automation"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-e876abbe46eade2f",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Apache Spark",
+    "category": "tool",
+    "aliases": [
+      "spark",
+      "pyspark",
+      "spark streaming",
+      "spark sql"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-8ff7b29c130d220b",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "ASP.NET Core",
+    "category": "framework",
+    "aliases": [
+      "asp.net",
+      "aspnetcore",
+      "asp.net core mvc",
+      ".net core",
+      "dotnet core"
+    ],
+    "is_ambiguous": false,
+    "source": "onet",
+    "id": "fixture-5d713f21c2a1970f",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "AWS",
+    "category": "platform",
+    "aliases": [
+      "amazon web services",
+      "aws cloud",
+      "ec2",
+      "s3",
+      "lambda",
+      "ecs",
+      "eks"
+    ],
+    "is_ambiguous": true,
+    "source": "lightcast",
+    "id": "fixture-32fd72a0e0746043",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Bash",
+    "category": "language",
+    "aliases": [
+      "bash scripting",
+      "shell",
+      "shell script",
+      "shell scripting",
+      "zsh",
+      "sh"
+    ],
+    "is_ambiguous": false,
+    "source": "stackoverflow",
+    "id": "fixture-d1e9567da9a8a4b0",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "BigQuery",
+    "category": "database",
+    "aliases": [
+      "google bigquery",
+      "gcp bigquery"
+    ],
+    "is_ambiguous": false,
+    "source": "onet",
+    "id": "fixture-0871a590f805e5cd",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Bootstrap",
+    "category": "framework",
+    "aliases": [
+      "bootstrap 5",
+      "bootstrap4",
+      "twitter bootstrap"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-faab0dc4735c1cfe",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "C",
+    "category": "language",
+    "aliases": [
+      "c language",
+      "c-lang",
+      "c programming",
+      "ansi c"
+    ],
+    "is_ambiguous": true,
+    "source": "lightcast",
+    "id": "fixture-6b23c0d5f35d1b11",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "C#",
+    "category": "language",
+    "aliases": [
+      "csharp",
+      "c sharp",
+      "c-sharp",
+      "cs"
+    ],
+    "is_ambiguous": true,
+    "source": "lightcast",
+    "id": "fixture-040228846ead4a41",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "C++",
+    "category": "language",
+    "aliases": [
+      "cpp",
+      "cplusplus",
+      "c plus plus",
+      "c++11",
+      "c++14",
+      "c++17",
+      "c++20"
+    ],
+    "is_ambiguous": true,
+    "source": "lightcast",
+    "id": "fixture-f1deb75fa21d3c47",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Cassandra",
+    "category": "database",
+    "aliases": [
+      "apache cassandra",
+      "datastax"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-e3297e400dff12fe",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Celery",
+    "category": "tool",
+    "aliases": [
+      "celery worker",
+      "python celery"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-17d78bdb4c7cb3d9",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "CI/CD",
+    "category": "domain",
+    "aliases": [
+      "continuous integration",
+      "continuous deployment",
+      "ci / cd",
+      "ci",
+      "cd"
+    ],
+    "is_ambiguous": true,
+    "source": "lightcast",
+    "id": "fixture-3c26e7a5b744df5a",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Cloudflare",
+    "category": "platform",
+    "aliases": [
+      "cloudflare workers",
+      "cloudflare r2"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-f9191531404c4016",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Colab",
+    "category": "tool",
+    "aliases": [
+      "google colab",
+      "google colaboratory",
+      "jupyter",
+      "jupyter notebook",
+      "jupyterlab"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-e19a82a8b9e1d7b5",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Computer Vision",
+    "category": "domain",
+    "aliases": [
+      "cv",
+      "image processing",
+      "object detection",
+      "yolo",
+      "segmentation"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-69dbf44b3d90e7fa",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Cross-functional Leadership",
+    "category": "soft_skill",
+    "aliases": [
+      "team leadership",
+      "technical mentorship",
+      "leading teams",
+      "team management"
+    ],
+    "is_ambiguous": false,
+    "source": "esco",
+    "id": "fixture-1fba5d594a3e94a6",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Cybersecurity",
+    "category": "domain",
+    "aliases": [
+      "infosec",
+      "appsec",
+      "penetration testing",
+      "oauth",
+      "jwt",
+      "zero trust"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-23b2d5dae0a87cf9",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Dart",
+    "category": "language",
+    "aliases": [
+      "dart-lang",
+      "dartlang"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-5a5c3f75ebced121",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Deep Learning",
+    "category": "domain",
+    "aliases": [
+      "dl",
+      "neural networks",
+      "ann",
+      "cnn",
+      "rnn",
+      "transformers"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-bcd41373249e3050",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Django",
+    "category": "framework",
+    "aliases": [
+      "django-rest-framework",
+      "drf",
+      "django rest framework",
+      "django framework"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-4445d918dfcf1af8",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Docker",
+    "category": "platform",
+    "aliases": [
+      "docker-compose",
+      "docker container",
+      "dockerize",
+      "containerization",
+      "dockr"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-e6169e958b37ce86",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "DynamoDB",
+    "category": "database",
+    "aliases": [
+      "amazon dynamodb",
+      "aws dynamodb"
+    ],
+    "is_ambiguous": false,
+    "source": "onet",
+    "id": "fixture-c58e371231b732ce",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Elasticsearch",
+    "category": "database",
+    "aliases": [
+      "elastic search",
+      "opensearch",
+      "elk",
+      "elastic stack",
+      "es"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-31c819b24cf3c3c7",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Elixir",
+    "category": "language",
+    "aliases": [
+      "elixir-lang",
+      "erlang/elixir"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-3315715a7a3ad574",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Express.js",
+    "category": "framework",
+    "aliases": [
+      "express",
+      "expressjs",
+      "express.js"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-e1dff125b6e4bcf1",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "FastAPI",
+    "category": "framework",
+    "aliases": [
+      "fast-api",
+      "fastapi framework",
+      "fast api"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-2dd9eb7d9f0c1186",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Figma",
+    "category": "tool",
+    "aliases": [
+      "figma design",
+      "figjam",
+      "ui/ux design in figma"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-ce46041005a8aa0d",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Firebase",
+    "category": "database",
+    "aliases": [
+      "firestore",
+      "firebase realtime db",
+      "firebase auth"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-4f3a3e91015ed845",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Flask",
+    "category": "framework",
+    "aliases": [
+      "flask framework",
+      "python-flask"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-c0862201e27e10f5",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Flutter",
+    "category": "framework",
+    "aliases": [
+      "flutter sdk",
+      "flutter framework"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-c903759742b75021",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "GCP",
+    "category": "platform",
+    "aliases": [
+      "google cloud",
+      "google cloud platform",
+      "gke",
+      "google compute engine"
+    ],
+    "is_ambiguous": true,
+    "source": "lightcast",
+    "id": "fixture-31e3cbd5c7bd25c4",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Git",
+    "category": "tool",
+    "aliases": [
+      "git version control",
+      "git-scm"
+    ],
+    "is_ambiguous": true,
+    "source": "lightcast",
+    "id": "fixture-b949c922b6ef9ffb",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "GitHub",
+    "category": "tool",
+    "aliases": [
+      "github actions",
+      "gh actions",
+      "github ci"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-f911e414cf6bdfc5",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "GitLab",
+    "category": "tool",
+    "aliases": [
+      "gitlab ci",
+      "gitlab-ci",
+      "gitlab pipeline"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-9151a836f996c25e",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Go",
+    "category": "language",
+    "aliases": [
+      "golang",
+      "go-lang",
+      "go language"
+    ],
+    "is_ambiguous": true,
+    "source": "lightcast",
+    "id": "fixture-6cc8519b91584e8b",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Grafana",
+    "category": "tool",
+    "aliases": [
+      "grafana dashboards",
+      "observability dashboards"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-0642a7b0f3466de5",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "GraphQL",
+    "category": "domain",
+    "aliases": [
+      "graphql api",
+      "apollo graphql",
+      "relay"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-ee27322554e46143",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "gRPC",
+    "category": "domain",
+    "aliases": [
+      "protobuf",
+      "protocol buffers",
+      "grpc framework"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-fd2bab6ab1ea6708",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "HTML/CSS",
+    "category": "language",
+    "aliases": [
+      "html",
+      "html5",
+      "css",
+      "css3",
+      "html 5",
+      "css 3",
+      "html/css3"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-cc9e70625970e825",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Hugging Face",
+    "category": "library",
+    "aliases": [
+      "huggingface",
+      "transformers library",
+      "diffusers",
+      "datasets library"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-1b817f9efc97800a",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Java",
+    "category": "language",
+    "aliases": [
+      "java 8",
+      "java 11",
+      "java 17",
+      "java 21",
+      "core java",
+      "j2se",
+      "jdk"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-c1ba60ce13586503",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "JavaScript",
+    "category": "language",
+    "aliases": [
+      "js",
+      "es6",
+      "es2020",
+      "es2021",
+      "ecmascript",
+      "javascript es6",
+      "vanilla js"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-b27ad06d123c6145",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Jenkins",
+    "category": "tool",
+    "aliases": [
+      "jenkins ci",
+      "jenkins pipeline",
+      "jenkinsfile"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-9a4d10e69361c7d6",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Jira",
+    "category": "tool",
+    "aliases": [
+      "atlassian jira",
+      "jira software"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-8b9b0b3f792de8a6",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Kafka",
+    "category": "tool",
+    "aliases": [
+      "apache kafka",
+      "kafka streaming",
+      "kafka streams",
+      "confluent kafka"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-e4a5f92fd340ecce",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Kotlin",
+    "category": "language",
+    "aliases": [
+      "kotlin/jvm",
+      "kotlin-native",
+      "kotlin multiplatform"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-c78f6c97923e81a2",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Kubernetes",
+    "category": "platform",
+    "aliases": [
+      "k8s",
+      "k8",
+      "kube",
+      "kubernets",
+      "helm",
+      "k8s cluster",
+      "kubernetes administration"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-a37d07fe30048d3a",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "LangChain",
+    "category": "library",
+    "aliases": [
+      "langchain framework",
+      "langgraph",
+      "langsmith"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-63c34d5ded165a69",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Linux",
+    "category": "platform",
+    "aliases": [
+      "ubuntu",
+      "debian",
+      "centos",
+      "rhel",
+      "red hat linux",
+      "alpine linux",
+      "unix"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-4828e60247c1636f",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "LlamaIndex",
+    "category": "library",
+    "aliases": [
+      "llama-index",
+      "gpt-index"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-bbef28c9ea693db8",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Machine Learning",
+    "category": "domain",
+    "aliases": [
+      "ml",
+      "supervised learning",
+      "unsupervised learning",
+      "predictive modeling"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-9316cd4d881e21d7",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Manim",
+    "category": "library",
+    "aliases": [
+      "manimce",
+      "manim animation"
+    ],
+    "is_ambiguous": false,
+    "source": "manual",
+    "id": "fixture-a9886c662550ca1c",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Matplotlib",
+    "category": "library",
+    "aliases": [
+      "pyplot",
+      "matplotlib.pyplot",
+      "seaborn"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-cdf74c872e4cd3cd",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Microservices",
+    "category": "domain",
+    "aliases": [
+      "microservice architecture",
+      "micro-services",
+      "service-oriented architecture",
+      "soa"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-c753956b22a93584",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Microsoft Azure",
+    "category": "platform",
+    "aliases": [
+      "azure",
+      "azure cloud",
+      "aks",
+      "azure devops"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-9b480cc1f9f0e31c",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "MLOps",
+    "category": "domain",
+    "aliases": [
+      "ml-ops",
+      "machine learning operations",
+      "model monitoring",
+      "model deployment"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-a0a5251c3073da4c",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "MongoDB",
+    "category": "database",
+    "aliases": [
+      "mongo",
+      "mongodb atlas",
+      "documentdb"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-91231ff9ab6685fa",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "MySQL",
+    "category": "database",
+    "aliases": [
+      "my-sql",
+      "mysql 8",
+      "mariadb/mysql"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-211906c1c32db77e",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Natural Language Processing",
+    "category": "domain",
+    "aliases": [
+      "nlp",
+      "text processing",
+      "ner",
+      "sentiment analysis",
+      "llm",
+      "large language models"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-b11715562f26ff15",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Neo4j",
+    "category": "database",
+    "aliases": [
+      "neo-4j",
+      "graph database",
+      "cypher"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-981d202c653a291b",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "NestJS",
+    "category": "framework",
+    "aliases": [
+      "nest.js",
+      "nestjs framework",
+      "nest js"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-58b822ce46273723",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Next.js",
+    "category": "framework",
+    "aliases": [
+      "nextjs",
+      "next.js 14",
+      "next.js 15",
+      "next js",
+      "next"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-30b7f8482c4f570c",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Nginx",
+    "category": "tool",
+    "aliases": [
+      "nginx reverse proxy",
+      "engine-x",
+      "caddy"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-b0146d719a60b308",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Node.js",
+    "category": "framework",
+    "aliases": [
+      "nodejs",
+      "node.js",
+      "node js",
+      "node"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-1fc0c785332e80fb",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "NumPy",
+    "category": "library",
+    "aliases": [
+      "numpy array",
+      "python numpy"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-20f3bd11a0565a60",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "OpenCV",
+    "category": "library",
+    "aliases": [
+      "cv2",
+      "computer vision library",
+      "opencv-python"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-e6910bd404b0f318",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Pandas",
+    "category": "library",
+    "aliases": [
+      "pandas dataframe",
+      "python pandas"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-c4e0ecf5b345196d",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "PHP",
+    "category": "language",
+    "aliases": [
+      "php7",
+      "php8",
+      "php 8",
+      "php-cli"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-0a6a15345ad0c7e3",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "PostgreSQL",
+    "category": "database",
+    "aliases": [
+      "postgres",
+      "psql",
+      "postgres database",
+      "postgresql 15",
+      "postgresql 16"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-cc52d03280b7034c",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Postman",
+    "category": "tool",
+    "aliases": [
+      "postman api",
+      "insomnia",
+      "api testing"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-213985e12832da8d",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Problem Solving",
+    "category": "soft_skill",
+    "aliases": [
+      "analytical skills",
+      "troubleshooting",
+      "root cause analysis",
+      "debugging"
+    ],
+    "is_ambiguous": false,
+    "source": "esco",
+    "id": "fixture-62aa23a3483622a4",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Prometheus",
+    "category": "tool",
+    "aliases": [
+      "promql",
+      "prometheus monitoring"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-bfa97cfb590b2093",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Prompt Engineering",
+    "category": "domain",
+    "aliases": [
+      "prompt design",
+      "in-context learning",
+      "chain-of-thought",
+      "rag",
+      "retrieval augmented generation"
+    ],
+    "is_ambiguous": false,
+    "source": "manual",
+    "id": "fixture-c7bdea3142254923",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Python",
+    "category": "language",
+    "aliases": [
+      "py",
+      "python3",
+      "python2",
+      "python 3",
+      "python 2",
+      "cpython",
+      "ipython"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-18885f27b5af9012",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "PyTorch",
+    "category": "library",
+    "aliases": [
+      "pytorch",
+      "torch",
+      "pytorh",
+      "torchvision",
+      "torchaudio"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-03312bee2e657c9e",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "R",
+    "category": "language",
+    "aliases": [
+      "r-lang",
+      "r programming",
+      "r language",
+      "r-project"
+    ],
+    "is_ambiguous": true,
+    "source": "lightcast",
+    "id": "fixture-8c2574892063f995",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "RabbitMQ",
+    "category": "tool",
+    "aliases": [
+      "rabbit-mq",
+      "amqp",
+      "message broker"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-694032b7ede90d08",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "React",
+    "category": "framework",
+    "aliases": [
+      "reactjs",
+      "react.js",
+      "react js",
+      "react 18",
+      "react 19"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-01fad993ff61aca9",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "React Native",
+    "category": "framework",
+    "aliases": [
+      "react-native",
+      "reactnative",
+      "rn"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-1cd07be18aed5105",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Redis",
+    "category": "database",
+    "aliases": [
+      "redis cache",
+      "redis cluster",
+      "valkey"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-a7f6415749a3297a",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "REST APIs",
+    "category": "domain",
+    "aliases": [
+      "rest",
+      "restful",
+      "rest api",
+      "restful api",
+      "web apis"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-324f92a9b7c1751f",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Roboflow",
+    "category": "tool",
+    "aliases": [
+      "roboflow universe",
+      "roboflow annotation"
+    ],
+    "is_ambiguous": false,
+    "source": "manual",
+    "id": "fixture-12bbb237b229ed57",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Ruby",
+    "category": "language",
+    "aliases": [
+      "ruby-lang",
+      "mri ruby"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-108040ac289a1395",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Ruby on Rails",
+    "category": "framework",
+    "aliases": [
+      "rails",
+      "ror",
+      "ruby on rails framework"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-87771745c9412ed0",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Rust",
+    "category": "language",
+    "aliases": [
+      "rust-lang",
+      "rustlang"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-d9aa89fdd15ad5c4",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Scala",
+    "category": "language",
+    "aliases": [
+      "scala 2",
+      "scala 3"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-8fcd1836eba80875",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "scikit-learn",
+    "category": "library",
+    "aliases": [
+      "sklearn",
+      "scikit learn",
+      "sci-kit learn"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-197b0ff11cd452f0",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Snowflake",
+    "category": "database",
+    "aliases": [
+      "snowflake data warehouse",
+      "snowflake dw",
+      "snowpark"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-1dbd59f661d68b90",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Spline",
+    "category": "tool",
+    "aliases": [
+      "spline 3d",
+      "spline design"
+    ],
+    "is_ambiguous": false,
+    "source": "manual",
+    "id": "fixture-427215f18aa0ed4a",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Spring Boot",
+    "category": "framework",
+    "aliases": [
+      "spring",
+      "springboot",
+      "spring-boot",
+      "spring framework",
+      "spring cloud"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-8d9a80fb1dc30a46",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "SQL",
+    "category": "language",
+    "aliases": [
+      "structured query language",
+      "t-sql",
+      "pl/sql",
+      "ansi sql"
+    ],
+    "is_ambiguous": true,
+    "source": "lightcast",
+    "id": "fixture-a7056a455639d1c7",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "SQLite",
+    "category": "database",
+    "aliases": [
+      "sqlite3",
+      "sqlite db"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-2d2eef3e092af52b",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Stakeholder Management",
+    "category": "soft_skill",
+    "aliases": [
+      "client communication",
+      "product alignment",
+      "executive reporting"
+    ],
+    "is_ambiguous": false,
+    "source": "esco",
+    "id": "fixture-4d035dcc16d2e504",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Svelte",
+    "category": "framework",
+    "aliases": [
+      "sveltekit",
+      "svelte.js",
+      "svelte-kit"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-0073bfcaa87713ee",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Swift",
+    "category": "language",
+    "aliases": [
+      "swift5",
+      "swiftui-lang"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-ae8ed2743925477e",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "System Design",
+    "category": "domain",
+    "aliases": [
+      "distributed systems",
+      "high availability",
+      "scalability",
+      "architectural design"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-cb3aee4f7dd619a0",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Tailwind CSS",
+    "category": "framework",
+    "aliases": [
+      "tailwind",
+      "tailwindcss",
+      "tailwind-css"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-6fec5b215920e00b",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "TDD",
+    "category": "domain",
+    "aliases": [
+      "test-driven development",
+      "unit testing",
+      "pytest",
+      "jest",
+      "cypress",
+      "integration testing"
+    ],
+    "is_ambiguous": true,
+    "source": "esco",
+    "id": "fixture-6c2319fe488b053a",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Technical Writing",
+    "category": "soft_skill",
+    "aliases": [
+      "documentation",
+      "rfc writing",
+      "system documentation",
+      "api documentation"
+    ],
+    "is_ambiguous": false,
+    "source": "esco",
+    "id": "fixture-2b2fdd51e5f3aa16",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "TensorFlow",
+    "category": "library",
+    "aliases": [
+      "tf",
+      "tensorflow 2",
+      "keras",
+      "tf.keras"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-90cf7bd8432d0199",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Terraform",
+    "category": "platform",
+    "aliases": [
+      "hcl",
+      "terraform iac",
+      "opentofu"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-05b073bd5e46bbed",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "TypeScript",
+    "category": "language",
+    "aliases": [
+      "ts",
+      "type-script",
+      "typescript 4",
+      "typescript 5"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-ed0504f70a48ffe9",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "UI/UX",
+    "category": "domain",
+    "aliases": [
+      "ui",
+      "ux",
+      "user interface",
+      "user experience",
+      "user research",
+      "wireframing",
+      "prototyping"
+    ],
+    "is_ambiguous": true,
+    "source": "lightcast",
+    "id": "fixture-4599f843c38a879a",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Vector Databases",
+    "category": "database",
+    "aliases": [
+      "vector db",
+      "pgvector",
+      "pinecone",
+      "qdrant",
+      "chromadb",
+      "weaviate",
+      "milvus"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-7955dc6e435f3705",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Vercel",
+    "category": "platform",
+    "aliases": [
+      "vercel deployment",
+      "nextjs vercel"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-68edc75c015e2e10",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "Vue.js",
+    "category": "framework",
+    "aliases": [
+      "vue",
+      "vuejs",
+      "vue 3",
+      "vue.js 3",
+      "vue 2"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-274b0f34ea9f3cc6",
+    "status": "approved"
+  },
+  {
+    "canonical_name": "WebSockets",
+    "category": "domain",
+    "aliases": [
+      "socket.io",
+      "realtime sockets",
+      "websocket server"
+    ],
+    "is_ambiguous": false,
+    "source": "lightcast",
+    "id": "fixture-7cc572bfaa1c1001",
+    "status": "approved"
+  }
+]

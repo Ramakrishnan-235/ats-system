@@ -27,6 +27,16 @@ See the root **[WORKFLOW.md](../WORKFLOW.md)** for complete end-to-end architect
 
 ## Running Tests & Benchmarks
 
+For the current private-worker resume extraction baseline, use the
+[synthetic extraction benchmark](benchmarks/resume-extraction/README.md). It records
+skill/field/evidence accuracy and failures without creating candidate records.
+
+```bash
+python scripts/benchmark_resume_extraction.py --validate-only
+python scripts/benchmark_resume_extraction.py --split dev
+python -m unittest discover -s test -p test_resume_extraction_benchmark.py
+```
+
 ```bash
 # Provision DB
 uv run python -m ats_core.db.init_db

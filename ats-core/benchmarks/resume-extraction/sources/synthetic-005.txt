@@ -1,0 +1,16 @@
+Ada Fixture
+ada@example.invalid
++14155550101
+Chennai, Tamil Nadu
+
+TECHNICAL SKILLS
+Python, FastAPI, PostgreSQL
+
+EDUCATION
+B.Tech Computer Science - Example Institute
+
+EXPERIENCE
+Backend Developer
+Example Backend Lab
+Jan 2023 - Dec 2024
+- Built services using Python, FastAPI and PostgreSQL.

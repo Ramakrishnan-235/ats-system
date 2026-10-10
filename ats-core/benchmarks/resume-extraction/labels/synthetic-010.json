@@ -1,0 +1,28 @@
+{
+  "fields": {
+    "name": null,
+    "email": null,
+    "phone": null,
+    "location": null,
+    "linkedin": null,
+    "highest_education": null
+  },
+  "skills": [
+    {
+      "canonical_name": "SQL",
+      "quote": "Built SQL queries for a fictional inventory dataset.",
+      "page": 1
+    },
+    {
+      "canonical_name": "OrbitQueryX",
+      "quote": "Used OrbitQueryX to inspect the results.",
+      "page": 1
+    }
+  ],
+  "employment": [],
+  "negative_skills": [],
+  "resume_id": "synthetic-010",
+  "annotation_version": "1",
+  "review_status": "authored",
+  "source_text_sha256": "284610660dc222372581cc9c17b11b1b35cc2f023b29f638ee62745aefc8f114"
+}

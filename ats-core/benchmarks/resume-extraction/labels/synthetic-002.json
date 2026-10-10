@@ -1,0 +1,40 @@
+{
+  "fields": {
+    "name": "Blake Fixture",
+    "email": "blake@example.invalid",
+    "phone": "+14155550102",
+    "location": "Chennai, Tamil Nadu",
+    "linkedin": null,
+    "highest_education": "Bachelor of Science - Example University"
+  },
+  "skills": [
+    {
+      "canonical_name": "JavaScript",
+      "quote": "Built interfaces using JavaScript, TypeScript and React.",
+      "page": 1
+    },
+    {
+      "canonical_name": "TypeScript",
+      "quote": "Built interfaces using JavaScript, TypeScript and React.",
+      "page": 1
+    },
+    {
+      "canonical_name": "React",
+      "quote": "Built interfaces using JavaScript, TypeScript and React.",
+      "page": 1
+    }
+  ],
+  "employment": [
+    {
+      "company": "Example Interface Lab",
+      "role": "Frontend Developer",
+      "start_date": "2023-01",
+      "end_date": "2024-12"
+    }
+  ],
+  "negative_skills": [],
+  "resume_id": "synthetic-002",
+  "annotation_version": "1",
+  "review_status": "authored",
+  "source_text_sha256": "cb60de0b85650de6ac7a8b1c8eae18a6ab42387232992a61f660a210b0859a33"
+}

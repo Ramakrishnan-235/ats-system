@@ -1,0 +1,16 @@
+Dana Fixture
+dana@example.invalid
++14155550104
+Chennai, Tamil Nadu
+
+TECHNICAL SKILLS
+AWS, Docker, Kubernetes, Terraform
+
+EDUCATION
+Bachelor of Engineering - Example Institute
+
+EXPERIENCE
+Cloud Engineer
+Example Cloud Lab
+Jan 2023 - Dec 2024
+- Deployed services using AWS, Docker, Kubernetes and Terraform.

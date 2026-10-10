@@ -1,0 +1,18 @@
+Finn Fixture
+finn@example.invalid
++14155550106
+Chennai, Tamil Nadu
+
+TECHNICAL SKILLS
+Python, Docker
+
+EDUCATION
+B.Tech Computer Science - Example Institute
+
+EXPERIENCE
+Backend Developer
+Example Systems Lab
+Jan 2023 - Dec 2024
+- Built services using Python and Docker.
+- No hands-on experience with Kubernetes.
+- Collaborated with another team responsible for AWS infrastructure.

@@ -1,0 +1,19 @@
+{
+  "mode": "configured",
+  "split": "dev",
+  "as_of": "2026-10-10",
+  "network_allowed": true,
+  "case_timeout_seconds": 120.0,
+  "python": "3.12.15",
+  "started_at": "20261010T053705155756Z",
+  "source_sha256": "9a5917913a2442cb3495ecfccfc59d1ac4316f06f78c013d9a1cbc2e05c963c8",
+  "manifest_sha256": "fba569541f53b0488ea9f7a799e7d9b96fde3b9db9c3691f123055f86ce4e150",
+  "taxonomy_sha256": "5b6642fe5e247e6cf1e2813f6d090c2c3b3a92895721f5a7168e760d69feed1a",
+  "gold_sha256": {
+    "synthetic-001": "ab8b76c088e8d6e219421bae03626c597526065045a584c2149d9a1b3bad2a44",
+    "synthetic-003": "052a0b88a6371fc12c34734cd5559d6b506cd51bb279a5b649a76612e85417d8",
+    "synthetic-005": "2793e769552330b39536c5bcb0300a3d64d6827afc4f5c1c11be2a8563f0d969",
+    "synthetic-006": "f39f5df621b59b7b76936e2ee326558416882d52340da190a2cb240567552c0a",
+    "synthetic-008": "9fcae4acf83b0aa9f673dc2d9975b6e27ede3d3e0af2fe88602275eeebb0de8e"
+  }
+}

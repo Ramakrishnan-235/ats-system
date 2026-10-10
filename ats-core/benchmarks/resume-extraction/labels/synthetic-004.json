@@ -1,0 +1,45 @@
+{
+  "fields": {
+    "name": "Dana Fixture",
+    "email": "dana@example.invalid",
+    "phone": "+14155550104",
+    "location": "Chennai, Tamil Nadu",
+    "linkedin": null,
+    "highest_education": "Bachelor of Engineering - Example Institute"
+  },
+  "skills": [
+    {
+      "canonical_name": "AWS",
+      "quote": "Deployed services using AWS, Docker, Kubernetes and Terraform.",
+      "page": 1
+    },
+    {
+      "canonical_name": "Docker",
+      "quote": "Deployed services using AWS, Docker, Kubernetes and Terraform.",
+      "page": 1
+    },
+    {
+      "canonical_name": "Kubernetes",
+      "quote": "Deployed services using AWS, Docker, Kubernetes and Terraform.",
+      "page": 1
+    },
+    {
+      "canonical_name": "Terraform",
+      "quote": "Deployed services using AWS, Docker, Kubernetes and Terraform.",
+      "page": 1
+    }
+  ],
+  "employment": [
+    {
+      "company": "Example Cloud Lab",
+      "role": "Cloud Engineer",
+      "start_date": "2023-01",
+      "end_date": "2024-12"
+    }
+  ],
+  "negative_skills": [],
+  "resume_id": "synthetic-004",
+  "annotation_version": "1",
+  "review_status": "authored",
+  "source_text_sha256": "681994265879f62af3a8f951cab78fcf8b8486ff0053b1b9962f8d987a5c08f7"
+}

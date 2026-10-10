@@ -1,0 +1,16 @@
+Casey Fixture
+casey@example.invalid
++14155550103
+Chennai, Tamil Nadu
+
+TECHNICAL SKILLS
+Python, SQL, Pandas
+
+EDUCATION
+Master of Science - Example University
+
+EXPERIENCE
+Data Analyst
+Example Data Lab
+Jan 2023 - Dec 2024
+- Built reports using Python, SQL and Pandas.

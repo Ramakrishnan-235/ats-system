@@ -1,0 +1,16 @@
+Blake Fixture
+blake@example.invalid
++14155550102
+Chennai, Tamil Nadu
+
+TECHNICAL SKILLS
+JavaScript, TypeScript, React
+
+EDUCATION
+Bachelor of Science - Example University
+
+EXPERIENCE
+Frontend Developer
+Example Interface Lab
+Jan 2023 - Dec 2024
+- Built interfaces using JavaScript, TypeScript and React.

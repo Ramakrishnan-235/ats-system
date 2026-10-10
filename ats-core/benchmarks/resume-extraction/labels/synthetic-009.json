@@ -1,0 +1,46 @@
+{
+  "fields": {
+    "name": "Finn Fixture",
+    "email": "finn@example.invalid",
+    "phone": "+14155550106",
+    "location": "Chennai, Tamil Nadu",
+    "linkedin": null,
+    "highest_education": "B.Tech Computer Science - Example Institute"
+  },
+  "skills": [
+    {
+      "canonical_name": "Python",
+      "quote": "Built services using Python and Docker.",
+      "page": 1
+    },
+    {
+      "canonical_name": "Docker",
+      "quote": "Built services using Python and Docker.",
+      "page": 1
+    }
+  ],
+  "employment": [
+    {
+      "company": "Example Systems Lab",
+      "role": "Backend Developer",
+      "start_date": "2023-01",
+      "end_date": "2024-12"
+    }
+  ],
+  "negative_skills": [
+    {
+      "canonical_name": "Kubernetes",
+      "quote": "No hands-on experience with Kubernetes.",
+      "page": 1
+    },
+    {
+      "canonical_name": "AWS",
+      "quote": "Collaborated with another team responsible for AWS infrastructure.",
+      "page": 1
+    }
+  ],
+  "resume_id": "synthetic-009",
+  "annotation_version": "1",
+  "review_status": "authored",
+  "source_text_sha256": "723deb5c0713fe6d3c27e56026c52c091a7a091bceb717425a7429e8ef26299a"
+}

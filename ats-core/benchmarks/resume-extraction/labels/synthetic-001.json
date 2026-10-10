@@ -1,0 +1,40 @@
+{
+  "fields": {
+    "name": "Ada Fixture",
+    "email": "ada@example.invalid",
+    "phone": "+14155550101",
+    "location": "Chennai, Tamil Nadu",
+    "linkedin": null,
+    "highest_education": "B.Tech Computer Science - Example Institute"
+  },
+  "skills": [
+    {
+      "canonical_name": "Python",
+      "quote": "Built services using Python, FastAPI and PostgreSQL.",
+      "page": 1
+    },
+    {
+      "canonical_name": "FastAPI",
+      "quote": "Built services using Python, FastAPI and PostgreSQL.",
+      "page": 1
+    },
+    {
+      "canonical_name": "PostgreSQL",
+      "quote": "Built services using Python, FastAPI and PostgreSQL.",
+      "page": 1
+    }
+  ],
+  "employment": [
+    {
+      "company": "Example Backend Lab",
+      "role": "Backend Developer",
+      "start_date": "2023-01",
+      "end_date": "2024-12"
+    }
+  ],
+  "negative_skills": [],
+  "resume_id": "synthetic-001",
+  "annotation_version": "1",
+  "review_status": "authored",
+  "source_text_sha256": "d8f77e113d0442a61c01787db922a9078d7947eb1e053babea0504ac700aa452"
+}

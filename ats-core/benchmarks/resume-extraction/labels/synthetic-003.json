@@ -1,0 +1,40 @@
+{
+  "fields": {
+    "name": "Casey Fixture",
+    "email": "casey@example.invalid",
+    "phone": "+14155550103",
+    "location": "Chennai, Tamil Nadu",
+    "linkedin": null,
+    "highest_education": "Master of Science - Example University"
+  },
+  "skills": [
+    {
+      "canonical_name": "Python",
+      "quote": "Built reports using Python, SQL and Pandas.",
+      "page": 1
+    },
+    {
+      "canonical_name": "SQL",
+      "quote": "Built reports using Python, SQL and Pandas.",
+      "page": 1
+    },
+    {
+      "canonical_name": "Pandas",
+      "quote": "Built reports using Python, SQL and Pandas.",
+      "page": 1
+    }
+  ],
+  "employment": [
+    {
+      "company": "Example Data Lab",
+      "role": "Data Analyst",
+      "start_date": "2023-01",
+      "end_date": "2024-12"
+    }
+  ],
+  "negative_skills": [],
+  "resume_id": "synthetic-003",
+  "annotation_version": "1",
+  "review_status": "authored",
+  "source_text_sha256": "7e3a2fc0391d10da284bb40f92daa0d9680c4921e11d568dcd9ac50a6a6720b1"
+}
