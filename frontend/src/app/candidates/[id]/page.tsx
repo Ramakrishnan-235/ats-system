@@ -14,7 +14,7 @@ import { AuditTrailTab } from "@/components/candidate/audit-trail-tab";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { fetchCandidate, fetchCandidateScorecard, updateCandidateStage, getErrorMessage } from "@/lib/api";
+import { ApiError, fetchCandidate, fetchCandidateScorecard, updateCandidateStage, getErrorMessage } from "@/lib/api";
 import { CandidateDetail, CitationLocation } from "@/types/ats";
 
 export default function CandidateDetailPage() {
@@ -34,8 +34,16 @@ export default function CandidateDetailPage() {
         return;
       }
       setLoading(true);
+      setError(null);
       try {
-        const data = await fetchCandidate(candidateId);
+        // The backend checks the recruiter's permission and audits contact access.
+        // Restricted viewers can still open the anonymized profile.
+        const data = await fetchCandidate(candidateId, true).catch((err: unknown) => {
+          if (err instanceof ApiError && err.status === 403) {
+            return fetchCandidate(candidateId);
+          }
+          throw err;
+        });
         setCandidate(data);
       } catch (err) {
         setError(getErrorMessage(err));

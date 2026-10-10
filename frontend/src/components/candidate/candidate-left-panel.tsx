@@ -53,7 +53,7 @@ export function CandidateLeftPanel({ candidate }: CandidateLeftPanelProps) {
         <div className="w-full mt-6 pt-6 border-t border-zinc-100 space-y-3 text-left">
           <div className="flex items-center gap-3 text-xs text-zinc-600 font-medium">
             <Mail className="w-4 h-4 text-zinc-400 shrink-0" />
-            {candidate.email && candidate.email !== "N/A" ? (
+            {!candidate.is_pii_masked && candidate.email && candidate.email !== "N/A" && candidate.email !== "[REDACTED]" ? (
               <a
                 href={`mailto:${candidate.email}`}
                 className="hover:text-zinc-950 transition-colors truncate"
@@ -61,13 +61,13 @@ export function CandidateLeftPanel({ candidate }: CandidateLeftPanelProps) {
                 {candidate.email}
               </a>
             ) : (
-              <span className="text-zinc-400 font-normal">N/A</span>
+              <span className="text-zinc-400 font-normal">{candidate.is_pii_masked ? "Restricted" : "N/A"}</span>
             )}
           </div>
 
           <div className="flex items-center gap-3 text-xs text-zinc-600 font-medium">
             <Phone className="w-4 h-4 text-zinc-400 shrink-0" />
-            {candidate.phone && candidate.phone !== "N/A" ? (
+            {!candidate.is_pii_masked && candidate.phone && candidate.phone !== "N/A" && candidate.phone !== "[REDACTED]" ? (
               <a
                 href={`tel:${candidate.phone}`}
                 className="hover:text-zinc-950 transition-colors"
@@ -75,13 +75,13 @@ export function CandidateLeftPanel({ candidate }: CandidateLeftPanelProps) {
                 {candidate.phone}
               </a>
             ) : (
-              <span className="text-zinc-400 font-normal">N/A</span>
+              <span className="text-zinc-400 font-normal">{candidate.is_pii_masked ? "Restricted" : "N/A"}</span>
             )}
           </div>
 
           <div className="flex items-center gap-3 text-xs text-zinc-600 font-medium">
             <Link2 className="w-4 h-4 text-zinc-400 shrink-0" />
-            {candidate.linkedin && candidate.linkedin !== "N/A" ? (
+            {!candidate.is_pii_masked && candidate.linkedin && candidate.linkedin !== "N/A" && candidate.linkedin !== "[REDACTED]" ? (
               <a
                 href={candidate.linkedin.startsWith("http") ? candidate.linkedin : `https://${candidate.linkedin}`}
                 target="_blank"
@@ -91,7 +91,7 @@ export function CandidateLeftPanel({ candidate }: CandidateLeftPanelProps) {
                 {candidate.linkedin}
               </a>
             ) : (
-              <span className="text-zinc-400 font-normal">N/A</span>
+              <span className="text-zinc-400 font-normal">{candidate.is_pii_masked ? "Restricted" : "N/A"}</span>
             )}
           </div>
         </div>
