@@ -47,11 +47,13 @@ def get_llm_config(
     else:
         resolved_base_url = (
             base_url
+            or os.getenv("LLM_BASE_URL", "").strip()
             or os.getenv("OLLAMA_BASE_URL", "").strip()
             or DEFAULT_OLLAMA_BASE_URL
         )
         resolved_model = (
             model_name
+            or os.getenv("LLM_MODEL", "").strip()
             or os.getenv("OLLAMA_MODEL", "").strip()
             or DEFAULT_OLLAMA_MODEL
         )
