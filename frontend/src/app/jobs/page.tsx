@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopNav } from "@/components/layout/top-nav";
 import { JobCard } from "@/components/jobs/job-card";
@@ -14,11 +14,11 @@ import {
   Layers,
   Users,
   CheckCircle2,
-  TrendingUp,
 } from "lucide-react";
 import { fetchJobs, getErrorMessage } from "@/lib/api";
 import { JobRequisition } from "@/types/ats";
 import { cn } from "@/lib/utils";
+import { JOB_ROLE_DOMAINS, JOB_ROLE_PRESETS, JobRolePreset } from "@/lib/job-role-presets";
 
 const DOMAIN_TABS = [
   { id: "ALL", label: "All Roles" },
@@ -38,29 +38,24 @@ export default function JobsPage() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [departmentFilter, setDepartmentFilter] = useState("ALL");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState<JobRolePreset | undefined>();
+  const [presetSearch, setPresetSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadJobs = useCallback(async () => {
-    try {
-      const data = await fetchJobs({
-        status: statusFilter,
-        department: departmentFilter,
-        search,
-      });
-      setAllJobs(data);
-      setError(null);
-    } catch (reason) {
-      setError(getErrorMessage(reason));
-    } finally {
-      setIsLoading(false);
-    }
+  useEffect(() => {
+    let cancelled = false;
+    fetchJobs({ status: statusFilter, department: departmentFilter, search })
+      .then(data => {
+        if (!cancelled) { setAllJobs(data); setError(null); }
+      })
+      .catch(reason => { if (!cancelled) setError(getErrorMessage(reason)); })
+      .finally(() => { if (!cancelled) setIsLoading(false); });
+    return () => { cancelled = true; };
   }, [statusFilter, departmentFilter, search]);
 
-  useEffect(() => { void loadJobs(); }, [loadJobs]);
-
   const handleJobCreated = (newJob: JobRequisition) => {
-    setAllJobs([newJob, ...allJobs]);
+    setAllJobs(jobs => [newJob, ...jobs]);
   };
 
   // Filtered jobs
@@ -132,13 +127,13 @@ export default function JobsPage() {
                   </span>
                 </div>
                 <p className="text-xs text-zinc-500 font-medium mt-0.5">
-                  Explore 50 curated tech roles across 8 domain categories with automated candidate scoring
+                  Create jobs from {JOB_ROLE_PRESETS.length} role presets across {JOB_ROLE_DOMAINS.length} categories
                 </p>
               </div>
             </div>
 
             <Button
-              onClick={() => setIsCreateOpen(true)}
+              onClick={() => { setSelectedPreset(undefined); setIsCreateOpen(true); }}
               variant="pill"
               className="gap-2 px-5 text-xs font-semibold self-start sm:self-auto cursor-pointer"
             >
@@ -165,7 +160,7 @@ export default function JobsPage() {
               </div>
               <div>
                 <div className="text-xs text-zinc-500 font-medium">Active Requisitions</div>
-                <div className="text-sm font-bold text-zinc-950">50 Open</div>
+                <div className="text-sm font-bold text-zinc-950">{allJobs.filter(job => job.status === "OPEN").length} Open</div>
               </div>
             </div>
 
@@ -174,8 +169,8 @@ export default function JobsPage() {
                 <Users className="w-4 h-4" />
               </div>
               <div>
-                <div className="text-xs text-zinc-500 font-medium">Candidate Pool</div>
-                <div className="text-sm font-bold text-zinc-950">1,247 Profiles</div>
+                <div className="text-xs text-zinc-500 font-medium">Role Presets</div>
+                <div className="text-sm font-bold text-zinc-950">{JOB_ROLE_PRESETS.length} Roles</div>
               </div>
             </div>
 
@@ -184,11 +179,30 @@ export default function JobsPage() {
                 <Sparkles className="w-4 h-4" />
               </div>
               <div>
-                <div className="text-xs text-zinc-500 font-medium">AI Top Match Rate</div>
-                <div className="text-sm font-bold text-zinc-950">95% High Fit</div>
+                <div className="text-xs text-zinc-500 font-medium">Preset Categories</div>
+                <div className="text-sm font-bold text-zinc-950">{JOB_ROLE_DOMAINS.length} Categories</div>
               </div>
             </div>
           </div>
+
+          <details className="bg-white rounded-2xl border border-zinc-200 p-5 shadow-xs">
+            <summary className="cursor-pointer text-sm font-bold text-zinc-950">Browse {JOB_ROLE_PRESETS.length} predefined roles</summary>
+            <p className="text-xs text-zinc-500 mt-2">Select a role to start an editable job with suggested responsibilities and skills.</p>
+            <input aria-label="Search role presets" value={presetSearch} onChange={e => setPresetSearch(e.target.value)} placeholder="Search roles or skills..."
+              className="w-full mt-4 h-10 px-3 border border-zinc-200 rounded-xl text-sm" />
+            <div className="mt-4 space-y-5 max-h-96 overflow-y-auto">
+              {JOB_ROLE_DOMAINS.map(domain => {
+                const roles = JOB_ROLE_PRESETS.filter(role => role.domain === domain && `${role.title} ${role.domain} ${role.skills.join(" ")}`.toLowerCase().includes(presetSearch.trim().toLowerCase()));
+                return roles.length > 0 && <section key={domain}>
+                  <h2 className="text-xs font-bold text-zinc-500 mb-2">{domain}</h2>
+                  <div className="flex flex-wrap gap-2">{roles.map(role => <button key={role.title} type="button"
+                    onClick={() => { setSelectedPreset(role); setIsCreateOpen(true); }}
+                    className="text-xs text-left font-medium px-3 py-2 rounded-lg border border-zinc-200 hover:border-zinc-950 hover:bg-zinc-50 cursor-pointer">{role.title}</button>)}</div>
+                </section>;
+              })}
+              {!JOB_ROLE_PRESETS.some(role => `${role.title} ${role.domain} ${role.skills.join(" ")}`.toLowerCase().includes(presetSearch.trim().toLowerCase())) && <p className="text-sm text-zinc-500">No role presets match your search.</p>}
+            </div>
+          </details>
 
           {/* Domain Quick-Filter Chips Bar */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
@@ -276,11 +290,12 @@ export default function JobsPage() {
       </div>
 
       {/* Create New Job Modal Dialog */}
-      <CreateJobModal
+      {isCreateOpen && <CreateJobModal
         open={isCreateOpen}
         onOpenChange={setIsCreateOpen}
         onJobCreated={handleJobCreated}
-      />
+        preset={selectedPreset}
+      />}
     </div>
   );
 }

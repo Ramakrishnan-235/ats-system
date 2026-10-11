@@ -6,11 +6,11 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import {
   Bold,
   Italic,
@@ -23,36 +23,47 @@ import {
   X,
   ChevronDown,
 } from "lucide-react";
-import { createJobRequisition } from "@/lib/api";
+import { createJobRequisition, getErrorMessage } from "@/lib/api";
+import { JOB_ROLE_DOMAINS, JOB_ROLE_PRESETS, JobRolePreset } from "@/lib/job-role-presets";
+import { DEPARTMENTS } from "@/components/jobs/job-filters";
 import { JobRequisition } from "@/types/ats";
 
 interface CreateJobModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onJobCreated?: (job: JobRequisition) => void;
+  preset?: JobRolePreset;
 }
 
 export function CreateJobModal({
   open,
   onOpenChange,
   onJobCreated,
+  preset,
 }: CreateJobModalProps) {
-  const [title, setTitle] = useState("Senior Backend Engineer");
-  const [department, setDepartment] = useState("Engineering");
+  const [selectedPreset, setSelectedPreset] = useState(preset?.title || "");
+  const [title, setTitle] = useState(preset?.title || "");
+  const [department, setDepartment] = useState(preset?.department || "Software Engineering");
   const [location, setLocation] = useState("Remote");
-  const [description, setDescription] = useState(
-    `We are seeking an experienced Senior Backend Engineer to join our core platform team. You will be responsible for designing, building, and maintaining scalable microservices that power our primary application.\n\nKey Responsibilities:\n• Architect high-performance APIs\n• Optimize database queries and schema design`
-  );
-  const [skills, setSkills] = useState([
-    "Python",
-    "FastAPI",
-    "PostgreSQL",
-    "Kubernetes",
-  ]);
+  const [description, setDescription] = useState(preset?.description || "");
+  const [skills, setSkills] = useState<string[]>(preset ? [...preset.skills] : []);
   const [newSkillInput, setNewSkillInput] = useState("");
   const [isAddingSkill, setIsAddingSkill] = useState(false);
   const [runAiMatch, setRunAiMatch] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const applyPreset = (presetTitle: string) => {
+    const role = JOB_ROLE_PRESETS.find(role => role.title === presetTitle);
+    setSelectedPreset(presetTitle);
+    setTitle(role?.title || "");
+    setDepartment(role?.department || "Software Engineering");
+    setDescription(role?.description || "");
+    setSkills(role ? [...role.skills] : []);
+    setNewSkillInput("");
+    setIsAddingSkill(false);
+    setError(null);
+  };
 
   const handleAddSkill = () => {
     if (newSkillInput.trim() && !skills.includes(newSkillInput.trim())) {
@@ -69,6 +80,7 @@ export function CreateJobModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setError(null);
     try {
       const created = await createJobRequisition({
         title,
@@ -80,6 +92,8 @@ export function CreateJobModal({
       });
       if (onJobCreated) onJobCreated(created);
       onOpenChange(false);
+    } catch (reason) {
+      setError(getErrorMessage(reason));
     } finally {
       setIsSubmitting(false);
     }
@@ -87,20 +101,34 @@ export function CreateJobModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl p-7 rounded-2xl bg-white border border-zinc-200 shadow-2xl">
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto p-7 rounded-2xl bg-white border border-zinc-200 shadow-2xl">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-zinc-950">
             Create New Job
           </DialogTitle>
+          <DialogDescription>Choose a role preset or create a custom job. Review and edit the requirements before saving.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-5 mt-2">
+          {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+          <div className="space-y-1.5">
+            <label htmlFor="job-role-preset" className="text-xs font-semibold text-zinc-600">Role preset</label>
+            <select id="job-role-preset" value={selectedPreset} onChange={e => applyPreset(e.target.value)} disabled={isSubmitting}
+              className="w-full h-10 px-3 rounded-xl border border-zinc-200 bg-white text-sm">
+              <option value="">Custom job</option>
+              {JOB_ROLE_DOMAINS.map(domain => <optgroup key={domain} label={domain}>
+                {JOB_ROLE_PRESETS.filter(role => role.domain === domain).map(role => <option key={role.title} value={role.title}>{role.title}</option>)}
+              </optgroup>)}
+            </select>
+            <p className="text-xs text-zinc-500">Selecting a preset replaces the title, department, description and skills below.</p>
+          </div>
           {/* Job Title */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-zinc-600">
+            <label htmlFor="job-title" className="text-xs font-semibold text-zinc-600">
               Job Title
             </label>
             <Input
+              id="job-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Senior Backend Engineer"
@@ -112,31 +140,29 @@ export function CreateJobModal({
           {/* Department & Location Row */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-600">
+              <label htmlFor="job-department" className="text-xs font-semibold text-zinc-600">
                 Department
               </label>
               <div className="relative">
                 <select
+                  id="job-department"
                   value={department}
                   onChange={(e) => setDepartment(e.target.value)}
                   className="w-full h-10 px-3 pr-8 rounded-xl border border-zinc-200 bg-white text-sm font-medium text-zinc-900 appearance-none focus:outline-none focus:ring-2 focus:ring-zinc-950"
                 >
-                  <option value="Engineering">Engineering</option>
-                  <option value="Data">Data</option>
-                  <option value="Design">Design</option>
-                  <option value="Product">Product</option>
-                  <option value="Marketing">Marketing</option>
+                  {DEPARTMENTS.filter(dept => dept.id !== "ALL").map(dept => <option key={dept.id} value={dept.id}>{dept.label}</option>)}
                 </select>
                 <ChevronDown className="w-4 h-4 text-zinc-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-600">
+              <label htmlFor="job-location" className="text-xs font-semibold text-zinc-600">
                 Location
               </label>
               <div className="relative">
                 <select
+                  id="job-location"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
                   className="w-full h-10 px-3 pr-8 rounded-xl border border-zinc-200 bg-white text-sm font-medium text-zinc-900 appearance-none focus:outline-none focus:ring-2 focus:ring-zinc-950"
@@ -155,7 +181,7 @@ export function CreateJobModal({
 
           {/* Job Description with Rich Text Toolbar */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-zinc-600">
+            <label htmlFor="job-description" className="text-xs font-semibold text-zinc-600">
               Job Description
             </label>
             <div className="border border-zinc-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-zinc-950">
@@ -202,6 +228,7 @@ export function CreateJobModal({
               </div>
               {/* Textarea */}
               <textarea
+                id="job-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={5}
@@ -220,7 +247,7 @@ export function CreateJobModal({
               </label>
               <span className="bg-black text-white text-[10px] font-bold px-2 py-0.5 rounded-full tracking-wider flex items-center gap-1">
                 <Sparkles className="w-2.5 h-2.5" />
-                AUTO-EXTRACTED
+                {selectedPreset ? "PRESET SKILLS" : "EDITABLE"}
               </span>
             </div>
 
@@ -320,7 +347,7 @@ export function CreateJobModal({
               className="h-9 px-5 text-xs font-semibold rounded-xl bg-gradient-to-r from-[#5046e5] to-[#7c3aed] text-white hover:opacity-95 shadow-md flex items-center gap-1.5"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>{isSubmitting ? "Creating..." : "Create & Match"}</span>
+              <span>{isSubmitting ? "Creating..." : runAiMatch ? "Create & Match" : "Create Job"}</span>
             </Button>
           </div>
         </form>

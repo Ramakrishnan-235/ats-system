@@ -17,6 +17,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+!frontend/src/lib/
+!frontend/src/lib/job-role-presets.ts
 lib64/
 parts/
 sdist/
