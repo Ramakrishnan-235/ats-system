@@ -10,10 +10,10 @@ export function CoreFooter() {
         <div>© 2025 CORE ATS Inc. AI-assisted recruitment workspace.</div>
         <div className="flex items-center gap-6">
           <Link
-            href="/audit-log"
+            href="/upload"
             className="text-[#45474c] hover:text-[#171c25] transition-colors"
           >
-            Audit Log
+            Imports
           </Link>
           <Link
             href="/taxonomy"
@@ -22,16 +22,16 @@ export function CoreFooter() {
             Skills Library
           </Link>
           <Link
+            href="/audit-log"
+            className="text-[#45474c] hover:text-[#171c25] transition-colors"
+          >
+            Audit Log
+          </Link>
+          <Link
             href="/settings"
             className="text-[#45474c] hover:text-[#171c25] transition-colors"
           >
             Settings
-          </Link>
-          <Link
-            href="/upload"
-            className="text-[#45474c] hover:text-[#171c25] transition-colors"
-          >
-            Imports
           </Link>
         </div>
       </div>
