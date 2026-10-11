@@ -126,7 +126,7 @@ export default function OnboardingPage() {
             </div>
 
             {/* Stepper Progress */}
-            <div className="flex items-center gap-4 text-xs font-semibold text-[#75777c]">
+            <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-[#75777c]">
               <div className="flex items-center gap-1.5 text-emerald-700">
                 <span className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center text-[10px]">
                   ✓
@@ -553,7 +553,7 @@ export default function OnboardingPage() {
           </div>
 
           {/* Sticky Bottom Bar */}
-          <div className="sticky bottom-6 z-40 bg-white/95 backdrop-blur-md rounded-2xl p-4 shadow-xl border border-[#dee2ef] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="relative z-30 bg-white/95 backdrop-blur-md rounded-2xl p-4 shadow-xl border border-[#dee2ef] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <button
               type="button"
               onClick={() => showToast("Navigated back to verification step.")}

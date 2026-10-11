@@ -1,0 +1,135 @@
+[
+  {
+    "path": "/",
+    "status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "bytes": 42268,
+    "seconds": 0.08
+  },
+  {
+    "path": "/jobs",
+    "status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "bytes": 45845,
+    "seconds": 0.11
+  },
+  {
+    "path": "/jobs/new",
+    "status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "bytes": 47187,
+    "seconds": 0.14
+  },
+  {
+    "path": "/candidates",
+    "status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "bytes": 35402,
+    "seconds": 0.14
+  },
+  {
+    "path": "/candidates/demo-1",
+    "status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "bytes": 45673,
+    "seconds": 0.12
+  },
+  {
+    "path": "/imports",
+    "status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "bytes": 56957,
+    "seconds": 0.25
+  },
+  {
+    "path": "/inbox",
+    "status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "bytes": 49838,
+    "seconds": 0.09
+  },
+  {
+    "path": "/clients",
+    "status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "bytes": 49039,
+    "seconds": 0.08
+  },
+  {
+    "path": "/analytics",
+    "status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "bytes": 55559,
+    "seconds": 0.09
+  },
+  {
+    "path": "/taxonomy",
+    "status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "bytes": 46126,
+    "seconds": 0.09
+  },
+  {
+    "path": "/audit-log",
+    "status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "bytes": 56323,
+    "seconds": 0.11
+  },
+  {
+    "path": "/settings",
+    "status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "bytes": 55624,
+    "seconds": 0.09
+  },
+  {
+    "path": "/onboarding",
+    "status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "bytes": 40969,
+    "seconds": 0.08
+  },
+  {
+    "path": "/workspace",
+    "status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "bytes": 42925,
+    "seconds": 0.12
+  },
+  {
+    "path": "/interviews",
+    "status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "bytes": 50242,
+    "seconds": 0.06
+  },
+  {
+    "path": "/offers",
+    "status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "bytes": 42195,
+    "seconds": 0.06
+  },
+  {
+    "path": "/core-api/health",
+    "status": 500,
+    "content_type": null,
+    "bytes": 21,
+    "seconds": 0.02
+  },
+  {
+    "path": "/core-api/auth/session",
+    "status": 500,
+    "content_type": null,
+    "bytes": 21,
+    "seconds": 0.01
+  },
+  {
+    "path": "/core-api/api/v1/auth/me",
+    "status": 500,
+    "content_type": null,
+    "bytes": 21,
+    "seconds": 0.03
+  }
+]

@@ -1,5 +1,6 @@
 "use client";
 
+import { SymbolIcon } from "@/components/ui/symbol-icon";
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { CoreHeader } from "@/components/layout/core-header";
@@ -343,7 +344,7 @@ export default function JobsPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-1.5 text-xs text-[#45474c] font-medium">
                   <span className="hover:text-[#171c25] cursor-pointer">Halden Talent</span>
-                  <span className="material-symbols-outlined text-[14px] text-[#75777c]">chevron_right</span>
+                  <SymbolIcon name="chevron_right" className="text-[14px] text-[#75777c]" style={{ fontSize: "14px" }} />
                   <span className="text-[#171c25] font-semibold">Requisitions</span>
                 </div>
 
@@ -359,14 +360,14 @@ export default function JobsPage() {
                     href="/jobs/new"
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#131c29] text-white hover:bg-[#2c313a] shadow-xs transition-all text-xs font-semibold cursor-pointer"
                   >
-                    <span className="material-symbols-outlined text-[16px]">add</span>
+                    <SymbolIcon name="add" className="text-[16px]" style={{ fontSize: "16px" }} />
                     <span>Create job requisition</span>
                   </Link>
                 </div>
               </div>
 
               {/* Title & Primary Filter Row */}
-              <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pt-1">
+              <div className="flex flex-col min-[1440px]:flex-row min-[1440px]:items-end justify-between gap-4 pt-1">
                 <div>
                   <h1 className="text-2xl sm:text-3xl font-bold text-[#171c25] tracking-tight">
                     Requisitions &amp; Pipelines
@@ -380,9 +381,7 @@ export default function JobsPage() {
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
                   {/* Requisition Search */}
                   <div className="relative min-w-[220px]">
-                    <span className="material-symbols-outlined absolute left-2.5 top-2.5 text-[18px] text-[#75777c]">
-                      search
-                    </span>
+                    <SymbolIcon name="search" className="absolute left-2.5 top-2.5 text-[18px] text-[#75777c]" style={{ fontSize: "18px" }} />
                     <input
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -400,7 +399,7 @@ export default function JobsPage() {
                     >
                       <span className="text-[#45474c]">Dept:</span>
                       <span className="font-medium">{deptFilter}</span>
-                      <span className="material-symbols-outlined text-[16px] text-[#75777c]">expand_more</span>
+                      <SymbolIcon name="expand_more" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
                     </button>
                   </div>
 
@@ -412,7 +411,7 @@ export default function JobsPage() {
                     >
                       <span className="text-[#45474c]">Owner:</span>
                       <span className="font-medium">{ownerFilter}</span>
-                      <span className="material-symbols-outlined text-[16px] text-[#75777c]">expand_more</span>
+                      <SymbolIcon name="expand_more" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
                     </button>
                   </div>
 
@@ -427,7 +426,7 @@ export default function JobsPage() {
                       }`}
                       type="button"
                     >
-                      <span className="material-symbols-outlined text-[16px]">view_kanban</span>
+                      <SymbolIcon name="view_kanban" className="text-[16px]" style={{ fontSize: "16px" }} />
                       <span>Board</span>
                     </button>
                     <button
@@ -439,7 +438,7 @@ export default function JobsPage() {
                       }`}
                       type="button"
                     >
-                      <span className="material-symbols-outlined text-[16px]">view_list</span>
+                      <SymbolIcon name="view_list" className="text-[16px]" style={{ fontSize: "16px" }} />
                       <span>Table</span>
                     </button>
                   </div>
@@ -504,7 +503,7 @@ export default function JobsPage() {
               <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
                 <div className="flex items-start gap-4">
                   <div className="w-12 h-12 rounded-xl bg-[#131c29] text-white flex items-center justify-center shrink-0 shadow-xs">
-                    <span className="material-symbols-outlined text-[26px]">terminal</span>
+                    <SymbolIcon name="terminal" className="text-[26px]" style={{ fontSize: "26px" }} />
                   </div>
                   <div>
                     <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -520,12 +519,12 @@ export default function JobsPage() {
                     </div>
                     <div className="flex flex-wrap items-center gap-y-1 gap-x-3 text-xs text-[#45474c]">
                       <span className="flex items-center gap-1">
-                        <span className="material-symbols-outlined text-[16px] text-[#75777c]">schedule</span>
+                        <SymbolIcon name="schedule" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
                         Full-time
                       </span>
                       <span>·</span>
                       <span className="flex items-center gap-1">
-                        <span className="material-symbols-outlined text-[16px] text-[#75777c]">location_on</span>
+                        <SymbolIcon name="location_on" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
                         London / Hybrid
                       </span>
                       <span>·</span>
@@ -590,7 +589,7 @@ export default function JobsPage() {
                   }`}
                   type="button"
                 >
-                  <span className="material-symbols-outlined text-[16px] text-[#6137e0]">developer_board</span>
+                  <SymbolIcon name="developer_board" className="text-[16px] text-[#6137e0]" style={{ fontSize: "16px" }} />
                   <span>Pipeline (Board)</span>
                 </button>
                 <button
@@ -660,14 +659,14 @@ export default function JobsPage() {
             {/* View Mode: Kanban Board vs Table */}
             {viewMode === "board" ? (
               /* Main Pipeline Canvas with Side Action Dialog */
-              <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+              <div className="grid min-w-0 grid-cols-1 xl:grid-cols-12 gap-6 items-start">
                 {/* 5-Column Kanban Board (8 Columns Desktop when drawer open, 12 when closed) */}
-                <div className={`${isDrawerOpen ? "xl:col-span-8" : "xl:col-span-12"} flex flex-col gap-4`}>
+                <div className={`${isDrawerOpen ? "xl:col-span-8" : "xl:col-span-12"} min-w-0 flex flex-col gap-4`}>
                   {/* Agent Copilot Banner for this Stage */}
-                  <div className="bg-white rounded-xl p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-[#dee2ef]/70 flex items-center justify-between gap-4">
+                  <div className="bg-white rounded-xl p-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-[#dee2ef]/70 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-[#e7deff] flex items-center justify-center text-[#1e0060] shrink-0">
-                        <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
+                        <SymbolIcon name="auto_awesome" className="text-[18px]" style={{ fontSize: "18px" }} />
                       </div>
                       <div>
                         <div className="text-xs font-semibold text-[#171c25] flex items-center gap-2">
@@ -697,11 +696,11 @@ export default function JobsPage() {
                   </div>
 
                   {/* Horizontal 5-Column Kanban Board */}
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-start overflow-x-auto pb-4">
+                  <div className="grid grid-cols-1 md:grid-cols-[repeat(5,minmax(240px,1fr))] gap-3 items-start overflow-x-auto pb-4">
                     {columns.map((col) => {
                       const colCards = pipelineCards.filter((c) => c.stage === col.id);
                       return (
-                        <div key={col.id} className="flex flex-col gap-2.5 min-w-[210px]">
+                        <div key={col.id} className="flex min-w-0 flex-col gap-2.5">
                           {/* Column Header */}
                           <div className="flex items-center justify-between px-2 py-1">
                             <div className="flex items-center gap-1.5">
@@ -711,7 +710,7 @@ export default function JobsPage() {
                               </span>
                             </div>
                             <button className="text-[#75777c] hover:text-[#171c25]" type="button">
-                              <span className="material-symbols-outlined text-[16px]">more_horiz</span>
+                              <SymbolIcon name="more_horiz" className="text-[16px]" style={{ fontSize: "16px" }} />
                             </button>
                           </div>
 
@@ -742,9 +741,7 @@ export default function JobsPage() {
                                       <div>
                                         <div className="text-xs font-bold text-[#171c25] flex items-center gap-1">
                                           {card.name}
-                                          <span className="material-symbols-outlined text-[#6137e0] text-[14px]">
-                                            check_circle
-                                          </span>
+                                          <SymbolIcon name="check_circle" className="text-[#6137e0] text-[14px]" style={{ fontSize: "14px" }} />
                                         </div>
                                         <div className="font-mono text-[10px] text-[#75777c]">{card.timeInStage}</div>
                                       </div>
@@ -770,7 +767,7 @@ export default function JobsPage() {
                                       type="button"
                                     >
                                       <span>Move</span>
-                                      <span className="material-symbols-outlined text-[12px]">chevron_right</span>
+                                      <SymbolIcon name="chevron_right" className="text-[12px]" style={{ fontSize: "12px" }} />
                                     </button>
                                   </div>
                                 </div>
@@ -822,7 +819,7 @@ export default function JobsPage() {
 
                                   <div className="flex items-center justify-between pt-1 text-[#45474c] text-[11px]">
                                     <span className="flex items-center gap-1 text-[#75777c]">
-                                      <span className="material-symbols-outlined text-[14px]">person</span>
+                                      <SymbolIcon name="person" className="text-[14px]" style={{ fontSize: "14px" }} />
                                       {card.owner}
                                     </span>
                                     <button
@@ -834,7 +831,7 @@ export default function JobsPage() {
                                       type="button"
                                     >
                                       <span>Move</span>
-                                      <span className="material-symbols-outlined text-[12px]">arrow_forward</span>
+                                      <SymbolIcon name="arrow_forward" className="text-[12px]" style={{ fontSize: "12px" }} />
                                     </button>
                                   </div>
                                 </div>
@@ -865,7 +862,7 @@ export default function JobsPage() {
 
                                   {/* Ingestion Status */}
                                   <div className="px-2 py-1 rounded bg-[#e7deff]/60 flex items-center gap-1.5 text-[#1e0060] text-[11px] font-semibold">
-                                    <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>
+                                    <SymbolIcon name="sync" className="text-[14px] animate-spin" style={{ fontSize: "14px" }} />
                                     <span>{card.statusNote}</span>
                                   </div>
 
@@ -956,7 +953,7 @@ export default function JobsPage() {
                                       </div>
                                     </div>
                                     <div className="flex items-center gap-0.5 text-[#6137e0] font-mono text-xs font-bold">
-                                      <span className="material-symbols-outlined text-[14px]">star</span>
+                                      <SymbolIcon name="star" className="text-[14px]" style={{ fontSize: "14px" }} />
                                       <span>{card.rating}</span>
                                     </div>
                                   </div>
@@ -1009,7 +1006,7 @@ export default function JobsPage() {
 
                                   <div className="flex items-center justify-between pt-1 text-[11px]">
                                     <span className="text-[#75777c]">Sent 2 days ago</span>
-                                    <span className="material-symbols-outlined text-[16px] text-[#6137e0]">mail</span>
+                                    <SymbolIcon name="mail" className="text-[16px] text-[#6137e0]" style={{ fontSize: "16px" }} />
                                   </div>
                                 </div>
                               );
@@ -1035,9 +1032,7 @@ export default function JobsPage() {
                                       <div className="font-mono text-[10px] text-[#75777c]">{card.timeInStage}</div>
                                     </div>
                                   </div>
-                                  <span className="material-symbols-outlined text-[#6137e0] text-[18px]">
-                                    verified
-                                  </span>
+                                  <SymbolIcon name="verified" className="text-[#6137e0] text-[18px]" style={{ fontSize: "18px" }} />
                                 </div>
 
                                 <div className="p-2 rounded bg-[#f0f3ff] text-[#45474c] text-[11px]">
@@ -1046,9 +1041,7 @@ export default function JobsPage() {
 
                                 <div className="flex items-center justify-between pt-1 text-[11px] text-[#45474c]">
                                   <span className="font-semibold text-emerald-700">Onboarding active</span>
-                                  <span className="material-symbols-outlined text-[16px] text-[#75777c]">
-                                    arrow_outward
-                                  </span>
+                                  <SymbolIcon name="arrow_outward" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
                                 </div>
                               </div>
                             );
@@ -1084,7 +1077,7 @@ export default function JobsPage() {
                         className="w-8 h-8 rounded-lg bg-[#eaeefb] hover:bg-[#dee2ef] text-[#171c25] flex items-center justify-center transition-colors cursor-pointer"
                         type="button"
                       >
-                        <span className="material-symbols-outlined text-[18px]">close</span>
+                        <SymbolIcon name="close" className="text-[18px]" style={{ fontSize: "18px" }} />
                       </button>
                     </div>
 
@@ -1092,7 +1085,7 @@ export default function JobsPage() {
                     <div className="p-3.5 rounded-lg bg-[#f0f3ff] flex flex-col gap-2 border border-[#dee2ef]/40">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5 text-[#6137e0] text-xs font-bold">
-                          <span className="material-symbols-outlined text-[16px]">psychology</span>
+                          <SymbolIcon name="psychology" className="text-[16px]" style={{ fontSize: "16px" }} />
                           <span>AI-Assisted Screening Summary</span>
                         </div>
                         <span className="font-mono text-[10px] bg-white px-2 py-0.5 rounded text-[#171c25] font-semibold border border-[#dee2ef]/60">
@@ -1120,7 +1113,7 @@ export default function JobsPage() {
                               </div>
                               <span>{selectedInterviewer}</span>
                             </div>
-                            <span className="material-symbols-outlined text-[18px] text-[#75777c]">unfold_more</span>
+                            <SymbolIcon name="unfold_more" className="text-[18px] text-[#75777c]" style={{ fontSize: "18px" }} />
                           </div>
                         </div>
                       </div>
@@ -1130,13 +1123,11 @@ export default function JobsPage() {
                         <label className="text-xs text-[#171c25] font-bold">Interview Scheduling Window</label>
                         <div className="grid grid-cols-2 gap-2">
                           <div className="h-10 px-3 bg-[#f0f3ff] rounded-lg flex items-center gap-2 text-[#171c25] text-xs font-medium">
-                            <span className="material-symbols-outlined text-[16px] text-[#75777c]">
-                              calendar_today
-                            </span>
+                            <SymbolIcon name="calendar_today" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
                             <span>{interviewDate}</span>
                           </div>
                           <div className="h-10 px-3 bg-[#f0f3ff] rounded-lg flex items-center gap-2 text-[#171c25] text-xs font-medium">
-                            <span className="material-symbols-outlined text-[16px] text-[#75777c]">schedule</span>
+                            <SymbolIcon name="schedule" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
                             <span>{interviewTime}</span>
                           </div>
                         </div>
@@ -1205,12 +1196,12 @@ export default function JobsPage() {
                       >
                         {isDispatching ? (
                           <>
-                            <span className="material-symbols-outlined text-[16px] animate-spin">sync</span>
+                            <SymbolIcon name="sync" className="text-[16px] animate-spin" style={{ fontSize: "16px" }} />
                             <span>Dispatching...</span>
                           </>
                         ) : (
                           <>
-                            <span className="material-symbols-outlined text-[16px]">check</span>
+                            <SymbolIcon name="check" className="text-[16px]" style={{ fontSize: "16px" }} />
                             <span>Confirm Move &amp; Dispatch</span>
                           </>
                         )}

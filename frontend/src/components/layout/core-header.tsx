@@ -18,7 +18,8 @@ import {
   Building2,
   FileText,
   Briefcase,
-  X
+  X,
+  Menu
 } from "lucide-react";
 import { useSession } from "./api-session";
 import {
@@ -80,22 +81,22 @@ export function CoreHeader() {
 
   return (
     <>
-      <header className="fixed top-0 left-0 right-0 z-50 h-16 bg-[#f9f9ff]/90 backdrop-blur-xl border-b border-[#dee2ef]/60 shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
-        <div className="h-16 max-w-[1440px] mx-auto px-6 lg:px-8 flex items-center justify-between gap-4">
+      <header className="fixed top-0 left-0 right-0 z-40 h-16 bg-[#f9f9ff]/90 backdrop-blur-xl border-b border-[#dee2ef]/60 shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
+        <div className="h-16 max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-8 flex items-center justify-between gap-2 sm:gap-4">
           
           {/* Left Brand & Workspace Switcher */}
-          <div className="flex items-center gap-4 shrink-0">
-            <Link href="/" className="flex items-center gap-2.5 group">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-4">
+            <Link href="/" aria-label="CORE ATS home" className="flex shrink-0 items-center gap-2.5 group">
               <img
                 src="/core-ats-logo.png"
                 alt="CORE ATS Logo"
-                className="h-8 w-auto object-contain group-hover:scale-105 transition-transform"
+                className="h-8 w-8 object-contain group-hover:scale-105 transition-transform"
                 onError={(e) => {
                   // Fallback if image fails to render
                   (e.target as HTMLElement).style.display = "none";
                 }}
               />
-              <span className="font-semibold text-lg text-[#171c25] tracking-tight">
+              <span className="hidden sm:inline font-semibold text-lg text-[#171c25] tracking-tight whitespace-nowrap">
                 CORE ATS
               </span>
             </Link>
@@ -105,13 +106,13 @@ export function CoreHeader() {
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f0f3ff] hover:bg-[#e4e8f5] transition-colors text-[#171c25] cursor-pointer"
+                  className="flex min-w-0 items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg bg-[#f0f3ff] hover:bg-[#e4e8f5] transition-colors text-[#171c25] cursor-pointer"
                 >
-                  <Building2 className="w-3.5 h-3.5 text-[#75777c]" />
-                  <span className="text-xs font-medium truncate max-w-[190px] xl:max-w-[250px]">
+                  <Building2 className="w-3.5 h-3.5 shrink-0 text-[#75777c]" />
+                  <span className="text-xs font-medium truncate max-w-[120px] sm:max-w-[190px]">
                     {workspaceName}
                   </span>
-                  <ChevronDown className="w-3.5 h-3.5 text-[#75777c]" />
+                  <ChevronDown className="w-3.5 h-3.5 shrink-0 text-[#75777c]" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-64 bg-white rounded-xl shadow-lg border border-[#dee2ef] p-1.5">
@@ -138,7 +139,7 @@ export function CoreHeader() {
           </div>
 
           {/* Center Navigation Pill Bar */}
-          <div className="hidden md:flex items-center justify-center shrink-0">
+          <div className="hidden xl:flex items-center justify-center shrink-0">
             <nav className="flex items-center gap-1 bg-[#131c29] p-1 rounded-full text-[#7b8495]">
               {/* Overview */}
               <Link
@@ -322,12 +323,32 @@ export function CoreHeader() {
           </div>
 
           {/* Right Controls: Search, Notifications, Profile */}
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-3 shrink-0">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" aria-label="Open navigation" className="xl:hidden rounded-lg p-2 hover:bg-[#e4e8f5]">
+                  <Menu className="h-5 w-5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="max-h-[calc(100dvh-80px)] overflow-y-auto">
+                {[
+                  ["Overview", "/"], ["Inbox", "/inbox"], ["Jobs", "/jobs"],
+                  ["Candidates", "/candidates"], ["Clients", "/clients"],
+                  ["Reports", "/analytics"], ["Create job", "/jobs/new"],
+                  ["Imports", "/imports"], ["Skills Library", "/taxonomy"],
+                  ["Audit Log", "/audit-log"], ["Interviews", "/interviews"],
+                  ["Offers", "/offers"], ["Settings", "/settings"],
+                ].map(([label, href]) => (
+                  <DropdownMenuItem key={href} asChild><Link href={href}>{label}</Link></DropdownMenuItem>
+                ))}
+                <DropdownMenuItem onSelect={() => setIsSearchOpen(true)}>Search</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {/* Ask CORE ATS Search Trigger */}
             <button
               type="button"
               onClick={() => setIsSearchOpen(true)}
-              className="hidden xl:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white hover:bg-[#f0f3ff] transition-colors shadow-[0_1px_4px_rgba(0,0,0,0.04)] border border-[#dee2ef]/60 text-[#45474c] cursor-pointer"
+              className="hidden min-[1536px]:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white hover:bg-[#f0f3ff] transition-colors shadow-[0_1px_4px_rgba(0,0,0,0.04)] border border-[#dee2ef]/60 text-[#45474c] cursor-pointer"
             >
               <Search className="w-4 h-4 text-[#75777c]" />
               <span className="text-xs text-[#45474c]">Ask CORE ATS</span>
@@ -349,10 +370,10 @@ export function CoreHeader() {
             {/* User Profile Avatar with Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <div className="relative flex items-center cursor-pointer group">
+                <button type="button" aria-label="Account menu" className="relative flex h-8 w-8 items-center cursor-pointer group">
                   <img
                     alt="Elena Profile"
-                    className="w-8 h-8 rounded-full object-cover ring-2 ring-[#dee2ef] group-hover:ring-[#6137e0] transition-all"
+                    className="absolute inset-0 z-10 w-8 h-8 rounded-full object-cover ring-2 ring-[#dee2ef] group-hover:ring-[#6137e0] transition-all"
                     src="/elena-avatar.png"
                     onError={(e) => {
                       (e.target as HTMLElement).style.display = "none";
@@ -361,8 +382,8 @@ export function CoreHeader() {
                   <div className="w-8 h-8 rounded-full bg-[#131c29] text-white flex items-center justify-center text-xs font-bold ring-2 ring-[#dee2ef]">
                     {session?.user?.name ? session.user.name.charAt(0) : "E"}
                   </div>
-                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-[#7a55fa] ring-2 ring-[#f9f9ff]"></span>
-                </div>
+                  <span className="absolute z-20 bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-[#7a55fa] ring-2 ring-[#f9f9ff]"></span>
+                </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 bg-white rounded-xl shadow-lg border border-[#dee2ef] p-1.5">
                 <DropdownMenuLabel className="px-2 py-1.5">

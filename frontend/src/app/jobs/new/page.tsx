@@ -1,5 +1,6 @@
 "use client";
 
+import { SymbolIcon } from "@/components/ui/symbol-icon";
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -171,7 +172,7 @@ export default function RequisitionStudioPage() {
                 <Link href="/jobs" className="hover:text-[#171c25] transition-colors">
                   Requisitions
                 </Link>
-                <span className="material-symbols-outlined text-[16px] text-[#75777c]">chevron_right</span>
+                <SymbolIcon name="chevron_right" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
                 <span className="text-[#171c25] text-sm sm:text-base font-bold tracking-tight">
                   New Job Requisition
                 </span>
@@ -190,7 +191,7 @@ export default function RequisitionStudioPage() {
                   className="p-2 rounded-lg text-[#45474c] hover:text-[#171c25] hover:bg-[#e6eefe] transition-colors cursor-pointer"
                   type="button"
                 >
-                  <span className="material-symbols-outlined text-[20px]">help_outline</span>
+                  <SymbolIcon name="help_outline" className="text-[20px]" style={{ fontSize: "20px" }} />
                 </button>
               </div>
             </div>
@@ -289,7 +290,7 @@ export default function RequisitionStudioPage() {
                       onClick={() => showToast("Preset customization: 42 engineering presets mapped in taxonomy")}
                       className="inline-flex items-center gap-1 text-[#6137e0] text-xs font-semibold hover:underline cursor-pointer"
                     >
-                      <span className="material-symbols-outlined text-[16px]">tune</span>
+                      <SymbolIcon name="tune" className="text-[16px]" style={{ fontSize: "16px" }} />
                       Customize Presets
                     </button>
                   </div>
@@ -331,7 +332,7 @@ export default function RequisitionStudioPage() {
                       }`}
                       type="button"
                     >
-                      <span className="material-symbols-outlined text-[#cbbeff] text-[18px]">verified</span>
+                      <SymbolIcon name="verified" className="text-[#cbbeff] text-[18px]" style={{ fontSize: "18px" }} />
                       <span>Staff Backend Engineer</span>
                     </button>
 
@@ -340,7 +341,7 @@ export default function RequisitionStudioPage() {
                       className="px-3.5 py-2 rounded-lg bg-[#eff4ff] text-[#45474c] text-xs font-semibold hover:bg-[#e6eefe] transition-all flex items-center gap-1 cursor-pointer"
                       type="button"
                     >
-                      <span className="material-symbols-outlined text-[16px]">add</span>
+                      <SymbolIcon name="add" className="text-[16px]" style={{ fontSize: "16px" }} />
                       <span>Custom Requisition</span>
                     </button>
                   </div>
@@ -385,9 +386,7 @@ export default function RequisitionStudioPage() {
                           className="w-full h-10 px-3 pr-9 bg-[#eff4ff] text-[#141c27] text-xs sm:text-sm font-medium rounded-lg focus:outline-none focus:bg-white border border-transparent focus:border-[#6137e0]/30 transition-colors"
                           type="text"
                         />
-                        <span className="material-symbols-outlined absolute right-3 top-2.5 text-[#75777c] text-[18px]">
-                          dns
-                        </span>
+                        <SymbolIcon name="dns" className="absolute right-3 top-2.5 text-[#75777c] text-[18px]" style={{ fontSize: "18px" }} />
                       </div>
                     </div>
 
@@ -414,7 +413,7 @@ export default function RequisitionStudioPage() {
                             {hiringManager}
                           </span>
                         </div>
-                        <span className="material-symbols-outlined text-[#75777c] text-[18px]">unfold_more</span>
+                        <SymbolIcon name="unfold_more" className="text-[#75777c] text-[18px]" style={{ fontSize: "18px" }} />
                       </div>
                     </div>
 
@@ -432,7 +431,7 @@ export default function RequisitionStudioPage() {
                             {recruiterOwner}
                           </span>
                         </div>
-                        <span className="material-symbols-outlined text-[#75777c] text-[18px]">unfold_more</span>
+                        <SymbolIcon name="unfold_more" className="text-[#75777c] text-[18px]" style={{ fontSize: "18px" }} />
                       </div>
                     </div>
 
@@ -457,9 +456,7 @@ export default function RequisitionStudioPage() {
                           className="w-full h-10 px-3 pr-9 bg-[#eff4ff] text-[#141c27] text-xs font-medium rounded-lg focus:outline-none focus:bg-white transition-colors"
                           type="text"
                         />
-                        <span className="material-symbols-outlined absolute right-3 top-2.5 text-[#75777c] text-[18px]">
-                          apartment
-                        </span>
+                        <SymbolIcon name="apartment" className="absolute right-3 top-2.5 text-[#75777c] text-[18px]" style={{ fontSize: "18px" }} />
                       </div>
                     </div>
 
@@ -478,9 +475,7 @@ export default function RequisitionStudioPage() {
                           className="w-full h-10 px-3 pr-9 bg-[#eff4ff] text-[#141c27] text-xs font-bold rounded-lg focus:outline-none focus:bg-white transition-colors"
                           type="text"
                         />
-                        <span className="material-symbols-outlined absolute right-3 top-2.5 text-[#75777c] text-[18px]">
-                          payments
-                        </span>
+                        <SymbolIcon name="payments" className="absolute right-3 top-2.5 text-[#75777c] text-[18px]" style={{ fontSize: "18px" }} />
                       </div>
                     </div>
                   </div>
@@ -541,7 +536,7 @@ export default function RequisitionStudioPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div className="p-3.5 rounded-lg bg-[#eff4ff] border border-[#dee2ef]/50 flex flex-col gap-1">
                         <div className="flex items-center gap-2">
-                          <span className="material-symbols-outlined text-[#6137e0] text-[18px]">bolt</span>
+                          <SymbolIcon name="bolt" className="text-[#6137e0] text-[18px]" style={{ fontSize: "18px" }} />
                           <span className="text-xs font-bold text-[#141c27]">P99.9 Sub-5ms SLAs</span>
                         </div>
                         <p className="text-[11px] text-[#45474c] leading-relaxed">
@@ -551,7 +546,7 @@ export default function RequisitionStudioPage() {
 
                       <div className="p-3.5 rounded-lg bg-[#eff4ff] border border-[#dee2ef]/50 flex flex-col gap-1">
                         <div className="flex items-center gap-2">
-                          <span className="material-symbols-outlined text-[#6137e0] text-[18px]">hub</span>
+                          <SymbolIcon name="hub" className="text-[#6137e0] text-[18px]" style={{ fontSize: "18px" }} />
                           <span className="text-xs font-bold text-[#141c27]">Event Bus Hardening</span>
                         </div>
                         <p className="text-[11px] text-[#45474c] leading-relaxed">
@@ -563,7 +558,7 @@ export default function RequisitionStudioPage() {
                     {/* Transparent Alignment Trail */}
                     <div className="p-3 rounded-lg bg-[#f8f9ff] border border-[#dee2ef]/60 flex items-center justify-between flex-wrap gap-2 text-xs">
                       <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[#6137e0] text-[18px]">verified</span>
+                        <SymbolIcon name="verified" className="text-[#6137e0] text-[18px]" style={{ fontSize: "18px" }} />
                         <span className="text-[#45474c]">
                           JD parsed against 14 Halden leveling artifacts to calibrate benchmark skill vectors.
                         </span>
@@ -750,9 +745,7 @@ export default function RequisitionStudioPage() {
 
                 {/* Proposed UX Interaction Flow Note */}
                 <div className="p-4 rounded-xl bg-[#eff4ff] border border-[#dee2ef]/60 flex items-start gap-3">
-                  <span className="material-symbols-outlined text-[#6137e0] text-[20px] shrink-0 mt-0.5">
-                    lightbulb
-                  </span>
+                  <SymbolIcon name="lightbulb" className="text-[#6137e0] text-[20px] shrink-0 mt-0.5" style={{ fontSize: "20px" }} />
                   <div>
                     <div className="text-xs font-bold text-[#141c27]">Proposed UX Interaction Flow</div>
                     <p className="text-xs text-[#45474c] mt-0.5 leading-relaxed">
@@ -784,7 +777,7 @@ export default function RequisitionStudioPage() {
                       <div>
                         <div className="flex items-center gap-1.5 font-bold text-sm text-[#141c27]">
                           <span>Staff Backend Engineer</span>
-                          <span className="material-symbols-outlined text-[#6137e0] text-[16px]">verified</span>
+                          <SymbolIcon name="verified" className="text-[#6137e0] text-[16px]" style={{ fontSize: "16px" }} />
                         </div>
                         <div className="text-xs text-[#45474c] font-medium">High-Throughput Systems</div>
                       </div>
@@ -844,7 +837,7 @@ export default function RequisitionStudioPage() {
                 <div className="bg-white rounded-xl p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-[#dee2ef]/70 flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-[#6137e0] text-[18px]">psychology</span>
+                      <SymbolIcon name="psychology" className="text-[#6137e0] text-[18px]" style={{ fontSize: "18px" }} />
                       <span className="text-xs font-bold text-[#141c27]">AI Evidence Seed Matrix</span>
                     </div>
                     <span className="px-2 py-0.2 rounded-full bg-[#e7deff] text-[#1e0060] font-mono text-[10px] font-bold">
@@ -858,9 +851,7 @@ export default function RequisitionStudioPage() {
 
                   <div className="flex flex-col gap-2">
                     <div className="p-2.5 rounded-lg bg-[#eff4ff] border border-[#dee2ef]/40 flex items-start gap-2">
-                      <span className="material-symbols-outlined text-emerald-600 text-[16px] mt-0.5">
-                        check_circle
-                      </span>
+                      <SymbolIcon name="check_circle" className="text-emerald-600 text-[16px] mt-0.5" style={{ fontSize: "16px" }} />
                       <div>
                         <div className="text-xs font-bold text-[#141c27]">Concurrency profiling in Go</div>
                         <div className="text-[10px] text-[#45474c]">Evidence of pprof, mutex contention tuning</div>
@@ -868,9 +859,7 @@ export default function RequisitionStudioPage() {
                     </div>
 
                     <div className="p-2.5 rounded-lg bg-[#eff4ff] border border-[#dee2ef]/40 flex items-start gap-2">
-                      <span className="material-symbols-outlined text-emerald-600 text-[16px] mt-0.5">
-                        check_circle
-                      </span>
+                      <SymbolIcon name="check_circle" className="text-emerald-600 text-[16px] mt-0.5" style={{ fontSize: "16px" }} />
                       <div>
                         <div className="text-xs font-bold text-[#141c27]">Scale threshold exceeding 100k RPS</div>
                         <div className="text-[10px] text-[#45474c]">Verified production deployment scale citations</div>
@@ -878,9 +867,7 @@ export default function RequisitionStudioPage() {
                     </div>
 
                     <div className="p-2.5 rounded-lg bg-[#eff4ff] border border-[#dee2ef]/40 flex items-start gap-2">
-                      <span className="material-symbols-outlined text-emerald-600 text-[16px] mt-0.5">
-                        check_circle
-                      </span>
+                      <SymbolIcon name="check_circle" className="text-emerald-600 text-[16px] mt-0.5" style={{ fontSize: "16px" }} />
                       <div>
                         <div className="text-xs font-bold text-[#141c27]">Distributed transaction semantics</div>
                         <div className="text-[10px] text-[#45474c]">Saga patterns, outbox model, Kafka replication</div>
@@ -888,9 +875,7 @@ export default function RequisitionStudioPage() {
                     </div>
 
                     <div className="p-2.5 rounded-lg bg-[#eff4ff] border border-[#dee2ef]/40 flex items-start gap-2">
-                      <span className="material-symbols-outlined text-emerald-600 text-[16px] mt-0.5">
-                        check_circle
-                      </span>
+                      <SymbolIcon name="check_circle" className="text-emerald-600 text-[16px] mt-0.5" style={{ fontSize: "16px" }} />
                       <div>
                         <div className="text-xs font-bold text-[#141c27]">Technical mentorship footprint</div>
                         <div className="text-[10px] text-[#45474c]">Multi-engineer code reviews &amp; RFC sponsorship</div>
@@ -898,9 +883,7 @@ export default function RequisitionStudioPage() {
                     </div>
 
                     <div className="p-2.5 rounded-lg bg-[#eff4ff] border border-[#dee2ef]/40 flex items-start gap-2">
-                      <span className="material-symbols-outlined text-emerald-600 text-[16px] mt-0.5">
-                        check_circle
-                      </span>
+                      <SymbolIcon name="check_circle" className="text-emerald-600 text-[16px] mt-0.5" style={{ fontSize: "16px" }} />
                       <div>
                         <div className="text-xs font-bold text-[#141c27]">On-call rotation leadership</div>
                         <div className="text-[10px] text-[#45474c]">Incident postmortem facilitation record</div>
@@ -926,7 +909,7 @@ export default function RequisitionStudioPage() {
                           <div className="text-[10px] text-[#45474c]">Elena Varga · 30m</div>
                         </div>
                       </div>
-                      <span className="material-symbols-outlined text-[#75777c] text-[16px]">drag_handle</span>
+                      <SymbolIcon name="drag_handle" className="text-[#75777c] text-[16px]" style={{ fontSize: "16px" }} />
                     </div>
 
                     <div className="p-2.5 rounded-lg bg-[#eff4ff] border border-[#dee2ef]/50 flex items-center justify-between">
@@ -939,7 +922,7 @@ export default function RequisitionStudioPage() {
                           <div className="text-[10px] text-[#45474c]">Chris Miller · 60m</div>
                         </div>
                       </div>
-                      <span className="material-symbols-outlined text-[#75777c] text-[16px]">drag_handle</span>
+                      <SymbolIcon name="drag_handle" className="text-[#75777c] text-[16px]" style={{ fontSize: "16px" }} />
                     </div>
 
                     <div className="p-2.5 rounded-lg bg-[#eff4ff] border border-[#dee2ef]/50 flex items-center justify-between">
@@ -952,7 +935,7 @@ export default function RequisitionStudioPage() {
                           <div className="text-[10px] text-[#45474c]">Marcus Reed (Senior SWE) · 60m</div>
                         </div>
                       </div>
-                      <span className="material-symbols-outlined text-[#75777c] text-[16px]">drag_handle</span>
+                      <SymbolIcon name="drag_handle" className="text-[#75777c] text-[16px]" style={{ fontSize: "16px" }} />
                     </div>
                   </div>
                 </div>
@@ -990,13 +973,13 @@ export default function RequisitionStudioPage() {
                 >
                   {isPublishing ? (
                     <>
-                      <span className="material-symbols-outlined text-[16px] animate-spin">sync</span>
+                      <SymbolIcon name="sync" className="text-[16px] animate-spin" style={{ fontSize: "16px" }} />
                       <span>Publishing...</span>
                     </>
                   ) : (
                     <>
                       <span>Publish Requisition (REQ-208)</span>
-                      <span className="material-symbols-outlined text-[17px]">arrow_forward</span>
+                      <SymbolIcon name="arrow_forward" className="text-[17px]" style={{ fontSize: "17px" }} />
                     </>
                   )}
                 </button>

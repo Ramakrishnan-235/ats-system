@@ -377,13 +377,13 @@ export default function OffersPage() {
                           : "bg-white border-[#dee2ef]/70 hover:bg-[#f8f9ff]"
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-4">
+                      <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-[#eff4ff] text-[#141c27] flex items-center justify-center font-bold text-xs shrink-0">
                             {item.initials}
                           </div>
                           <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                               <h3 className="font-bold text-sm text-[#141c27]">{item.candidateName}</h3>
                               {item.tag && (
                                 <span className={`px-2 py-0.2 rounded-full font-bold text-[10px] ${item.tagColor}`}>
@@ -398,7 +398,7 @@ export default function OffersPage() {
                           </div>
                         </div>
 
-                        <div className="text-right shrink-0">
+                        <div className="text-left sm:text-right shrink-0">
                           <div className="font-bold text-sm text-[#141c27]">{item.baseComp}</div>
                           <div className="text-[11px] text-[#75777c]">{item.equityOrSignOn}</div>
                         </div>

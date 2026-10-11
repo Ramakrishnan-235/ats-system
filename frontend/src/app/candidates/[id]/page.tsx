@@ -646,9 +646,9 @@ export default function CandidateAssessmentPage() {
         </div>
       </main>
 
-      {/* Sticky Bottom Decision Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-[#dee2ef] py-3.5 px-4 sm:px-8 shadow-2xl">
-        <div className="max-w-[1440px] mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+      {/* Decision actions remain in the document flow so they never cover the resume. */}
+      <div className="relative z-30 bg-white/95 backdrop-blur-md border-t border-[#dee2ef] py-3.5 px-4 sm:px-8 shadow-2xl">
+        <div className="max-w-[1440px] mx-auto flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <span className="w-2.5 h-2.5 rounded-full bg-[#6137e0] animate-pulse"></span>
             <div>
@@ -661,7 +661,7 @@ export default function CandidateAssessmentPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 flex-wrap justify-end">
+          <div className="grid w-full grid-cols-1 sm:grid-cols-2 xl:flex xl:w-auto items-center gap-2.5 flex-wrap justify-end">
             <button
               type="button"
               onClick={() => setIsSendMessageOpen(true)}
@@ -702,7 +702,7 @@ export default function CandidateAssessmentPage() {
       </div>
 
       {/* Double Footer Ribbons */}
-      <footer className="w-full bg-white border-t border-[#dee2ef] pb-16">
+      <footer className="w-full bg-white border-t border-[#dee2ef]">
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[#75777c] border-b border-[#f0f3ff]">
           <span>© 2025 CORE ATS Inc. AI-assisted recruitment workspace.</span>
           <span className="font-mono text-[11px]">

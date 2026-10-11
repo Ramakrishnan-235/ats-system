@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="68" time="17.185" timestamp="2026-10-11T19:34:55.589860+05:30" hostname="Zoro"><testcase classname="test.test_private_ai_contract" name="test_private_api_requires_service_identity" time="0.139" /><testcase classname="test.test_private_ai_contract" name="test_private_parser_import_does_not_load_legacy_database" time="3.850" /><testcase classname="test.test_private_ai_contract" name="test_dispatch_uses_celery_and_stable_job_identity" time="0.092" /><testcase classname="test.test_private_ai_contract" name="test_result_contract_rejects_wrong_vectors_and_extra_identity" time="0.005" /><testcase classname="test.test_private_ai_contract" name="test_incomplete_evaluation_cannot_become_a_default_score" time="0.005" /><testcase classname="test.test_private_ai_contract" name="test_worker_keeps_incomplete_model_response_unscored" time="0.002" /><testcase classname="test.test_private_ai_contract" name="test_scoring_uses_technical_evidence_without_privacy_artifacts" time="0.001" /><testcase classname="test.test_private_ai_contract" name="test_added_skill_summary_cannot_become_a_verbatim_resume_quote" time="1.528" /><testcase classname="test.test_private_ai_contract" name="test_scoring_reserves_output_budget_without_reasoning[False]" time="0.001" /><testcase classname="test.test_private_ai_contract" name="test_scoring_reserves_output_budget_without_reasoning[True]" time="0.001" /><testcase classname="test.test_private_ai_contract" name="test_worker_only_saves_through_core_and_persists_artifact_first" time="0.004" /><testcase classname="test.test_private_ai_contract" name="test_duplicate_delivery_does_not_recompute" time="0.002" /><testcase classname="test.test_private_ai_contract" name="test_extraction_failures_return_safe_errors" time="0.003" /><testcase classname="test.test_private_ai_contract" name="test_job_taxonomy_snapshot_never_uses_global_catalog" time="7.233" /><testcase classname="test.test_pipeline_refactoring" name="test_skill_requirements_cannot_match_substrings" time="0.001" /><testcase classname="test.test_pipeline_refactoring" name="test_skill_requirements_deduplicate_case_and_ignore_blanks" time="0.001" /><testcase classname="test.test_pipeline_refactoring" name="test_parser_does_not_invent_skills_when_extractors_unavailable" time="0.010" /><testcase classname="test.test_pipeline_refactoring" name="test_parser_does_not_invent_experience_from_education_or_word_counts" time="0.001" /><testcase classname="test.test_pipeline_refactoring" name="test_tenure_uses_employment_intervals_and_merges_concurrent_roles" time="0.059" /><testcase classname="test.test_pipeline_refactoring" name="test_parser_starts_with_pending_unevaluated_scorecard" time="0.009" /><testcase classname="test.test_pipeline_refactoring" name="test_llm_prompt_sanitizer_blocks_case_variants_and_boundary_breakout" time="0.001" /><testcase classname="test.test_pipeline_refactoring" name="test_deep_evaluator_validates_quotes_and_discards_model_coordinates" time="0.001" /><testcase classname="test.test_pipeline_refactoring" name="test_deep_evaluator_drops_fabricated_citation_without_losing_report" time="0.001" /><testcase classname="test.test_pipeline_refactoring" name="test_deep_prompt_candidate_id_cannot_escape_xml_attribute" time="0.001" /><testcase classname="test.test_pipeline_refactoring" name="test_pdf_grounding_does_not_accept_real_prefix_with_fabricated_suffix" time="0.070" /><testcase classname="test.test_pipeline_refactoring" name="test_audit_accepts_ats_id_formats_and_rejects_empty_ids" time="0.003"><failure message="NameError: name 'os' is not defined. Did you forget to import 'os'">@pytest.mark.asyncio
+    async def test_audit_accepts_ats_id_formats_and_rejects_empty_ids():
+        session = SimpleNamespace(add=Mock(), commit=AsyncMock())
+&gt;       audit = await AuditLogger.persist_audit_record(
+            session, DeepCandidateEvaluationReport(overall_match_score=50), "cand-1", "job-1"
+        )
+
+test\test_pipeline_refactoring.py:148: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+session = namespace(add=&lt;Mock id='1515676522144'&gt;, commit=&lt;AsyncMock id='1515682777760'&gt;)
+report = DeepCandidateEvaluationReport(candidate_id='', job_title='', overall_match_score=50.0, qualification_tier=&lt;Qualificati...a_breakdown=[], key_strengths=[], risks_and_skill_gaps=[], suggested_interview_questions=[], suggested_improvements=[])
+candidate_id = 'cand-1', job_id = 'job-1', application_id = None, telemetry = {}
+raw_prompt = ''
+
+    @staticmethod
+    async def persist_audit_record(
+        session: Optional[AsyncSession],
+        report: DeepCandidateEvaluationReport,
+        candidate_id: str,
+        job_id: str,
+        application_id: Optional[str] = None,
+        telemetry: Optional[Dict[str, Any]] = None,
+        raw_prompt: str = "",
+    ) -&gt; ScoringAudit:
+        """Saves an immutable evaluation record to PostgreSQL or live audit store."""
+        if telemetry is None:
+            telemetry = {}
+    
+        if not candidate_id or not str(candidate_id).strip():
+            raise ValueError("Candidate and job IDs are required to persist an audit")
+        if not job_id or not str(job_id).strip():
+            raise ValueError("Candidate and job IDs are required to persist an audit")
+    
+        # Coerce candidate and job IDs safely into valid UUIDs (supports cand-&lt;hex&gt;, job-001, etc.)
+        c_uuid = coerce_to_uuid(candidate_id)
+        j_uuid = coerce_to_uuid(job_id)
+        app_uuid = optional_coerce_to_uuid(application_id)
+    
+        tier_val = (
+            report.qualification_tier.value
+            if hasattr(report.qualification_tier, "value")
+            else str(getattr(report, "qualification_tier", None) or "Potential Fit")
+        )
+    
+        criteria = []
+        for c in (getattr(report, "criteria_breakdown", []) or []):
+            if hasattr(c, "model_dump"):
+                criteria.append(c.model_dump())
+            elif isinstance(c, dict):
+                criteria.append(c)
+            else:
+                criteria.append({"raw": str(c)})
+    
+        pros = list(getattr(report, "key_strengths", []) or [])
+        cons = list(getattr(report, "risks_and_skill_gaps", []) or [])
+        questions = [
+            q.question if hasattr(q, "question") else str(q)
+            for q in (getattr(report, "suggested_interview_questions", []) or [])
+        ]
+        recruiter_summary = getattr(report, "executive_verdict", "") or "Candidate evaluation audit."
+    
+        sanitized_prompt = sanitize_audit_prompt(raw_prompt)
+    
+        audit_entry = ScoringAudit(
+            id=uuid.uuid4(),
+            application_id=app_uuid,
+            candidate_id=c_uuid,
+            job_id=j_uuid,
+            overall_match_score=float(getattr(report, "overall_match_score", 0.0)),
+            qualification_tier=tier_val,
+            criteria_breakdown=criteria,
+            pros=pros,
+            cons_or_risks=cons,
+            recommended_interview_questions=questions,
+            recruiter_summary=recruiter_summary,
+&gt;           llm_model=telemetry.get("model", os.getenv("LLM_MODEL", "nvidia/nemotron-3.5-lightning:free")),
+                                             ^^
+            latency_ms=telemetry.get("latency_ms", 0),
+            raw_prompt=sanitized_prompt,
+        )
+E       NameError: name 'os' is not defined. Did you forget to import 'os'
+
+src\ats_core\evaluator\audit_logger.py:96: NameError</failure></testcase><testcase classname="test.test_pipeline_refactoring" name="test_deep_evaluator_keeps_valid_citations_in_mixed_report[Created sophisticated Python solutions]" time="0.001" /><testcase classname="test.test_pipeline_refactoring" name="test_deep_evaluator_keeps_valid_citations_in_mixed_report[   ]" time="0.001" /><testcase classname="test.test_resume_parser_enhanced" name="test_deva_kumar_name_extraction" time="0.001" /><testcase classname="test.test_resume_parser_enhanced" name="test_deva_kumar_phone_extraction" time="0.006" /><testcase classname="test.test_resume_parser_enhanced" name="test_deva_kumar_location_extraction" time="0.001" /><testcase classname="test.test_resume_parser_enhanced" name="test_deva_kumar_education_extraction" time="0.001" /><testcase classname="test.test_resume_parser_enhanced" name="test_deva_kumar_skills_extraction" time="0.096" /><testcase classname="test.test_resume_parser_enhanced" name="test_deva_kumar_experience_extraction" time="0.020" /><testcase classname="test.test_resume_parser_enhanced" name="test_deva_kumar_years_of_experience" time="0.017" /><testcase classname="test.test_resume_parser_enhanced" name="test_email_with_numbers_extraction" time="0.001" /><testcase classname="test.test_resume_parser_enhanced" name="test_missing_fields_return_na" time="0.001" /><testcase classname="test.test_residue_privacy" name="test_empty_redaction_never_accesses_llm_client[None]" time="0.004" /><testcase classname="test.test_residue_privacy" name="test_empty_redaction_never_accesses_llm_client[]" time="0.003" /><testcase classname="test.test_residue_privacy" name="test_empty_redaction_never_accesses_llm_client[   ]" time="0.003" /><testcase classname="test.test_residue_privacy" name="test_redactor_failure_never_accesses_llm_client" time="0.003" /><testcase classname="test.test_residue_privacy" name="test_llm_receives_redacted_resume_and_evidence_is_checked_against_original" time="0.003" /><testcase classname="test.test_residue_privacy" name="test_residue_redaction_also_masks_explicit_profile_urls[https://linkedin.com/in/jane-doe]" time="0.003" /><testcase classname="test.test_residue_privacy" name="test_residue_redaction_also_masks_explicit_profile_urls[www.example.com/jane]" time="0.002" /><testcase classname="test.test_residue_privacy" name="test_residue_redaction_also_masks_explicit_profile_urls[linkedin.com/in/jane-doe]" time="0.003" /><testcase classname="test.test_residue_privacy" name="test_residue_redaction_also_masks_explicit_profile_urls[github.com/jane-doe]" time="0.002" /><testcase classname="test.test_prompt_injection_sanitizer.TestPromptSanitizer" name="test_xml_tag_breakout_neutralization" time="0.001" /><testcase classname="test.test_prompt_injection_sanitizer.TestPromptSanitizer" name="test_case_insensitive_role_prefixes_neutralization" time="0.001" /><testcase classname="test.test_prompt_injection_sanitizer.TestPromptSanitizer" name="test_chat_control_tokens_stripped" time="0.001" /><testcase classname="test.test_prompt_injection_sanitizer.TestPromptSanitizer" name="test_adversarial_jailbreak_directives_defanged" time="0.001" /><testcase classname="test.test_prompt_injection_sanitizer.TestPromptSanitizer" name="test_markdown_code_block_breakout_neutralization" time="0.001" /><testcase classname="test.test_prompt_injection_sanitizer.TestPromptSanitizer" name="test_custom_extra_tags_support" time="0.001" /><testcase classname="test.test_prompt_injection_sanitizer.TestOllamaCandidateExtractorSanitization" name="test_neutralizes_untrusted_resume_content_breakout" time="0.015" /><testcase classname="test.test_prompt_injection_sanitizer.TestOllamaCandidateExtractorSanitization" name="test_case_insensitive_replacements" time="0.015" /><testcase classname="test.test_prompt_injection_sanitizer.TestLLMResidueExtractorSanitization" name="test_extract_residue_skills_sanitizes_prompt" time="0.003" /><testcase classname="test.test_prompt_injection_sanitizer.TestEvaluatorSanitizationConsistency" name="test_deep_evaluator_and_llm_evaluator_consistency" time="0.009" /><testcase classname="test.test_pdf_citation_grounding" name="test_pdf_citation_grounding_page_1" time="0.016" /><testcase classname="test.test_pdf_citation_grounding" name="test_pdf_citation_grounding_page_2" time="0.016" /><testcase classname="test.test_pdf_citation_grounding" name="test_pdf_citation_not_found" time="0.015" /><testcase classname="test.test_worker_review_regressions" name="test_worker_import_does_not_initialize_database_or_download_models" time="0.001" /><testcase classname="test.test_worker_review_regressions" name="test_worker_rejects_invalid_uuid_before_loading_models" time="0.015" /><testcase classname="test.test_worker_review_regressions" name="test_worker_rejects_paths_outside_staging" time="0.007" /><testcase classname="test.test_worker_review_regressions" name="test_worker_rejects_invalid_or_oversized_pdf_before_models[not PDF]" time="0.015" /><testcase classname="test.test_worker_review_regressions" name="test_worker_rejects_invalid_or_oversized_pdf_before_models[%PDF-1.4xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx]" time="0.018" /><testcase classname="test.test_worker_review_regressions" name="test_worker_masks_before_extraction_commits_json_then_removes_file" time="0.035" /><testcase classname="test.test_worker_review_regressions" name="test_failed_commit_rolls_back_and_keeps_file_for_retry" time="0.014" /><testcase classname="test.test_worker_review_regressions" name="test_terminal_failure_cleans_only_valid_staged_file" time="0.007" /><testcase classname="test.test_worker_review_regressions" name="test_terminal_failure_never_deletes_unrelated_file" time="0.009" /></testsuite></testsuites>

@@ -1,5 +1,6 @@
 "use client";
 
+import { SymbolIcon } from "@/components/ui/symbol-icon";
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { CoreHeader } from "@/components/layout/core-header";
@@ -469,12 +470,10 @@ export default function CandidateDirectoryPage() {
             {/* Command & Filter Workspace */}
             <div className="bg-white p-4 sm:p-5 rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_18px_rgba(0,0,0,0.02)] border border-[#dee2ef]/70 flex flex-col gap-4">
               {/* Primary Filter Bar: Search + Target Role Context Pill + Action CTA */}
-              <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 {/* Search Input with Keyboard Indicator */}
-                <div className="relative flex-1 min-w-[280px]">
-                  <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-[#75777c] text-[20px]">
-                    search
-                  </span>
+                <div className="relative min-w-0 w-full flex-[1_1_320px]">
+                  <SymbolIcon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#75777c] text-[20px]" style={{ fontSize: "20px" }} />
                   <input
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -490,8 +489,8 @@ export default function CandidateDirectoryPage() {
                 </div>
 
                 {/* Target Job Lens Selector Pill (Crucial: Drives score calculations) */}
-                <div className="flex items-center gap-2 shrink-0 bg-[#131c29] text-white px-3.5 py-1.5 rounded-full shadow-xs">
-                  <span className="material-symbols-outlined text-[16px] text-[#497cff]">tune</span>
+                <div className="flex flex-wrap items-center gap-2 min-w-0 bg-[#131c29] text-white px-3.5 py-1.5 rounded-full shadow-xs">
+                  <SymbolIcon name="tune" className="text-[16px] text-[#497cff]" style={{ fontSize: "16px" }} />
                   <span className="text-[10px] uppercase font-bold tracking-wider text-[#c5c6cc]">
                     Match Lens
                   </span>
@@ -501,7 +500,7 @@ export default function CandidateDirectoryPage() {
                       className="text-xs text-white font-semibold flex items-center gap-1 hover:text-[#dae3f6] transition-colors cursor-pointer"
                     >
                       <span>Target Job: {targetJobLens}</span>
-                      <span className="material-symbols-outlined text-[16px]">arrow_drop_down</span>
+                      <SymbolIcon name="arrow_drop_down" className="text-[16px]" style={{ fontSize: "16px" }} />
                     </button>
                   </div>
                   <span className="bg-[#6137e0] text-white px-2 py-0.5 rounded-full text-[10px] font-bold">
@@ -510,7 +509,7 @@ export default function CandidateDirectoryPage() {
                 </div>
 
                 {/* Right Command Actions */}
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
                   {/* Saved Views Dropdown */}
                   <button
                     className="h-10 px-3 rounded-lg bg-[#f0f3ff] hover:bg-[#eaeefb] transition-colors flex items-center gap-2 text-[#171c25] text-xs font-semibold border border-[#dee2ef]/50 cursor-pointer"
@@ -518,7 +517,7 @@ export default function CandidateDirectoryPage() {
                   >
                     <span className="w-2 h-2 rounded-full bg-[#ba1a1a]"></span>
                     <span>{savedView}</span>
-                    <span className="material-symbols-outlined text-[#75777c] text-[18px]">expand_more</span>
+                    <SymbolIcon name="expand_more" className="text-[#75777c] text-[18px]" style={{ fontSize: "18px" }} />
                   </button>
 
                   {/* View Segmented Switch */}
@@ -532,7 +531,7 @@ export default function CandidateDirectoryPage() {
                       }`}
                       type="button"
                     >
-                      <span className="material-symbols-outlined text-[16px]">view_list</span>
+                      <SymbolIcon name="view_list" className="text-[16px]" style={{ fontSize: "16px" }} />
                       <span>Table</span>
                     </button>
                     <button
@@ -544,7 +543,7 @@ export default function CandidateDirectoryPage() {
                       }`}
                       type="button"
                     >
-                      <span className="material-symbols-outlined text-[16px]">grid_view</span>
+                      <SymbolIcon name="grid_view" className="text-[16px]" style={{ fontSize: "16px" }} />
                       <span>Grid</span>
                     </button>
                   </div>
@@ -555,7 +554,7 @@ export default function CandidateDirectoryPage() {
                     className="h-10 px-3 rounded-lg bg-[#f0f3ff] hover:bg-[#eaeefb] text-[#171c25] transition-colors flex items-center gap-1.5 text-xs font-semibold border border-[#dee2ef]/50 cursor-pointer"
                     type="button"
                   >
-                    <span className="material-symbols-outlined text-[18px] text-[#75777c]">download</span>
+                    <SymbolIcon name="download" className="text-[18px] text-[#75777c]" style={{ fontSize: "18px" }} />
                     <span>Export CSV</span>
                   </button>
 
@@ -565,7 +564,7 @@ export default function CandidateDirectoryPage() {
                     className="h-10 px-4 rounded-lg bg-black text-white hover:bg-[#131c29] transition-colors shadow-xs flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
                     type="button"
                   >
-                    <span className="material-symbols-outlined text-[18px]">add</span>
+                    <SymbolIcon name="add" className="text-[18px]" style={{ fontSize: "18px" }} />
                     <span>Add Candidate</span>
                   </button>
                 </div>
@@ -584,20 +583,20 @@ export default function CandidateDirectoryPage() {
                 >
                   <span className="text-[#45474c]">Stage:</span>
                   <span className="font-semibold">All (Screening, Interview, Offer)</span>
-                  <span className="material-symbols-outlined text-[14px] text-[#75777c]">expand_more</span>
+                  <SymbolIcon name="expand_more" className="text-[14px] text-[#75777c]" style={{ fontSize: "14px" }} />
                 </button>
 
                 {/* Active Filter Pill with Dismiss */}
                 {skillsFilterActive && (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#e7deff] text-[#1e0060] text-xs font-bold">
-                    <span className="material-symbols-outlined text-[14px] text-[#6137e0]">verified</span>
+                    <SymbolIcon name="verified" className="text-[14px] text-[#6137e0]" style={{ fontSize: "14px" }} />
                     <span>Skills: Go, Kubernetes (2)</span>
                     <button
                       onClick={() => setSkillsFilterActive(false)}
                       className="hover:bg-[#cbbeff] rounded-full p-0.5 ml-0.5 inline-flex items-center justify-center transition-colors cursor-pointer"
                       type="button"
                     >
-                      <span className="material-symbols-outlined text-[12px]">close</span>
+                      <SymbolIcon name="close" className="text-[12px]" style={{ fontSize: "12px" }} />
                     </button>
                   </span>
                 )}
@@ -609,7 +608,7 @@ export default function CandidateDirectoryPage() {
                 >
                   <span className="text-[#45474c]">Min Experience:</span>
                   <span className="font-semibold">{minExpFilter}</span>
-                  <span className="material-symbols-outlined text-[14px] text-[#75777c]">expand_more</span>
+                  <SymbolIcon name="expand_more" className="text-[14px] text-[#75777c]" style={{ fontSize: "14px" }} />
                 </button>
 
                 {/* Source Filter */}
@@ -619,7 +618,7 @@ export default function CandidateDirectoryPage() {
                 >
                   <span className="text-[#45474c]">Source:</span>
                   <span className="font-semibold">{sourceFilter}</span>
-                  <span className="material-symbols-outlined text-[14px] text-[#75777c]">expand_more</span>
+                  <SymbolIcon name="expand_more" className="text-[14px] text-[#75777c]" style={{ fontSize: "14px" }} />
                 </button>
 
                 {/* Owner Filter */}
@@ -629,7 +628,7 @@ export default function CandidateDirectoryPage() {
                 >
                   <span className="text-[#45474c]">Owner:</span>
                   <span className="font-semibold">{ownerFilter}</span>
-                  <span className="material-symbols-outlined text-[14px] text-[#75777c]">expand_more</span>
+                  <SymbolIcon name="expand_more" className="text-[14px] text-[#75777c]" style={{ fontSize: "14px" }} />
                 </button>
 
                 {/* Clear All Text Button */}
@@ -751,9 +750,7 @@ export default function CandidateDirectoryPage() {
                                 ) : cand.multiApplications ? (
                                   <div className="flex flex-col gap-0.5">
                                     <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#e4e8f5] text-[#45474c] text-[10px] font-bold w-fit">
-                                      <span className="material-symbols-outlined text-[13px] text-[#6137e0]">
-                                        layers
-                                      </span>
+                                      <SymbolIcon name="layers" className="text-[13px] text-[#6137e0]" style={{ fontSize: "13px" }} />
                                       <span>2 Active Applications</span>
                                     </div>
                                     <div className="text-[11px] text-[#171c25] flex items-center justify-between">
@@ -768,9 +765,7 @@ export default function CandidateDirectoryPage() {
                                 ) : cand.matchScore ? (
                                   <div className="flex items-center gap-1.5">
                                     <div className="inline-flex items-center gap-1 bg-[#e7deff] text-[#1e0060] text-[10px] px-2 py-0.5 rounded-full font-bold">
-                                      <span className="material-symbols-outlined text-[13px] text-[#6137e0]">
-                                        auto_awesome
-                                      </span>
+                                      <SymbolIcon name="auto_awesome" className="text-[13px] text-[#6137e0]" style={{ fontSize: "13px" }} />
                                       <span>Job Match: {cand.matchScore}/100</span>
                                     </div>
                                     <span className="font-mono text-[10px] text-[#75777c]">
@@ -779,7 +774,7 @@ export default function CandidateDirectoryPage() {
                                   </div>
                                 ) : (
                                   <div className="font-mono text-[11px] text-[#75777c] flex items-center gap-1">
-                                    <span className="material-symbols-outlined text-[13px]">help_outline</span>
+                                    <SymbolIcon name="help_outline" className="text-[13px]" style={{ fontSize: "13px" }} />
                                     <span>Select a job to view match</span>
                                     <a href="#" className="text-[#6137e0] hover:underline font-semibold ml-1">
                                       Assign
@@ -823,9 +818,7 @@ export default function CandidateDirectoryPage() {
                                   {cand.experienceYears} yrs total
                                 </span>
                                 <span className="text-xs text-[#45474c] flex items-center gap-1">
-                                  <span className="material-symbols-outlined text-[14px] text-[#75777c]">
-                                    location_on
-                                  </span>
+                                  <SymbolIcon name="location_on" className="text-[14px] text-[#75777c]" style={{ fontSize: "14px" }} />
                                   <span>
                                     {cand.location} ({cand.locationType})
                                   </span>
@@ -868,7 +861,7 @@ export default function CandidateDirectoryPage() {
                                   href={`/candidates/${cand.id}`}
                                   className="px-3 py-1.5 rounded-lg bg-[#6137e0] text-white hover:bg-[#7a55fa] transition-colors text-xs font-semibold shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
                                 >
-                                  <span className="material-symbols-outlined text-[16px]">fact_check</span>
+                                  <SymbolIcon name="fact_check" className="text-[16px]" style={{ fontSize: "16px" }} />
                                   <span>Review Evidence</span>
                                 </Link>
                               ) : cand.actionType === "View Scorecard" ? (
@@ -877,9 +870,7 @@ export default function CandidateDirectoryPage() {
                                   className="px-3 py-1.5 rounded-lg bg-[#eaeefb] hover:bg-[#dee2ef] transition-colors text-xs text-[#171c25] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                                   type="button"
                                 >
-                                  <span className="material-symbols-outlined text-[16px] text-[#75777c]">
-                                    assignment
-                                  </span>
+                                  <SymbolIcon name="assignment" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
                                   <span>View Scorecard</span>
                                 </button>
                               ) : cand.actionType === "View Status" ? (
@@ -888,9 +879,7 @@ export default function CandidateDirectoryPage() {
                                   className="px-3 py-1.5 rounded-lg bg-[#eaeefb] hover:bg-[#dee2ef] transition-colors text-xs text-[#171c25] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                                   type="button"
                                 >
-                                  <span className="material-symbols-outlined text-[16px] text-[#75777c]">
-                                    hourglass_empty
-                                  </span>
+                                  <SymbolIcon name="hourglass_empty" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
                                   <span>View Status</span>
                                 </button>
                               ) : cand.actionType === "Select App" ? (
@@ -899,9 +888,7 @@ export default function CandidateDirectoryPage() {
                                   className="px-3 py-1.5 rounded-lg bg-[#eaeefb] hover:bg-[#dee2ef] transition-colors text-xs text-[#171c25] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                                   type="button"
                                 >
-                                  <span className="material-symbols-outlined text-[16px] text-[#75777c]">
-                                    call_split
-                                  </span>
+                                  <SymbolIcon name="call_split" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
                                   <span>Select App</span>
                                 </button>
                               ) : (
@@ -910,9 +897,7 @@ export default function CandidateDirectoryPage() {
                                   className="px-3 py-1.5 rounded-lg bg-[#eaeefb] hover:bg-[#dee2ef] transition-colors text-xs text-[#171c25] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                                   type="button"
                                 >
-                                  <span className="material-symbols-outlined text-[16px] text-[#75777c]">
-                                    add_link
-                                  </span>
+                                  <SymbolIcon name="add_link" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
                                   <span>Match to Job</span>
                                 </button>
                               )}
@@ -976,7 +961,7 @@ export default function CandidateDirectoryPage() {
                         disabled
                         type="button"
                       >
-                        <span className="material-symbols-outlined text-[16px]">chevron_left</span>
+                        <SymbolIcon name="chevron_left" className="text-[16px]" style={{ fontSize: "16px" }} />
                       </button>
                       <button
                         className="w-8 h-8 rounded-lg bg-black text-white text-xs font-bold flex items-center justify-center shadow-xs cursor-pointer"
@@ -1007,7 +992,7 @@ export default function CandidateDirectoryPage() {
                         className="w-8 h-8 rounded-lg bg-white hover:bg-[#eaeefb] text-[#171c25] flex items-center justify-center border border-[#dee2ef] shadow-xs transition-colors cursor-pointer"
                         type="button"
                       >
-                        <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+                        <SymbolIcon name="chevron_right" className="text-[16px]" style={{ fontSize: "16px" }} />
                       </button>
                     </div>
                   </div>
@@ -1106,7 +1091,7 @@ export default function CandidateDirectoryPage() {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-1.5 bg-[#e7deff]/15 text-[#e7deff] px-2.5 py-1 rounded-full text-xs font-bold">
-                      <span className="material-symbols-outlined text-[14px] text-[#cbbeff]">auto_awesome</span>
+                      <SymbolIcon name="auto_awesome" className="text-[14px] text-[#cbbeff]" style={{ fontSize: "14px" }} />
                       <span>AI-ASSISTED MATCH INSIGHT</span>
                     </div>
                     <span className="font-mono text-xs text-[#7b8495]">08:42 AM</span>

@@ -1,0 +1,28 @@
+{
+  "python": {
+    "command": ".\\ats-core\\.venv\\Scripts\\python.exe -m pytest test/test_private_ai_contract.py test/test_pipeline_refactoring.py test/test_resume_parser_enhanced.py test/test_residue_privacy.py test/test_prompt_injection_sanitizer.py test/test_pdf_citation_grounding.py test/test_worker_review_regressions.py -q --junitxml=../audit-results/2026-10-11/python-tests.xml",
+    "cwd": "D:\\Projects\\Applicant Tracking System\\ats-system\\ats-core",
+    "passed": 67,
+    "failed": 1,
+    "failure": {
+      "test": "test_audit_accepts_ats_id_formats_and_rejects_empty_ids",
+      "file": "ats-core/src/ats_core/evaluator/audit_logger.py",
+      "line": 96,
+      "error": "NameError: name 'os' is not defined",
+      "scope": "Retained legacy evaluation audit path, not private Rust-authoritative AI persistence"
+    },
+    "private_contract_tests_passed": 14
+  },
+  "live_integration": {
+    "status": "blocked",
+    "reason": "Docker Desktop Linux engine named pipe absent; architecture dependencies not available. Did not start full synthetic ingestion harness; no customer records mutated; no paid/live inference performed."
+  },
+  "route_smoke": {
+    "html_routes": 16,
+    "html200": 16,
+    "proxy500": 3,
+    "result_file": "http-route-status.json",
+    "limitation": "HTML route status does not demonstrate browser interactions or backend connectivity."
+  },
+  "cleanup": "Stopped only six identified Python processes from three own sandbox-blocked pytest attempts; successful unrestricted run completed normally."
+}
