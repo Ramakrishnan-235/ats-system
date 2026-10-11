@@ -29,7 +29,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col font-sans bg-[#faf9f6] text-zinc-950">
+      <body className="min-h-full flex flex-col font-sans bg-[#f9f9ff] text-[#171c25]">
         <ApiSession>{children}</ApiSession>
       </body>
     </html>

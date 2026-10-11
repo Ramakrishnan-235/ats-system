@@ -73,3 +73,8 @@ backend-rust/target/
 ats-core/.env.example
 ats-core/uv.lock
 ats-core/uv.lock
+frontend/screen_91e0654ebaca4e9596d0211e9e6112dc.html
+frontend/public/core-ats-logo.png
+frontend/screen_91e0654ebaca4e9596d0211e9e6112dc.png
+frontend/public/elena-avatar.png
+frontend/public/screen_overview.png
