@@ -62,13 +62,15 @@ export function CoreHeader() {
   }, []);
 
   const searchResults = [
+    { type: "Inbox", title: "Recruiter Inbox (9 Pending Items)", href: "/inbox" },
     { type: "Studio", title: "New Job Requisition (Draft REQ-208)", href: "/jobs/new" },
     { type: "Job", title: "Senior Platform Engineer (Req-204)", href: "/jobs" },
     { type: "Job", title: "Lead Product Designer", href: "/jobs" },
     { type: "Candidate", title: "Marcus Vance · Review & Evidence (94/100)", href: "/candidates/cand-mv" },
     { type: "Candidate", title: "Priya Sharma · 88% Match", href: "/candidates" },
+    { type: "Agency", title: "Agency Clients & Submissions Roster", href: "/clients" },
+    { type: "Tool", title: "Candidate Imports & Parsing Pipeline", href: "/upload" },
     { type: "Tool", title: "Skills Library & Taxonomy", href: "/taxonomy" },
-    { type: "Tool", title: "Resume Upload & Ingestion", href: "/upload" },
     { type: "Tool", title: "Compliance Audit Log", href: "/audit-log" },
   ].filter(item => 
     !searchQuery || 
@@ -152,9 +154,9 @@ export function CoreHeader() {
 
               {/* Inbox */}
               <Link
-                href="/upload"
+                href="/inbox"
                 className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 ${
-                  pathname === "/upload"
+                  pathname.startsWith("/inbox")
                     ? "bg-white text-[#171c25] shadow-xs"
                     : "text-[#bec7d9] hover:text-white"
                 }`}
@@ -190,6 +192,18 @@ export function CoreHeader() {
                 }`}
               >
                 Candidates
+              </Link>
+
+              {/* Clients */}
+              <Link
+                href="/clients"
+                className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-all ${
+                  pathname.startsWith("/clients")
+                    ? "bg-white text-[#171c25] shadow-xs"
+                    : "text-[#bec7d9] hover:text-white"
+                }`}
+              >
+                Clients
               </Link>
 
               {/* Reports */}
@@ -229,6 +243,13 @@ export function CoreHeader() {
                   >
                     <Sparkles className="w-4 h-4 text-[#6137e0]" />
                     <span>Candidate Review (/cand-mv)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => router.push("/upload")}
+                    className="text-xs text-[#171c25] hover:bg-[#f0f3ff] px-2.5 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-medium"
+                  >
+                    <FileText className="w-4 h-4 text-[#6137e0]" />
+                    <span>Candidate Imports & Parsing</span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator className="my-1 bg-[#dee2ef]" />
                   <DropdownMenuItem
