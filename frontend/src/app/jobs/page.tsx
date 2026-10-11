@@ -355,14 +355,13 @@ export default function JobsPage() {
                     <span className="text-xs text-[#45474c]">42 rubric matches evaluated today</span>
                   </div>
 
-                  <button
-                    onClick={() => setIsCreateOpen(true)}
+                  <Link
+                    href="/jobs/new"
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#131c29] text-white hover:bg-[#2c313a] shadow-xs transition-all text-xs font-semibold cursor-pointer"
-                    type="button"
                   >
                     <span className="material-symbols-outlined text-[16px]">add</span>
                     <span>Create job requisition</span>
-                  </button>
+                  </Link>
                 </div>
               </div>
 

@@ -719,9 +719,12 @@ export default function CandidateDirectoryPage() {
                                 </div>
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="font-bold text-[#171c25] truncate text-sm">
+                                    <Link
+                                      href={`/candidates/${cand.id}`}
+                                      className="font-bold text-[#171c25] hover:text-[#6137e0] hover:underline truncate text-sm transition-colors"
+                                    >
                                       {cand.name}
-                                    </span>
+                                    </Link>
                                     {cand.companyTag && (
                                       <span className="px-1.5 py-0.2 rounded bg-[#dee2ef] text-[#45474c] text-[10px] font-semibold">
                                         {cand.companyTag}
@@ -861,14 +864,13 @@ export default function CandidateDirectoryPage() {
                             {/* Quick Action Button */}
                             <td className="py-4 px-4 text-right">
                               {cand.actionType === "Review Evidence" ? (
-                                <button
-                                  onClick={() => handleQuickAction(cand)}
+                                <Link
+                                  href={`/candidates/${cand.id}`}
                                   className="px-3 py-1.5 rounded-lg bg-[#6137e0] text-white hover:bg-[#7a55fa] transition-colors text-xs font-semibold shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
-                                  type="button"
                                 >
                                   <span className="material-symbols-outlined text-[16px]">fact_check</span>
                                   <span>Review Evidence</span>
-                                </button>
+                                </Link>
                               ) : cand.actionType === "View Scorecard" ? (
                                 <button
                                   onClick={() => handleQuickAction(cand)}
@@ -1035,7 +1037,12 @@ export default function CandidateDirectoryPage() {
                           )}
                           <div>
                             <div className="flex items-center gap-1.5">
-                              <h3 className="font-bold text-sm text-[#171c25]">{cand.name}</h3>
+                              <Link
+                                href={`/candidates/${cand.id}`}
+                                className="font-bold text-sm text-[#171c25] hover:text-[#6137e0] hover:underline transition-colors"
+                              >
+                                {cand.name}
+                              </Link>
                               {cand.companyTag && (
                                 <span className="px-1.5 py-0.2 rounded bg-[#dee2ef] text-[#45474c] text-[10px] font-semibold">
                                   {cand.companyTag}
@@ -1116,20 +1123,13 @@ export default function CandidateDirectoryPage() {
                     <span className="font-mono text-xs text-[#7b8495]">Job Match:</span>
                     <span className="text-xs text-[#e7deff] font-bold">94/100 (Req-204)</span>
                   </div>
-                  <button
-                    onClick={() => {
-                      setReviewCandidate({
-                        name: "Marcus Vance",
-                        role: "Senior Platform Engineer",
-                        req: "Req-204",
-                      });
-                      setIsReviewModalOpen(true);
-                    }}
-                    className="px-3.5 py-1.5 rounded-lg bg-[#6137e0] text-white hover:bg-[#7a55fa] transition-colors text-xs font-semibold cursor-pointer"
-                    type="button"
+                  <Link
+                    href="/candidates/cand-mv"
+                    className="px-3.5 py-1.5 rounded-lg bg-[#6137e0] text-white hover:bg-[#7a55fa] transition-colors text-xs font-semibold cursor-pointer inline-flex items-center gap-1.5"
                   >
-                    Review Application
-                  </button>
+                    <span>Review Application</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
                 </div>
               </div>
 

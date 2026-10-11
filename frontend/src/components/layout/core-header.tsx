@@ -62,9 +62,10 @@ export function CoreHeader() {
   }, []);
 
   const searchResults = [
+    { type: "Studio", title: "New Job Requisition (Draft REQ-208)", href: "/jobs/new" },
     { type: "Job", title: "Senior Platform Engineer (Req-204)", href: "/jobs" },
     { type: "Job", title: "Lead Product Designer", href: "/jobs" },
-    { type: "Candidate", title: "Marcus Vance · 94/100 match (Req-204)", href: "/candidates" },
+    { type: "Candidate", title: "Marcus Vance · Review & Evidence (94/100)", href: "/candidates/cand-mv" },
     { type: "Candidate", title: "Priya Sharma · 88% Match", href: "/candidates" },
     { type: "Tool", title: "Skills Library & Taxonomy", href: "/taxonomy" },
     { type: "Tool", title: "Resume Upload & Ingestion", href: "/upload" },
@@ -215,6 +216,21 @@ export function CoreHeader() {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 bg-white rounded-xl shadow-lg border border-[#dee2ef] p-1.5">
+                  <DropdownMenuItem
+                    onClick={() => router.push("/jobs/new")}
+                    className="text-xs text-[#171c25] hover:bg-[#f0f3ff] px-2.5 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-medium"
+                  >
+                    <Briefcase className="w-4 h-4 text-[#6137e0]" />
+                    <span>Requisition Studio (/jobs/new)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => router.push("/candidates/cand-mv")}
+                    className="text-xs text-[#171c25] hover:bg-[#f0f3ff] px-2.5 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-medium"
+                  >
+                    <Sparkles className="w-4 h-4 text-[#6137e0]" />
+                    <span>Candidate Review (/cand-mv)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="my-1 bg-[#dee2ef]" />
                   <DropdownMenuItem
                     onClick={() => router.push("/taxonomy")}
                     className="text-xs text-[#171c25] hover:bg-[#f0f3ff] px-2.5 py-2 rounded-lg cursor-pointer flex items-center gap-2"
