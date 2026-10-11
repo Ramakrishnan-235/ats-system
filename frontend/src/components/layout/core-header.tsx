@@ -229,26 +229,61 @@ export function CoreHeader() {
                     <ChevronDown className="w-3.5 h-3.5" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 bg-white rounded-xl shadow-lg border border-[#dee2ef] p-1.5">
+                <DropdownMenuContent align="end" className="w-64 bg-white rounded-xl shadow-lg border border-[#dee2ef] p-1.5">
+                  <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-wider text-[#75777c] px-2 py-1">
+                    Featured Screens (5-Page Suite)
+                  </DropdownMenuLabel>
                   <DropdownMenuItem
-                    onClick={() => router.push("/jobs/new")}
-                    className="text-xs text-[#171c25] hover:bg-[#f0f3ff] px-2.5 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-medium"
+                    onClick={() => router.push("/onboarding")}
+                    className="text-xs text-[#171c25] hover:bg-[#f0f3ff] px-2.5 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 font-medium"
+                  >
+                    <Building2 className="w-4 h-4 text-[#6137e0]" />
+                    <span>1. Workspace Architecture (/onboarding)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => router.push("/interviews")}
+                    className="text-xs text-[#171c25] hover:bg-[#f0f3ff] px-2.5 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 font-medium"
+                  >
+                    <FileText className="w-4 h-4 text-[#6137e0]" />
+                    <span>2. Panel Evaluations (/interviews)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => router.push("/offers")}
+                    className="text-xs text-[#171c25] hover:bg-[#f0f3ff] px-2.5 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 font-medium"
                   >
                     <Briefcase className="w-4 h-4 text-[#6137e0]" />
-                    <span>Requisition Studio (/jobs/new)</span>
+                    <span>3. Offers & Comp Studio (/offers)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => router.push("/workspace")}
+                    className="text-xs text-[#171c25] hover:bg-[#f0f3ff] px-2.5 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 font-medium"
+                  >
+                    <Layers className="w-4 h-4 text-[#6137e0]" />
+                    <span>4. Recruiter Workspace (/workspace)</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => router.push("/candidates/cand-mv")}
-                    className="text-xs text-[#171c25] hover:bg-[#f0f3ff] px-2.5 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-medium"
+                    className="text-xs text-[#171c25] hover:bg-[#f0f3ff] px-2.5 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 font-medium"
                   >
                     <Sparkles className="w-4 h-4 text-[#6137e0]" />
-                    <span>Candidate Review (/cand-mv)</span>
+                    <span>5. Candidate Assessment (/cand-mv)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="my-1 bg-[#dee2ef]" />
+                  <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-wider text-[#75777c] px-2 py-1">
+                    System Modules
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onClick={() => router.push("/jobs/new")}
+                    className="text-xs text-[#171c25] hover:bg-[#f0f3ff] px-2.5 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 font-medium"
+                  >
+                    <Briefcase className="w-4 h-4 text-[#75777c]" />
+                    <span>Requisition Studio (/jobs/new)</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => router.push("/upload")}
-                    className="text-xs text-[#171c25] hover:bg-[#f0f3ff] px-2.5 py-2 rounded-lg cursor-pointer flex items-center gap-2 font-medium"
+                    className="text-xs text-[#171c25] hover:bg-[#f0f3ff] px-2.5 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 font-medium"
                   >
-                    <FileText className="w-4 h-4 text-[#6137e0]" />
+                    <FileText className="w-4 h-4 text-[#75777c]" />
                     <span>Candidate Imports & Parsing</span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator className="my-1 bg-[#dee2ef]" />
