@@ -42,6 +42,7 @@ import {
   Layers,
   ArrowRight,
   Users,
+  User,
 } from "lucide-react";
 
 interface CandidateRosterItem {
@@ -599,17 +600,9 @@ export default function CandidateDirectoryPage() {
                             <td className="py-4 px-4">
                               <div className="flex items-center gap-3 min-w-[240px]">
                                 <div className="relative shrink-0">
-                                  {cand.avatar ? (
-                                    <img
-                                      className="w-10 h-10 rounded-full object-cover ring-1 ring-[#dee2ef]"
-                                      alt={cand.name}
-                                      src={cand.avatar}
-                                    />
-                                  ) : (
-                                    <div className="w-10 h-10 rounded-full bg-[#131c29] text-white flex items-center justify-center font-bold text-xs">
-                                      {cand.name.slice(0, 2).toUpperCase()}
-                                    </div>
-                                  )}
+                                  <div className="w-10 h-10 rounded-full bg-[#f4f3ff] text-[#6137e0] flex items-center justify-center ring-1 ring-[#dee2ef]">
+                                    <User className="w-5 h-5 text-[#6137e0]" />
+                                  </div>
                                   {cand.isStarred && (
                                     <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[#6137e0] flex items-center justify-center text-white text-[8px] font-bold">
                                       ★
@@ -921,17 +914,9 @@ export default function CandidateDirectoryPage() {
                     <div>
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-3">
-                          {cand.avatar ? (
-                            <img
-                              className="w-12 h-12 rounded-full object-cover ring-1 ring-[#dee2ef]"
-                              alt={cand.name}
-                              src={cand.avatar}
-                            />
-                          ) : (
-                            <div className="w-12 h-12 rounded-full bg-[#131c29] text-white flex items-center justify-center font-bold text-sm">
-                              {cand.name.slice(0, 2).toUpperCase()}
-                            </div>
-                          )}
+                          <div className="w-12 h-12 rounded-full bg-[#f4f3ff] text-[#6137e0] flex items-center justify-center ring-1 ring-[#dee2ef]">
+                            <User className="w-6 h-6 text-[#6137e0]" />
+                          </div>
                           <div>
                             <div className="flex items-center gap-1.5">
                               <Link

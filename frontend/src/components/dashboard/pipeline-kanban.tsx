@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Plus, Target } from "lucide-react";
+import { Plus, Target, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PipelineCandidateItem } from "@/types/ats";
 import { cn } from "@/lib/utils";
@@ -84,17 +84,9 @@ export function PipelineKanban({ pipeline, onAddCandidate }: PipelineKanbanProps
                           {/* Top Row: Avatar + Name + Score Badge */}
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex items-center gap-3">
-                              {candidate.avatar && typeof candidate.avatar === "string" && candidate.avatar.startsWith("http") ? (
-                                <img
-                                  src={candidate.avatar}
-                                  alt={candidate.name || "Candidate"}
-                                  className="w-10 h-10 rounded-full object-cover border border-zinc-200/80 shrink-0"
-                                />
-                              ) : (
-                                <div className="w-10 h-10 rounded-full bg-[#eae7df] text-zinc-800 font-bold text-xs flex items-center justify-center shrink-0">
-                                  {candidate.avatar || (candidate.name ? candidate.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() : "CD")}
-                                </div>
-                              )}
+                              <div className="w-10 h-10 rounded-full bg-[#f4f3ff] text-[#6137e0] flex items-center justify-center border border-zinc-200/80 shrink-0">
+                                <User className="w-5 h-5 text-[#6137e0]" />
+                              </div>
                               <div className="flex flex-col">
                                 <span className="font-bold text-xs text-zinc-950 group-hover:text-black">
                                   {candidate.name || "Candidate"}

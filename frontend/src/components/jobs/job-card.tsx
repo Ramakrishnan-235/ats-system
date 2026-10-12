@@ -3,6 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import {
+  User,
   Code2,
   Database,
   Palette,
@@ -101,19 +102,9 @@ export function JobCard({ job }: JobCardProps) {
           {/* Candidate Avatars */}
           <div className="flex items-center gap-2 shrink-0">
             <div className="flex -space-x-2 overflow-hidden">
-              {(job.avatars || []).slice(0, 3).map((avatarUrl, i) => (
-                <img
-                  key={i}
-                  className="inline-block h-7 w-7 rounded-full ring-2 ring-white object-cover"
-                  src={avatarUrl}
-                  alt="Candidate"
-                />
-              ))}
-              {(job.candidates_count || 0) > 3 && (
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-100 ring-2 ring-white text-[10px] font-bold text-zinc-600">
-                  +{(job.candidates_count || 0) - 3}
-                </div>
-              )}
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#f4f3ff] text-[#6137e0] ring-2 ring-white">
+                <User className="w-3.5 h-3.5" />
+              </div>
             </div>
             <span className="text-xs font-semibold text-zinc-700 hidden sm:inline">
               {job.candidates_count || 0}

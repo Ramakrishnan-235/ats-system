@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { CoreHeader } from "@/components/layout/core-header";
 import { CoreFooter } from "@/components/layout/core-footer";
 import {
+  User,
   CheckCircle2,
   X,
   AlertTriangle,
@@ -516,14 +517,9 @@ export default function RecruiterInboxPage() {
                     {/* Candidate Hero Dossier Snapshot */}
                     <div className="bg-[#eff4ff] rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-[#dee2ef]/60">
                       <div className="flex items-center gap-3.5">
-                        <img
-                          className="w-14 h-14 rounded-xl object-cover shadow-xs shrink-0 ring-1 ring-[#dee2ef]"
-                          alt={activeTask.candidateName}
-                          src={
-                            activeTask.candidateAvatar ||
-                            "https://lh3.googleusercontent.com/aida-public/AB6AXuCATJkY5iNt20HC1IM1IsubCQVOR5Pj3eQQ3GmFffu0eqmpXutFTqkO74_Lju-g2-0UTTDyPhJEhgNtqXt3ql578_6X1vud5HQJUx1SamdRyngg0tHr83xF1Y5y6QSG6D3_W6mRr0WQcIBAMG3dMp6v0YtEQoLzRzo26EebJUVr8Gjvwy-3ZCz0W0opo-ScBs3P8u0wgRuhl9u7fOayou_XtUpj0a3JPPfS5x90TwVzbQPl7I0Q1z9oLQ"
-                          }
-                        />
+                        <div className="w-14 h-14 rounded-xl bg-white text-[#6137e0] flex items-center justify-center shadow-xs shrink-0 ring-1 ring-[#dee2ef]">
+                          <User className="w-7 h-7 text-[#6137e0]" />
+                        </div>
                         <div className="flex flex-col">
                           <div className="flex items-center gap-1.5">
                             <h3 className="text-base font-bold text-[#141c27]">

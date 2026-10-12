@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import {
+  User,
   ArrowLeft,
   Search,
   Bell,
@@ -509,17 +510,9 @@ export default function JobPipelineDetailPage() {
 
                         {/* Candidate Avatar & Info */}
                         <div className="col-span-4 flex items-center gap-3">
-                          {cand.isImageAvatar ? (
-                            <img
-                              src={cand.avatar}
-                              alt={cand.name}
-                              className="w-10 h-10 rounded-full object-cover border border-zinc-200 shrink-0"
-                            />
-                          ) : (
-                            <div className="w-10 h-10 rounded-full bg-[#eae7df] text-zinc-900 font-bold text-xs flex items-center justify-center shrink-0">
-                              {cand.avatar}
+                          <div className="w-10 h-10 rounded-full bg-[#f4f3ff] text-[#6137e0] flex items-center justify-center border border-zinc-200 shrink-0">
+                              <User className="w-5 h-5 text-[#6137e0]" />
                             </div>
-                          )}
                           <div>
                             <h4 className="font-bold text-sm text-zinc-950 hover:underline">
                               {cand.name}
@@ -855,17 +848,9 @@ export default function JobPipelineDetailPage() {
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex items-center gap-2.5">
-                              {cand.isImageAvatar ? (
-                                <img
-                                  src={cand.avatar}
-                                  alt={cand.name}
-                                  className="w-8 h-8 rounded-full object-cover border border-zinc-200"
-                                />
-                              ) : (
-                                <div className="w-8 h-8 rounded-full bg-[#eae7df] text-zinc-900 font-bold text-xs flex items-center justify-center">
-                                  {cand.avatar}
+                              <div className="w-8 h-8 rounded-full bg-[#f4f3ff] text-[#6137e0] flex items-center justify-center border border-zinc-200 shrink-0">
+                                  <User className="w-4 h-4 text-[#6137e0]" />
                                 </div>
-                              )}
                               <div>
                                 <h5 className="font-bold text-xs text-zinc-950">
                                   {cand.name}

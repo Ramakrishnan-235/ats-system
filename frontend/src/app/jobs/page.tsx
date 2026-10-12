@@ -15,6 +15,7 @@ import {
 } from "@/lib/api";
 import { JobRequisition, RankedCandidate } from "@/types/ats";
 import {
+  User,
   Search,
   ChevronRight,
   ChevronDown,
@@ -687,17 +688,9 @@ export default function JobsPage() {
                                 >
                                   <div className="flex items-start justify-between gap-1">
                                     <div className="flex items-center gap-2">
-                                      {card.avatar ? (
-                                        <img
-                                          className="w-7 h-7 rounded-full object-cover"
-                                          alt={card.name}
-                                          src={card.avatar}
-                                        />
-                                      ) : (
-                                        <div className="w-7 h-7 rounded-full bg-[#6137e0]/10 text-[#6137e0] text-[11px] flex items-center justify-center font-bold">
-                                          {card.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "CA"}
+                                      <div className="w-7 h-7 rounded-full bg-[#f4f3ff] text-[#6137e0] flex items-center justify-center shrink-0">
+                                          <User className="w-3.5 h-3.5 text-[#6137e0]" />
                                         </div>
-                                      )}
                                       <div>
                                         <div className="text-xs font-bold text-[#171c25] group-hover:text-[#6137e0] transition-colors flex items-center gap-1">
                                           {card.name}
