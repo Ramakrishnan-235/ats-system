@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from typing import List, Optional
+
+from fastapi import APIRouter, HTTPException, Query, Request, status
+
+from ats_core.api.audit import audit_store
 from ats_core.api.auth import get_current_user
-from ats_core.api.audit import audit_store, AuditRecord
 
 router = APIRouter(prefix="/audit", tags=["Audit"])
 
@@ -10,9 +11,9 @@ router = APIRouter(prefix="/audit", tags=["Audit"])
 async def get_audit_logs(
     request: Request,
     limit: int = Query(50, ge=1, le=1000),
-    actor_id: Optional[str] = Query(None),
-    action: Optional[str] = Query(None),
-    resource_type: Optional[str] = Query(None),
+    actor_id: str | None = Query(None),
+    action: str | None = Query(None),
+    resource_type: str | None = Query(None),
 ):
     user = get_current_user(request)
     if not user.can_view_audit():

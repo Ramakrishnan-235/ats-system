@@ -7,13 +7,13 @@ Regression tests for Finding 2.8:
 """
 
 from unittest.mock import patch
+
 import pytest
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 import ats_core.api.auth as auth_mod
 from ats_core.api.v1.jobs import router as jobs_router
-
 
 TEST_API_KEY = "sec-test-key-28"
 

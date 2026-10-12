@@ -1,4 +1,5 @@
 import fitz
+
 from ats_core.parsers.pdf_parser import HybridPDFParser
 
 

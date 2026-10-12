@@ -11,16 +11,21 @@ Layer 3: Dense embedding cosine similarity with margin check -> Confidence: 0.7
 Layer 4: Give up gracefully -> Enters status='pending' Flywheel review queue -> Confidence: 0.4
 """
 
+import logging
 import os
 import re
-import logging
 import threading
-from typing import Dict, Any, List, Optional, Tuple, NamedTuple
-import numpy as np
-from rapidfuzz import process, fuzz
+from typing import Any, NamedTuple, Optional
 
-from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService, EXACT_SHORT_MAP, SHORT_EXACT_SKILLS
+import numpy as np
+from rapidfuzz import fuzz, process
+
 from ats_core.search.dense_embedder import DenseEmbedder
+from ats_core.taxonomy.taxonomy_service import (
+    EXACT_SHORT_MAP,
+    SHORT_EXACT_SKILLS,
+    SkillTaxonomyService,
+)
 
 logger = logging.getLogger("ats.parsers.normalization_cascade")
 
@@ -40,11 +45,11 @@ class SkillEmbeddingsIndex:
     _instance: Optional["SkillEmbeddingsIndex"] = None
     _instance_lock: threading.Lock = threading.Lock()
 
-    def __init__(self, embedder: Optional[DenseEmbedder] = None, taxonomy_service: Optional[SkillTaxonomyService] = None):
+    def __init__(self, embedder: DenseEmbedder | None = None, taxonomy_service: SkillTaxonomyService | None = None):
         self.embedder = embedder or DenseEmbedder()
         self.taxonomy = taxonomy_service or SkillTaxonomyService.get_instance()
-        self.skills_list: List[Dict[str, Any]] = []
-        self.vectors: Optional[np.ndarray] = None
+        self.skills_list: list[dict[str, Any]] = []
+        self.vectors: np.ndarray | None = None
         self._build_index()
 
     @classmethod
@@ -66,16 +71,19 @@ class SkillEmbeddingsIndex:
 
         self.skills_list = approved_skills
         names = [s["canonical_name"] for s in approved_skills]
-        raw_vecs = self.embedder.embed_documents(names)
-        
-        # Normalize vectors for fast cosine similarity dot products
-        vec_arr = np.array(raw_vecs, dtype=np.float32)
-        norms = np.linalg.norm(vec_arr, axis=1, keepdims=True)
-        norms[norms == 0] = 1e-8
-        self.vectors = vec_arr / norms
-        logger.info(f"SkillEmbeddingsIndex built with {len(self.skills_list)} canonical embeddings.")
+        try:
+            raw_vecs = self.embedder.embed_documents(names)
+            # Normalize vectors for fast cosine similarity dot products
+            vec_arr = np.array(raw_vecs, dtype=np.float32)
+            norms = np.linalg.norm(vec_arr, axis=1, keepdims=True)
+            norms[norms == 0] = 1e-8
+            self.vectors = vec_arr / norms
+            logger.info(f"SkillEmbeddingsIndex built with {len(self.skills_list)} canonical embeddings.")
+        except Exception as e:
+            logger.warning(f"SkillEmbeddingsIndex backend unavailable, deferred: {e}")
+            self.vectors = None
 
-    def search(self, query: str, k: int = 2) -> List[EmbeddingSearchResult]:
+    def search(self, query: str, k: int = 2) -> list[EmbeddingSearchResult]:
         """
         Searches nearest taxonomy skills by cosine similarity.
         """
@@ -105,10 +113,10 @@ class SkillEmbeddingsIndex:
 
 def resolve_skill(
     raw: str,
-    taxonomy_service: Optional[SkillTaxonomyService] = None,
-    embeddings_index: Optional[SkillEmbeddingsIndex] = None,
-    register_pending: Optional[bool] = None
-) -> Tuple[Dict[str, Any], float, str]:
+    taxonomy_service: SkillTaxonomyService | None = None,
+    embeddings_index: SkillEmbeddingsIndex | None = None,
+    register_pending: bool | None = None
+) -> tuple[dict[str, Any], float, str]:
     """
     Executes the 4-layer Normalization Cascade:
     Returns: Tuple[resolved_skill_record, confidence_score, resolution_layer]
@@ -199,18 +207,18 @@ def resolve_skill(
 
 
 def resolve_skills_batch(
-    raw_skills: List[str],
-    taxonomy_service: Optional[SkillTaxonomyService] = None,
-    embeddings_index: Optional[SkillEmbeddingsIndex] = None,
-    register_pending: Optional[bool] = None
-) -> List[Dict[str, Any]]:
+    raw_skills: list[str],
+    taxonomy_service: SkillTaxonomyService | None = None,
+    embeddings_index: SkillEmbeddingsIndex | None = None,
+    register_pending: bool | None = None
+) -> list[dict[str, Any]]:
     """
     Resolves a batch of freeform skill strings through the 4-layer cascade.
     """
     if register_pending is None:
         register_pending = os.getenv("ATS_FLYWHEEL_AUTO_REGISTER", "false").strip().lower() in ("true", "1", "yes")
 
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     seen_canonical: set = set()
 
     for s in raw_skills:

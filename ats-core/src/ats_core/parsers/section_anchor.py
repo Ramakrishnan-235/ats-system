@@ -8,10 +8,10 @@ of resume text using deterministic pattern matching and date-range boundary dete
 """
 
 import re
-from typing import Dict, Any, List, Optional, Tuple, Set
+from typing import Any
 
 # Comprehensive canonical section headers mapping
-SECTION_HEADERS: Dict[str, List[str]] = {
+SECTION_HEADERS: dict[str, list[str]] = {
     "summary": [
         "summary",
         "professional summary",
@@ -118,7 +118,7 @@ SECTION_HEADERS: Dict[str, List[str]] = {
 }
 
 # Reverse lookup table: normalized header string -> section name
-HEADER_LOOKUP: Dict[str, str] = {
+HEADER_LOOKUP: dict[str, str] = {
     variant: section
     for section, variants in SECTION_HEADERS.items()
     for variant in variants
@@ -142,7 +142,7 @@ SINGLE_DATE_RE = re.compile(
 )
 
 
-def anchor_sections(text: str) -> Tuple[List[str], List[Tuple[str, Optional[int]]]]:
+def anchor_sections(text: str) -> tuple[list[str], list[tuple[str, int | None]]]:
     """
     Scans raw resume text line-by-line and returns a parallel tuple:
     - lines: List[str] of original text lines
@@ -157,9 +157,9 @@ def anchor_sections(text: str) -> Tuple[List[str], List[Tuple[str, Optional[int]
         return [], []
 
     lines = text.split("\n")
-    anchors: List[Tuple[str, Optional[int]]] = []
+    anchors: list[tuple[str, int | None]] = []
     section = "header"
-    entry_idx: Optional[int] = None
+    entry_idx: int | None = None
 
     for line in lines:
         raw_stripped = line.strip()
@@ -186,7 +186,7 @@ def anchor_sections(text: str) -> Tuple[List[str], List[Tuple[str, Optional[int]
     return lines, anchors
 
 
-def get_section_text(lines: List[str], anchors: List[Tuple[str, Optional[int]]], target_section: str) -> str:
+def get_section_text(lines: list[str], anchors: list[tuple[str, int | None]], target_section: str) -> str:
     """
     Extracts concatenated text lines belonging to a specific section.
     """
@@ -198,11 +198,11 @@ def get_section_text(lines: List[str], anchors: List[Tuple[str, Optional[int]]],
 
 
 def get_section_lines(
-    lines: List[str],
-    anchors: List[Tuple[str, Optional[int]]],
+    lines: list[str],
+    anchors: list[tuple[str, int | None]],
     target_section: str,
-    target_entry: Optional[int] = None
-) -> List[str]:
+    target_entry: int | None = None
+) -> list[str]:
     """
     Returns lines belonging to a specific section and optional entry index.
     """
@@ -215,9 +215,9 @@ def get_section_lines(
 
 
 def extract_structured_experience_entries(
-    lines: List[str],
-    anchors: List[Tuple[str, Optional[int]]]
-) -> List[Dict[str, Any]]:
+    lines: list[str],
+    anchors: list[tuple[str, int | None]]
+) -> list[dict[str, Any]]:
     """
     Deterministic extraction of experience entries from anchored lines.
     Groups lines by entry_index and extracts:
@@ -226,10 +226,10 @@ def extract_structured_experience_entries(
     - date_range: Optional[str]
     - bullets: List[str]
     """
-    entries_map: Dict[int, List[str]] = {}
+    entries_map: dict[int, list[str]] = {}
     
     # Fallback bucket if experience section has lines before the first date range
-    pre_entry_lines: List[str] = []
+    pre_entry_lines: list[str] = []
 
     for line, (sec, idx) in zip(lines, anchors):
         if sec == "experience":
@@ -250,7 +250,7 @@ def extract_structured_experience_entries(
         # Prepend pre-entry lines (e.g. Title / Company before date line) to entry 1
         entries_map[1] = pre_entry_lines + entries_map[1]
 
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     for idx in sorted(entries_map.keys()):
         entry_lines = entries_map[idx]
         entry_text = "\n".join(entry_lines)
@@ -281,8 +281,8 @@ def extract_structured_experience_entries(
 
 def anchor_skill_mentions(
     text: str,
-    skills: List[str]
-) -> Dict[str, List[Dict[str, Any]]]:
+    skills: list[str]
+) -> dict[str, list[dict[str, Any]]]:
     """
     Maps each skill to its exact section anchors and experience entry contexts.
     Returns: Dict[skill_name -> List of evidence locations:
@@ -296,7 +296,7 @@ def anchor_skill_mentions(
     ]
     """
     lines, anchors = anchor_sections(text)
-    evidence_by_skill: Dict[str, List[Dict[str, Any]]] = {s: [] for s in skills}
+    evidence_by_skill: dict[str, list[dict[str, Any]]] = {s: [] for s in skills}
 
     SECTION_WEIGHTS = {
         "experience": 1.0,    # Production usage evidence

@@ -1,15 +1,10 @@
-import pytest
 from ats_core.parsers.section_anchor import (
-    anchor_sections,
-    get_section_text,
-    get_section_lines,
-    extract_structured_experience_entries,
-    anchor_skill_mentions,
     DATE_RANGE_RE,
-    SECTION_HEADERS,
-    HEADER_LOOKUP,
+    anchor_sections,
+    anchor_skill_mentions,
+    extract_structured_experience_entries,
+    get_section_text,
 )
-
 
 SAMPLE_RESUME_TEXT = """
 Deva Kumar B

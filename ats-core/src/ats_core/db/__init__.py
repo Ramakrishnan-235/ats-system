@@ -1,9 +1,9 @@
-from ats_core.db.vector_store import VectorStore, CandidateSearchParams, CandidateSearchResult
 from ats_core.db.init_db import provision_database
+from ats_core.db.vector_store import CandidateSearchParams, CandidateSearchResult, VectorStore
 
 __all__ = [
-    "VectorStore",
     "CandidateSearchParams",
     "CandidateSearchResult",
+    "VectorStore",
     "provision_database",
 ]

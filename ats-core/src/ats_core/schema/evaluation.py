@@ -1,7 +1,9 @@
-from enum import Enum
 import math
-from typing import List, Optional, Any
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 from ats_core.schema._normalization import normalization_input
 
 
@@ -30,9 +32,9 @@ class CitationBoundingBox(BaseModel):
 
 class CitationLocation(BaseModel):
     page: int = Field(default=1, ge=1, description="1-indexed PDF page number containing the citation.")
-    section: Optional[str] = Field(default=None, description="Document section header (e.g., 'Professional Experience').")
+    section: str | None = Field(default=None, description="Document section header (e.g., 'Professional Experience').")
     text_snippet: str = Field(default="", description="Exact or normalized sentence/phrase located on page.")
-    bbox: Optional[CitationBoundingBox] = Field(default=None, description="Bounding box coordinates normalized to page dimensions.")
+    bbox: CitationBoundingBox | None = Field(default=None, description="Bounding box coordinates normalized to page dimensions.")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -55,11 +57,11 @@ class CriterionScore(BaseModel):
         default="",
         description="Concise justification explaining why this score was assigned."
     )
-    verbatim_citation: Optional[str] = Field(
+    verbatim_citation: str | None = Field(
         default=None,
         description="Exact quote or phrase from the resume proving this assessment."
     )
-    citation_location: Optional[CitationLocation] = Field(
+    citation_location: CitationLocation | None = Field(
         default=None,
         description="Ground-truth PDF bounding box and page location for interactive UI highlighting."
     )
@@ -165,23 +167,23 @@ class DeepCandidateEvaluationReport(BaseModel):
         default="",
         description="2-3 sentence hiring committee summary evaluating technical fit, level, and growth potential."
     )
-    criteria_breakdown: List[CriterionScore] = Field(
+    criteria_breakdown: list[CriterionScore] = Field(
         default_factory=list,
         description="Multi-factor evaluation dimensions with evidence citations."
     )
-    key_strengths: List[str] = Field(
+    key_strengths: list[str] = Field(
         default_factory=list,
         description="Bullet points detailing verifiable candidate strengths relative to the JD."
     )
-    risks_and_skill_gaps: List[str] = Field(
+    risks_and_skill_gaps: list[str] = Field(
         default_factory=list,
         description="Potential risks, unverified claims, missing tools, or experience deficits."
     )
-    suggested_interview_questions: List[SuggestedInterviewQuestion] = Field(
+    suggested_interview_questions: list[SuggestedInterviewQuestion] = Field(
         default_factory=list,
         description="Tailored technical and gap-investigation questions for the hiring team."
     )
-    suggested_improvements: List[str] = Field(
+    suggested_improvements: list[str] = Field(
         default_factory=list,
         description="Actionable recommendations on what the candidate needs to improve for this specific job role based on their resume info and skill gaps."
     )

@@ -1,9 +1,10 @@
 import logging
 import os
-from typing import Any, Dict, Optional, Type, TypeVar, Union
-from pydantic import BaseModel
-from langchain_openai import ChatOpenAI
+from typing import Any, TypeVar
+
 from langchain_core.runnables import Runnable
+from langchain_openai import ChatOpenAI
+from pydantic import BaseModel
 
 logger = logging.getLogger("ats.llm.client")
 
@@ -16,10 +17,10 @@ DEFAULT_OLLAMA_MODEL = "qwen3.5:2b"
 
 
 def get_llm_config(
-    base_url: Optional[str] = None,
-    model_name: Optional[str] = None,
-    api_key: Optional[str] = None,
-) -> Dict[str, Any]:
+    base_url: str | None = None,
+    model_name: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
     """
     Resolves configuration for OpenRouter with automatic local Ollama fallback.
     """
@@ -45,16 +46,19 @@ def get_llm_config(
         resolved_api_key = openrouter_key
         is_openrouter = "openrouter.ai" in resolved_base_url
     else:
+        fallback_llm_url = os.getenv("LLM_BASE_URL", "").strip()
+        if "openrouter.ai" in fallback_llm_url:
+            fallback_llm_url = ""
         resolved_base_url = (
             base_url
-            or os.getenv("LLM_BASE_URL", "").strip()
             or os.getenv("OLLAMA_BASE_URL", "").strip()
+            or fallback_llm_url
             or DEFAULT_OLLAMA_BASE_URL
         )
         resolved_model = (
             model_name
-            or os.getenv("LLM_MODEL", "").strip()
             or os.getenv("OLLAMA_MODEL", "").strip()
+            or os.getenv("LLM_MODEL", "").strip()
             or DEFAULT_OLLAMA_MODEL
         )
         resolved_api_key = "ollama"
@@ -69,11 +73,11 @@ def get_llm_config(
 
 
 def get_openrouter_chat_model(
-    base_url: Optional[str] = None,
-    model_name: Optional[str] = None,
-    api_key: Optional[str] = None,
+    base_url: str | None = None,
+    model_name: str | None = None,
+    api_key: str | None = None,
     temperature: float = 0.0,
-    max_retries: Optional[int] = None,
+    max_retries: int | None = None,
     request_timeout: float = 60.0,
     **kwargs: Any,
 ) -> ChatOpenAI:
@@ -86,7 +90,7 @@ def get_openrouter_chat_model(
 
     config = get_llm_config(base_url=base_url, model_name=model_name, api_key=api_key)
 
-    headers: Dict[str, str] = {}
+    headers: dict[str, str] = {}
     if config["is_openrouter"]:
         headers["HTTP-Referer"] = os.getenv("OPENROUTER_HTTP_REFERER", "http://localhost:3000")
         headers["X-Title"] = os.getenv("OPENROUTER_APP_TITLE", "AI-Powered ATS")
@@ -109,13 +113,13 @@ def get_openrouter_chat_model(
 
 
 def get_structured_llm(
-    schema: Type[T],
-    chat_model: Optional[ChatOpenAI] = None,
-    base_url: Optional[str] = None,
-    model_name: Optional[str] = None,
-    api_key: Optional[str] = None,
+    schema: type[T],
+    chat_model: ChatOpenAI | None = None,
+    base_url: str | None = None,
+    model_name: str | None = None,
+    api_key: str | None = None,
     temperature: float = 0.0,
-    method: Optional[str] = None,
+    method: str | None = None,
     **kwargs: Any,
 ) -> Runnable[Any, T]:
     """

@@ -1,9 +1,8 @@
-import pytest
 from datetime import datetime
+
 from ats_core.parsers.skill_aggregator import (
-    parse_date_to_datetime,
-    merge_date_intervals,
     aggregate_skill_mentions,
+    merge_date_intervals,
 )
 
 

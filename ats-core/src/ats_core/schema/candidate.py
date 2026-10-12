@@ -1,10 +1,11 @@
 import uuid
-from typing import List, Optional, Any
-from pydantic import BaseModel, Field, ConfigDict, model_validator, AliasChoices
+from typing import Any
 
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+
+from ats_core.schema._normalization import normalization_input
 from ats_core.schema.skills import SkillsTaxonomy
 from ats_core.schema.timeline import EmploymentTimeline
-from ats_core.schema._normalization import normalization_input
 
 
 class EducationEntry(BaseModel):
@@ -23,12 +24,12 @@ class EducationEntry(BaseModel):
         description="Major/Field (e.g., 'Computer Science', 'Electrical Engineering').",
         validation_alias=AliasChoices("field_of_study", "major", "field", "subject", "study_area")
     )
-    graduation_year: Optional[str] = Field(
+    graduation_year: str | None = Field(
         default=None,
         description="Year of graduation (e.g., '2022').",
         validation_alias=AliasChoices("graduation_year", "year_of_completion", "year", "date", "graduation_date", "years")
     )
-    grade_or_gpa: Optional[str] = Field(
+    grade_or_gpa: str | None = Field(
         default=None,
         description="Reported GPA or honors classification.",
         validation_alias=AliasChoices("grade_or_gpa", "gpa", "grade", "honors")
@@ -58,17 +59,17 @@ class CertificationEntry(BaseModel):
         description="Issuer (e.g., 'Amazon Web Services', 'CKA/CNCF').",
         validation_alias=AliasChoices("issuing_organization", "issuer", "organization", "issuing_body", "company")
     )
-    issue_date: Optional[str] = Field(
+    issue_date: str | None = Field(
         default=None,
         description="Issue date in YYYY-MM or YYYY.",
         validation_alias=AliasChoices("issue_date", "date_obtained", "date", "issued")
     )
-    expiration_date: Optional[str] = Field(
+    expiration_date: str | None = Field(
         default=None,
         description="Expiration date if applicable.",
         validation_alias=AliasChoices("expiration_date", "expires")
     )
-    credential_id_or_url: Optional[str] = Field(
+    credential_id_or_url: str | None = Field(
         default=None,
         description="Verification ID or URL.",
         validation_alias=AliasChoices("credential_id_or_url", "credential_id", "url", "verification_url")
@@ -98,11 +99,11 @@ class ProjectEntry(BaseModel):
         description="Summary of the project purpose and architecture.",
         validation_alias=AliasChoices("description", "summary", "details")
     )
-    technologies_used: List[str] = Field(
+    technologies_used: list[str] = Field(
         default_factory=list,
         validation_alias=AliasChoices("technologies_used", "technologies", "tech_stack", "tools")
     )
-    impact_or_metrics: Optional[str] = Field(
+    impact_or_metrics: str | None = Field(
         default=None,
         description="Quantified results (e.g., '1.2k GitHub stars', '10k active users').",
         validation_alias=AliasChoices("impact_or_metrics", "impact", "metrics", "results")
@@ -143,15 +144,15 @@ class CandidateProfile(BaseModel):
         default_factory=SkillsTaxonomy,
         description="Categorized skills taxonomy and proficiencies."
     )
-    education: List[EducationEntry] = Field(
+    education: list[EducationEntry] = Field(
         default_factory=list,
         description="Academic background."
     )
-    certifications: List[CertificationEntry] = Field(
+    certifications: list[CertificationEntry] = Field(
         default_factory=list,
         description="Professional certifications and credentials."
     )
-    notable_projects: List[ProjectEntry] = Field(
+    notable_projects: list[ProjectEntry] = Field(
         default_factory=list,
         description="Key side projects or open-source work."
     )

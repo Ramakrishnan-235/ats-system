@@ -1,5 +1,3 @@
-import json
-import logging
 import sys
 from pathlib import Path
 
@@ -10,12 +8,12 @@ if src_dir not in sys.path:
 
 from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
 from ats_core.schema.evaluation import (
+    CriterionCategory,
+    CriterionScore,
     DeepCandidateEvaluationReport,
     QualificationTier,
-    CriterionScore,
-    CriterionCategory,
-    SuggestedInterviewQuestion,
     QuestionCategory,
+    SuggestedInterviewQuestion,
 )
 
 

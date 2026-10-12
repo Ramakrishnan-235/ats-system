@@ -8,14 +8,15 @@ Database-backed, versioned skill taxonomy service featuring:
 5. Administrative approval and alias-promotion lifecycle with collision protection.
 """
 
+import logging
 import os
 import re
-import uuid
-import logging
 import threading
-from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, Tuple, Set
-from rapidfuzz import process, fuzz
+import uuid
+from datetime import UTC, datetime
+from typing import Any, Optional
+
+from rapidfuzz import fuzz, process
 
 from ats_core.taxonomy.seed_data import SEED_SKILLS, TAXONOMY_VERSION
 
@@ -54,7 +55,7 @@ SHORT_EXACT_SKILLS = {
 }
 
 # Generic resume prose and stop words rejected from auto-entering flywheel review queue
-RESUME_PROSE_STOPWORDS: Set[str] = {
+RESUME_PROSE_STOPWORDS: set[str] = {
     "january", "february", "march", "april", "may", "june", "july", "august",
     "september", "october", "november", "december", "monday", "tuesday", "wednesday",
     "thursday", "friday", "saturday", "sunday", "bachelor", "master", "doctor",
@@ -82,18 +83,18 @@ class SkillTaxonomyService:
         self.max_pending_skills: int = int(os.getenv("ATS_MAX_PENDING_SKILLS", "1000"))
         self.max_total_skills: int = int(os.getenv("ATS_MAX_TOTAL_SKILLS", "10000"))
         # Master in-memory store: id -> record
-        self._skills_by_id: Dict[str, Dict[str, Any]] = {}
+        self._skills_by_id: dict[str, dict[str, Any]] = {}
         # Canonical index: canonical_name_lower -> record
-        self._canonical_index: Dict[str, Dict[str, Any]] = {}
+        self._canonical_index: dict[str, dict[str, Any]] = {}
         # Alias lookup index: alias_lower -> canonical_name
-        self._alias_index: Dict[str, str] = {}
+        self._alias_index: dict[str, str] = {}
         # O(1) pending index: canonical_key -> pending_record
-        self._pending_index: Dict[str, Dict[str, Any]] = {}
+        self._pending_index: dict[str, dict[str, Any]] = {}
         # Ambiguous tokens set
-        self._ambiguous_tokens: Set[str] = set(SHORT_EXACT_SKILLS)
+        self._ambiguous_tokens: set[str] = set(SHORT_EXACT_SKILLS)
         # Pre-allocated cached key arrays for fast fuzzy lookups (invalidated on mutation)
-        self._cached_fuzzy_keys: Optional[List[str]] = None
-        self._cached_alias_keys: Optional[List[str]] = None
+        self._cached_fuzzy_keys: list[str] | None = None
+        self._cached_alias_keys: list[str] | None = None
 
         # Initialize from seed data
         self.sync_seed()
@@ -111,7 +112,7 @@ class SkillTaxonomyService:
         self._cached_fuzzy_keys = None
         self._cached_alias_keys = None
 
-    def get_fuzzy_keys(self) -> List[str]:
+    def get_fuzzy_keys(self) -> list[str]:
         """
         Returns cached list of alias keys eligible for fuzzy matching (len >= 4, non-ambiguous).
         Avoids rebuilding list on every fuzzy lookup.
@@ -123,13 +124,13 @@ class SkillTaxonomyService:
             ]
         return self._cached_fuzzy_keys
 
-    def get_alias_keys(self) -> List[str]:
+    def get_alias_keys(self) -> list[str]:
         """Returns cached list of all alias keys."""
         if self._cached_alias_keys is None:
             self._cached_alias_keys = list(self._alias_index.keys())
         return self._cached_alias_keys
 
-    def sync_seed(self) -> Dict[str, Any]:
+    def sync_seed(self) -> dict[str, Any]:
         """
         Safely synchronizes the seed ontology into the taxonomy store.
         Preserves all approved user edits, custom skills, and custom aliases on seeded skills.
@@ -169,7 +170,7 @@ class SkillTaxonomyService:
                             modified = True
 
                 if modified:
-                    existing["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    existing["updated_at"] = datetime.now(UTC).isoformat()
                     self._register_record(existing)
                     updated_count += 1
             else:
@@ -184,8 +185,8 @@ class SkillTaxonomyService:
                     "source": seed.get("source", "lightcast"),
                     "occurrence_count": 1,
                     "taxonomy_version": self.version,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "created_at": datetime.now(UTC).isoformat(),
+                    "updated_at": datetime.now(UTC).isoformat(),
                 }
                 self._register_record(record)
                 added_count += 1
@@ -214,7 +215,7 @@ class SkillTaxonomyService:
         """Backward-compatibility helper; delegates to sync_seed."""
         return self.sync_seed()
 
-    def _check_canonical_collision(self, canonical_name: str, current_skill_id: Optional[str] = None) -> None:
+    def _check_canonical_collision(self, canonical_name: str, current_skill_id: str | None = None) -> None:
         """
         Ensures that canonical_name does not collide with another skill's canonical name
         or another skill's alias.
@@ -239,7 +240,7 @@ class SkillTaxonomyService:
                     f"Canonical name '{canonical_name}' conflicts with alias of existing skill '{existing_alias_target}'."
                 )
 
-    def _check_alias_collision(self, alias: str, current_skill_id: Optional[str] = None) -> None:
+    def _check_alias_collision(self, alias: str, current_skill_id: str | None = None) -> None:
         """
         Ensures that alias does not collide with another skill's canonical name
         or another skill's alias.
@@ -264,7 +265,7 @@ class SkillTaxonomyService:
                     f"Alias '{alias}' conflicts with existing skill '{existing_alias_target}'."
                 )
 
-    def _register_record(self, record: Dict[str, Any]):
+    def _register_record(self, record: dict[str, Any]):
         """Registers a skill record into memory indexes with collision guards."""
         self._skills_by_id[record["id"]] = record
         canonical_key = self._normalize_key(record["canonical_name"])
@@ -305,7 +306,7 @@ class SkillTaxonomyService:
 
         self._invalidate_lookup_cache()
 
-    def _remove_lookup_entries(self, record: Dict[str, Any]) -> None:
+    def _remove_lookup_entries(self, record: dict[str, Any]) -> None:
         """Remove a record's old resolution entries before renaming or rejecting it."""
         for key, value in list(self._canonical_index.items()):
             if value["id"] == record["id"]:
@@ -322,7 +323,7 @@ class SkillTaxonomyService:
         cleaned = re.sub(r"[^\w\s+#./-]", "", token.lower()).strip()
         return cleaned
 
-    def lookup_skill(self, raw_skill: str, fuzzy_cutoff: float = 88.0) -> Optional[Dict[str, Any]]:
+    def lookup_skill(self, raw_skill: str, fuzzy_cutoff: float = 88.0) -> dict[str, Any] | None:
         """
         Resolves a raw candidate skill string to its canonical taxonomy record.
         1. Exact short-acronym protection.
@@ -378,20 +379,20 @@ class SkillTaxonomyService:
 
         return None
 
-    def get_skill_by_canonical(self, canonical_name: str) -> Optional[Dict[str, Any]]:
+    def get_skill_by_canonical(self, canonical_name: str) -> dict[str, Any] | None:
         key = self._normalize_key(canonical_name)
         record = self._canonical_index.get(key)
         return record if record and record.get("status") == "approved" else None
 
-    def get_skill_by_id(self, skill_id: str) -> Optional[Dict[str, Any]]:
+    def get_skill_by_id(self, skill_id: str) -> dict[str, Any] | None:
         return self._skills_by_id.get(skill_id)
 
     def record_unknown_skill(
         self,
         raw_skill: str,
         source: str = "resume_parser",
-        context: Optional[str] = None
-    ) -> Dict[str, Any]:
+        context: str | None = None
+    ) -> dict[str, Any]:
         """
         The Flywheel: Captures unrecognized novel skills into status='pending'
         with strict token validation, stopword filtration, O(1) pending index lookup,
@@ -424,7 +425,7 @@ class SkillTaxonomyService:
         if key in self._pending_index:
             pending_rec = self._pending_index[key]
             pending_rec["occurrence_count"] = pending_rec.get("occurrence_count", 1) + 1
-            pending_rec["updated_at"] = datetime.now(timezone.utc).isoformat()
+            pending_rec["updated_at"] = datetime.now(UTC).isoformat()
             return pending_rec
 
         # 5. If it already resolves to an approved record, return that
@@ -465,8 +466,8 @@ class SkillTaxonomyService:
             "source": source,
             "occurrence_count": 1,
             "taxonomy_version": self.version,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
             "context_sample": context[:120] if context else None
         }
 
@@ -479,10 +480,10 @@ class SkillTaxonomyService:
         self,
         canonical_name: str,
         category: str,
-        aliases: Optional[List[str]] = None,
+        aliases: list[str] | None = None,
         is_ambiguous: bool = False,
         source: str = "manual",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Creates a new canonical skill with collision validation."""
         cleaned_canonical = canonical_name.strip()
         if not cleaned_canonical:
@@ -497,7 +498,7 @@ class SkillTaxonomyService:
         if not cleaned_category:
             raise ValueError("Category is required.")
 
-        cleaned_aliases: List[str] = []
+        cleaned_aliases: list[str] = []
         if aliases:
             for alias in aliases:
                 a_clean = alias.strip()
@@ -517,8 +518,8 @@ class SkillTaxonomyService:
             "source": source,
             "occurrence_count": 1,
             "taxonomy_version": self.version,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
+            "updated_at": datetime.now(UTC).isoformat(),
         }
         self._register_record(record)
         return record
@@ -526,10 +527,10 @@ class SkillTaxonomyService:
     def approve_skill(
         self,
         skill_id: str,
-        canonical_name: Optional[str] = None,
-        category: Optional[str] = None,
-        aliases: Optional[List[str]] = None
-    ) -> Optional[Dict[str, Any]]:
+        canonical_name: str | None = None,
+        category: str | None = None,
+        aliases: list[str] | None = None
+    ) -> dict[str, Any] | None:
         """Promotes a pending skill to approved canonical status with collision checks."""
         record = self._skills_by_id.get(skill_id)
         if not record:
@@ -565,13 +566,13 @@ class SkillTaxonomyService:
             record["aliases"] = list(dict.fromkeys(combined))
 
         record["status"] = "approved"
-        record["updated_at"] = datetime.now(timezone.utc).isoformat()
+        record["updated_at"] = datetime.now(UTC).isoformat()
         
         # Refresh indexing
         self._register_record(record)
         return record
 
-    def reject_skill(self, skill_id: str) -> Optional[Dict[str, Any]]:
+    def reject_skill(self, skill_id: str) -> dict[str, Any] | None:
         """Marks a pending skill as rejected (ignored) and removes from pending index."""
         record = self._skills_by_id.get(skill_id)
         if not record:
@@ -582,10 +583,10 @@ class SkillTaxonomyService:
 
         self._remove_lookup_entries(record)
         record["status"] = "rejected"
-        record["updated_at"] = datetime.now(timezone.utc).isoformat()
+        record["updated_at"] = datetime.now(UTC).isoformat()
         return record
 
-    def add_alias(self, canonical_name_or_id: str, new_alias: str) -> Optional[Dict[str, Any]]:
+    def add_alias(self, canonical_name_or_id: str, new_alias: str) -> dict[str, Any] | None:
         """Adds a new alias to an existing approved canonical skill with collision checks."""
         record = self.get_skill_by_canonical(canonical_name_or_id)
         if not record:
@@ -602,19 +603,19 @@ class SkillTaxonomyService:
 
         if cleaned_alias not in record["aliases"]:
             record["aliases"].append(cleaned_alias)
-            record["updated_at"] = datetime.now(timezone.utc).isoformat()
+            record["updated_at"] = datetime.now(UTC).isoformat()
             self._register_record(record)
 
         return record
 
     def list_skills(
         self,
-        category: Optional[str] = None,
-        status: Optional[str] = None,
-        search: Optional[str] = None,
+        category: str | None = None,
+        status: str | None = None,
+        search: str | None = None,
         page: int = 1,
         limit: int = 50
-    ) -> Tuple[List[Dict[str, Any]], int]:
+    ) -> tuple[list[dict[str, Any]], int]:
         """Queries skills with filtering, search, and pagination."""
         skills = list(self._skills_by_id.values())
 
@@ -648,18 +649,18 @@ class SkillTaxonomyService:
         end = start + limit
         return skills[start:end], total
 
-    def get_pending_skills(self) -> List[Dict[str, Any]]:
+    def get_pending_skills(self) -> list[dict[str, Any]]:
         """Returns all currently pending skills in the flywheel review queue."""
         return list(self._pending_index.values())
 
-    def get_taxonomy_stats(self) -> Dict[str, Any]:
+    def get_taxonomy_stats(self) -> dict[str, Any]:
         """Returns overview statistics of the taxonomy and flywheel review queue."""
         total = len(self._skills_by_id)
         approved = sum(1 for s in self._skills_by_id.values() if s.get("status") == "approved")
         pending = sum(1 for s in self._skills_by_id.values() if s.get("status") == "pending")
         rejected = sum(1 for s in self._skills_by_id.values() if s.get("status") == "rejected")
 
-        cat_counts: Dict[str, int] = {}
+        cat_counts: dict[str, int] = {}
         for s in self._skills_by_id.values():
             if s.get("status") == "approved":
                 c = s.get("category", "tool")

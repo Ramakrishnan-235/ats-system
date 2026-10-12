@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 logger = logging.getLogger("ats.search.reranker")
 
@@ -14,7 +14,7 @@ class CandidateReranker:
     def __init__(
         self,
         model_name: str = "BAAI/bge-reranker-large",
-        device: Optional[str] = None,
+        device: str | None = None,
         max_length: int = 512,
         batch_size: int = 32,
     ):
@@ -59,12 +59,12 @@ class CandidateReranker:
             z = math.exp(clamped)
             return z / (1.0 + z)
 
-    def _format_candidate_text(self, candidate: Dict[str, Any]) -> str:
+    def _format_candidate_text(self, candidate: dict[str, Any]) -> str:
         """
         Structures candidate data into a dense, high-signal representation for the Cross-Encoder.
         """
         # Support both flat text or structured payload dictionaries
-        if "text" in candidate and candidate["text"]:
+        if candidate.get("text"):
             return candidate["text"]
 
         metadata = candidate.get("metadata") or {}
@@ -88,9 +88,9 @@ class CandidateReranker:
     def rerank(
         self,
         query: str,
-        candidates: List[Dict[str, Any]],
+        candidates: list[dict[str, Any]],
         top_k: int = 20,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Takes candidate search results (e.g., top 100 from Hybrid Retrieval),
         computes cross-attention relevance scores, and returns the top_k sorted candidates.

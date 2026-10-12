@@ -2,10 +2,10 @@ package api
 
 import (
 	"bytes"
-	"fmt"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -988,6 +988,3 @@ func TestAuthInconsistencies28(t *testing.T) {
 		t.Fatalf("expected 401 for invalid bearer token, got %d", rr.Code)
 	}
 }
-
-
-

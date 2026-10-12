@@ -1,8 +1,7 @@
-import pytest
 from ats_core.parsers.title_normalizer import (
-    parse_title,
     calculate_title_trajectory,
     canonicalize_function,
+    parse_title,
 )
 
 

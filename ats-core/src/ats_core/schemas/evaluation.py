@@ -1,17 +1,17 @@
 from ats_core.schema.evaluation import (
-    QualificationTier,
     CriterionCategory,
     CriterionScore,
+    DeepCandidateEvaluationReport,
+    QualificationTier,
     QuestionCategory,
     SuggestedInterviewQuestion,
-    DeepCandidateEvaluationReport,
 )
 
 __all__ = [
-    "QualificationTier",
     "CriterionCategory",
     "CriterionScore",
+    "DeepCandidateEvaluationReport",
+    "QualificationTier",
     "QuestionCategory",
     "SuggestedInterviewQuestion",
-    "DeepCandidateEvaluationReport",
 ]

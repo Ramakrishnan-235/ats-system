@@ -1,6 +1,7 @@
 import sys
-import pytest
 from pathlib import Path
+
+import pytest
 
 # Add src and root to sys.path
 src_dir = str(Path(__file__).resolve().parent.parent / "src")

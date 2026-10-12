@@ -5,22 +5,21 @@ Enforces role-based authorization, collision prevention, audit logging,
 and public service method encapsulation.
 """
 
-from typing import List, Optional, Dict, Any, Set
-from fastapi import APIRouter, HTTPException, status, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, field_validator
 
-from ats_core.api.auth import get_current_user
 from ats_core.api.audit import audit_store
+from ats_core.api.auth import get_current_user
 from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
 
 router = APIRouter(prefix="/taxonomy", tags=["Skill Taxonomy & Flywheel"])
 
-VALID_SKILL_CATEGORIES: Set[str] = {
+VALID_SKILL_CATEGORIES: set[str] = {
     "language", "framework", "database", "platform",
     "tool", "library", "domain", "soft_skill", "methodology"
 }
 
-VALID_SKILL_SOURCES: Set[str] = {
+VALID_SKILL_SOURCES: set[str] = {
     "lightcast", "esco", "onet", "stackoverflow",
     "llm", "resume_parser", "freeform_cascade", "manual", "admin", "seed"
 }
@@ -29,7 +28,7 @@ VALID_SKILL_SOURCES: Set[str] = {
 class CreateSkillPayload(BaseModel):
     canonical_name: str = Field(..., min_length=1, max_length=100, description="Canonical standard name (e.g. 'PostgreSQL').")
     category: str = Field(..., max_length=50, description="Category (language|framework|database|platform|tool|library|domain|soft_skill|methodology).")
-    aliases: List[str] = Field(default_factory=list, max_length=50, description="Array of alternative names or abbreviations.")
+    aliases: list[str] = Field(default_factory=list, max_length=50, description="Array of alternative names or abbreviations.")
     is_ambiguous: bool = Field(default=False, description="Whether this is a short token needing exact matching.")
     source: str = Field(default="manual", max_length=50, description="Source (lightcast|esco|onet|stackoverflow|llm|resume_parser|manual).")
 
@@ -51,13 +50,13 @@ class CreateSkillPayload(BaseModel):
 
 
 class ApproveSkillPayload(BaseModel):
-    canonical_name: Optional[str] = Field(default=None, min_length=1, max_length=100)
-    category: Optional[str] = Field(default=None, max_length=50)
-    aliases: Optional[List[str]] = Field(default=None, max_length=50)
+    canonical_name: str | None = Field(default=None, min_length=1, max_length=100)
+    category: str | None = Field(default=None, max_length=50)
+    aliases: list[str] | None = Field(default=None, max_length=50)
 
     @field_validator("category")
     @classmethod
-    def validate_category(cls, v: Optional[str]) -> Optional[str]:
+    def validate_category(cls, v: str | None) -> str | None:
         if v is not None:
             s = v.strip().lower()
             if s not in VALID_SKILL_CATEGORIES:
@@ -80,9 +79,9 @@ async def get_taxonomy_version():
 
 @router.get("/skills")
 async def list_taxonomy_skills(
-    category: Optional[str] = Query(None, description="Filter by category"),
-    status: Optional[str] = Query(None, description="Filter by status (approved|pending|rejected|all)"),
-    search: Optional[str] = Query(None, description="Search keyword in canonical name, aliases, or source"),
+    category: str | None = Query(None, description="Filter by category"),
+    status: str | None = Query(None, description="Filter by status (approved|pending|rejected|all)"),
+    search: str | None = Query(None, description="Search keyword in canonical name, aliases, or source"),
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
 ):
@@ -142,7 +141,7 @@ async def create_taxonomy_skill(payload: CreateSkillPayload, request: Request):
 
 
 @router.patch("/skills/{skill_id}/approve")
-async def approve_taxonomy_skill(skill_id: str, request: Request, payload: Optional[ApproveSkillPayload] = None):
+async def approve_taxonomy_skill(skill_id: str, request: Request, payload: ApproveSkillPayload | None = None):
     """Promotes a pending flywheel skill to approved canonical status (requires taxonomy manage permissions)."""
     user = get_current_user(request)
     if not user.can_manage_taxonomy():

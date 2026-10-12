@@ -1,24 +1,36 @@
-import os
+import asyncio
 import copy
+import logging
+import os
 import re
 import uuid
-import logging
-import asyncio
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any, Set
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Query, Request, BackgroundTasks
-from ats_core.api.auth import get_current_user
-from ats_core.api.audit import check_and_audit_pii_access
+from typing import Any
+
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel, Field, field_validator
 from starlette.concurrency import run_in_threadpool
+
+from ats_core.api.audit import check_and_audit_pii_access
+from ats_core.api.auth import get_current_user
 from ats_core.api.upload_storage import UPLOAD_STAGING_DIR, resume_path, stage_pdf_upload
 
 logger = logging.getLogger("ats.api.candidates")
 
 router = APIRouter(prefix="/candidates", tags=["Candidates & Evaluations"])
 
-VALID_CANDIDATE_STAGES: Set[str] = {"Screening", "Interview", "Qualified", "Offer", "Hired", "Rejected"}
+VALID_CANDIDATE_STAGES: set[str] = {"Screening", "Interview", "Qualified", "Offer", "Hired", "Rejected"}
 
 MAX_CANDIDATES_STORE: int = int(os.getenv("ATS_MAX_CANDIDATES_STORE", "5000"))
 MAX_UPLOAD_TASKS: int = int(os.getenv("ATS_MAX_UPLOAD_TASKS", "1000"))
@@ -29,9 +41,9 @@ _upload_semaphore = asyncio.Semaphore(MAX_CONCURRENT_UPLOADS)
 UPLOAD_EXECUTION_MODE: str = os.getenv("ATS_UPLOAD_EXECUTION_MODE", "async").strip().lower()
 
 # In-memory candidate database store (populated dynamically upon upload/registration)
-CANDIDATES_STORE: Dict[str, Dict[str, Any]] = {}
+CANDIDATES_STORE: dict[str, dict[str, Any]] = {}
 # Upload task state tracking
-UPLOAD_TASKS_STORE: Dict[str, Dict[str, Any]] = {}
+UPLOAD_TASKS_STORE: dict[str, dict[str, Any]] = {}
 
 
 def prune_candidates_store() -> None:
@@ -56,7 +68,7 @@ def prune_upload_tasks() -> None:
             del UPLOAD_TASKS_STORE[oldest_tid]
 
 
-def mask_candidate_pii(cand_dict: Dict[str, Any]) -> Dict[str, Any]:
+def mask_candidate_pii(cand_dict: dict[str, Any]) -> dict[str, Any]:
     """
     Returns an independent display copy with direct identifiers and their known
     occurrences masked, and raw document fields omitted. This is a display filter;
@@ -96,7 +108,7 @@ def mask_candidate_pii(cand_dict: Dict[str, Any]) -> Dict[str, Any]:
     return masked
 
 
-def is_masked_or_anonymous_name(name: Optional[str]) -> bool:
+def is_masked_or_anonymous_name(name: str | None) -> bool:
     if not name or not isinstance(name, str):
         return True
     s = name.strip()
@@ -109,7 +121,7 @@ def is_masked_or_anonymous_name(name: Optional[str]) -> bool:
     )
 
 
-def is_generic_or_error_headline(headline: Optional[str]) -> bool:
+def is_generic_or_error_headline(headline: str | None) -> bool:
     if not headline or not isinstance(headline, str):
         return True
     s = headline.strip().lower()
@@ -117,11 +129,11 @@ def is_generic_or_error_headline(headline: Optional[str]) -> bool:
 
 
 def register_candidate_profile(
-    cand_dict: Dict[str, Any],
+    cand_dict: dict[str, Any],
     job_title: str = "Software Engineer",
     department: str = "Engineering",
-    job_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    job_id: str | None = None,
+) -> dict[str, Any]:
     """Register supplied facts without inventing employment history or AI assessments."""
     cand_id = cand_dict.get("id") or f"cand-{uuid.uuid4().hex}"
     existing = CANDIDATES_STORE.get(cand_id)
@@ -176,7 +188,7 @@ def register_candidate_profile(
         "status": "Screening",
         "stage": "Screening",
         "applied_date": "Recently",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "applied_for_job": cand_dict.get("applied_for_job") or f"{job_title} ({department})",
         "applied_for_job_id": job_id or cand_dict.get("applied_for_job_id"),
         "years_of_experience": None,
@@ -201,7 +213,7 @@ def register_candidate_profile(
 
 class NoteCreateRequest(BaseModel):
     content: str = Field(..., min_length=1, max_length=5000, description="Note content")
-    author: Optional[str] = Field(default=None, max_length=100, description="Author display name")
+    author: str | None = Field(default=None, max_length=100, description="Author display name")
 
     @field_validator("content")
     @classmethod
@@ -215,7 +227,7 @@ class NoteCreateRequest(BaseModel):
 
     @field_validator("author")
     @classmethod
-    def validate_author_length(cls, v: Optional[str]) -> Optional[str]:
+    def validate_author_length(cls, v: str | None) -> str | None:
         if v is not None:
             s = v.strip()
             if len(s) > 100:
@@ -224,12 +236,12 @@ class NoteCreateRequest(BaseModel):
         return v
 
 
-@router.get("", response_model=List[Dict[str, Any]])
+@router.get("", response_model=list[dict[str, Any]])
 async def list_candidates(
     request: Request,
-    search: Optional[str] = Query(None),
-    stage: Optional[str] = Query(None),
-    skill: Optional[str] = Query(None),
+    search: str | None = Query(None),
+    stage: str | None = Query(None),
+    skill: str | None = Query(None),
     include_pii: bool = Query(False, description="Set to true only when authorized to view unmasked PII")
 ):
     try:
@@ -403,8 +415,8 @@ async def _process_resume_pipeline(
     safe_filename: str,
     doc_bytes: bytes,
     temp_file_path: Path,
-    target_job: Optional[Dict[str, Any]],
-    job_id: Optional[str],
+    target_job: dict[str, Any] | None,
+    job_id: str | None,
     is_inline: bool = False,
 ) -> None:
     """
@@ -451,8 +463,8 @@ async def _process_resume_pipeline(
                 })
 
             try:
-                from ats_core.parsers.anonymizer import ResumeAnonymizer
                 from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
+                from ats_core.parsers.anonymizer import ResumeAnonymizer
 
                 # Configured models may run remotely (e.g. OpenRouter). Never send raw resume PII.
                 # Explicitly re-use all parser-extracted identifiers (name, email, phone, location, URLs).
@@ -559,12 +571,12 @@ async def _process_resume_pipeline(
                         "overall_match_score": int(round(report.overall_match_score)),
                         "match_tier": f"{tier_name} Match" if "Match" not in tier_name else tier_name,
                         "model_version": f"Ollama ({evaluator.model_name})",
-                        "evaluated_at": datetime.now(timezone.utc).isoformat(),
+                        "evaluated_at": datetime.now(UTC).isoformat(),
                         "evaluation_status": "COMPLETED",
                         "categories": categories if categories else parsed_candidate["scorecard"]["categories"],
                         "risk_flags": report.risks_and_skill_gaps or [],
                         "suggested_improvements": report.suggested_improvements if getattr(report, "suggested_improvements", None) else parsed_candidate["scorecard"].get("suggested_improvements", []),
-                        "suggested_questions": [f"{i+1}. {q.question}" if hasattr(q, "question") else f"{i+1}. {str(q)}" for i, q in enumerate(report.suggested_interview_questions)] if report.suggested_interview_questions else parsed_candidate["scorecard"]["suggested_questions"],
+                        "suggested_questions": [f"{i+1}. {q.question}" if hasattr(q, "question") else f"{i+1}. {q!s}" for i, q in enumerate(report.suggested_interview_questions)] if report.suggested_interview_questions else parsed_candidate["scorecard"]["suggested_questions"],
                         "team_notes": [
                             {
                                 "id": f"note-eval-{uuid.uuid4().hex[:4]}",
@@ -600,7 +612,7 @@ async def _process_resume_pipeline(
 
         parsed_candidate["upload_task_id"] = task_id
         parsed_candidate["resume_filename"] = safe_filename
-        parsed_candidate["created_at"] = datetime.now(timezone.utc).isoformat()
+        parsed_candidate["created_at"] = datetime.now(UTC).isoformat()
         prune_candidates_store()
         CANDIDATES_STORE[candidate_id] = parsed_candidate
         try:
@@ -691,7 +703,7 @@ async def _process_resume_pipeline(
             "phone": "N/A",
             "status": "EVALUATION_FAILED",
             "stage": "Review Required",
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "applied_for_job": (
                 f"{target_job['title']} ({target_job.get('department', 'Engineering')})"
                 if target_job
@@ -744,8 +756,8 @@ async def _process_resume_pipeline_safe(
     safe_filename: str,
     doc_bytes: bytes,
     temp_file_path: Path,
-    target_job: Optional[Dict[str, Any]],
-    job_id: Optional[str],
+    target_job: dict[str, Any] | None,
+    job_id: str | None,
 ) -> None:
     """Safely runs background processing within the concurrency semaphore."""
     await _upload_semaphore.acquire()
@@ -773,8 +785,8 @@ async def upload_resume_async(
     request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    job_id: Optional[str] = Form(None),
-    execution_mode: Optional[str] = Query(None),
+    job_id: str | None = Form(None),
+    execution_mode: str | None = Query(None),
 ):
     # Concurrency limit check
     if _upload_semaphore.locked():
@@ -894,6 +906,7 @@ async def get_task_status(task_id: str):
     # Other IDs may belong to actual worker tasks; never fabricate progress.
     try:
         from celery.result import AsyncResult
+
         from ats_core.workers.celery_app import celery_app
         def read_state():
             task_result = AsyncResult(task_id, app=celery_app)
@@ -932,7 +945,7 @@ async def get_task_status(task_id: str):
 
 class LocateCitationRequest(BaseModel):
     search_phrase: str = Field(min_length=1, max_length=2000)
-    filename: Optional[str] = None
+    filename: str | None = None
 
 
 def _get_staged_resume_path(candidate_id: str):

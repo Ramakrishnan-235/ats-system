@@ -1,18 +1,18 @@
 """Tests for RBAC, per-user identity, and audit trail on PII access."""
 
-import os
-from pathlib import Path
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
+
 from ats_core.api import auth, upload_storage
 from ats_core.api.audit import audit_store
-from ats_core.api.v1 import candidates, dashboard, jobs, audit
+from ats_core.api.v1 import audit, candidates, dashboard, jobs
 
 
 @pytest.fixture
-def auth_api(tmp_path):
+def auth_api(tmp_path, monkeypatch):
     """Test client with authentication enabled, mock API key."""
+    monkeypatch.setenv("ATS_DB_SYNC_ENABLED", "false")
     api_key = "test-secret-api-key-999"
     orig_auth_enabled = auth.ATS_AUTH_ENABLED
     orig_expected_key = auth.EXPECTED_API_KEY

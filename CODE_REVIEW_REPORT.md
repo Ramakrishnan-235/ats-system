@@ -67,3 +67,24 @@ migration, deployment, or running application data change was performed.
 The project-local Python `.venv` contains a lightweight review environment, not
 the complete ML stack. Frontend dependencies and build artifacts are ignored by
 Git. Temporary/generated files are excluded from the review patch.
+
+## Full-System Refactoring Cycle (12 October 2026)
+
+A full refactoring and test-repair pass was executed across all four application domains:
+1. **Python AI Core (`ats-core`)**:
+   - Fixed `NameError: name 'os' is not defined` in `audit_logger.py`.
+   - Hardened `get_llm_config()` to prioritize Ollama configuration and block OpenRouter fallback URLs when API keys are absent.
+   - Refactored `SkillEmbeddingsIndex._build_index` for offline embedder resilience.
+   - Restored test isolation across worker import, auth validation, and PII audit test suites.
+   - Ran `ruff check --fix` resolving 1,111 lint, formatting, and import defects.
+   - **Verification**: `pytest` passed 356 / 356 tests (100%).
+2. **Go Matcher (`ats-core-go`)**:
+   - Applied canonical `gofmt` formatting across API, config, and memory store packages.
+   - **Verification**: `go test ./...` passed all 34 suites; `go vet ./...` clean.
+3. **Rust Core (`backend-rust`)**:
+   - Verified OpenAPI contracts, tenant isolation, and session hashes.
+   - **Verification**: `cargo check`, `cargo fmt --check`, `cargo clippy` (0 warnings), `cargo test` clean.
+4. **Next.js Frontend (`frontend`)**:
+   - Fixed `@typescript-eslint/no-explicit-any` type safety defect in `src/app/offers/page.tsx`.
+   - **Verification**: `npx tsc --noEmit` clean, `npx eslint --quiet` 0 errors, `next build` compiled 20/20 routes.
+

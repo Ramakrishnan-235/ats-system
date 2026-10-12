@@ -10,19 +10,17 @@ raw skill keywords into rich, verifiable skill entities with:
 4. Independent 'is_certified' dimension tracking for certifications.
 """
 
-import re
 import logging
-from typing import Dict, Any, List, Optional, Tuple, Set
-from datetime import datetime
+import re
+from typing import Any
 
-from ats_core.parsers.section_anchor import anchor_sections, DATE_RANGE_RE
+from ats_core.parsers.section_anchor import anchor_sections
 from ats_core.parsers.skill_matcher import SkillMatcher
-from ats_core.parsers.normalizers import normalize_date
 
 logger = logging.getLogger("ats.parsers.context_enricher")
 
 # Tunable evidence weights calibrated for production ATS evaluation
-EVIDENCE_WEIGHTS: Dict[str, float] = {
+EVIDENCE_WEIGHTS: dict[str, float] = {
     "skills_bar": 1.0,           # Claimed in skills list
     "summary": 0.8,              # Claimed in bio / summary
     "education": 0.6,            # Coursework exposure
@@ -50,7 +48,7 @@ METRIC_RE = re.compile(
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?\n])\s+|[\•\*\-]\s+")
 
 
-def split_into_sentences(text: str) -> List[str]:
+def split_into_sentences(text: str) -> list[str]:
     """Splits a multi-line or bulleted text block into individual sentences."""
     if not text:
         return []
@@ -58,7 +56,7 @@ def split_into_sentences(text: str) -> List[str]:
     return [s.strip().strip("•-* ") for s in raw_splits if s.strip() and len(s.strip()) > 3]
 
 
-def classify_mention(section: str, sentence: str) -> Tuple[str, float, bool]:
+def classify_mention(section: str, sentence: str) -> tuple[str, float, bool]:
     """
     Classifies a skill sentence mention into its evidence tier, calculates weight,
     and flags certified credentials.
@@ -93,10 +91,10 @@ def classify_mention(section: str, sentence: str) -> Tuple[str, float, bool]:
 
 def enrich_candidate_skills(
     raw_text: str,
-    experience_items: Optional[List[Dict[str, Any]]] = None,
-    candidate_skills: Optional[List[str]] = None,
-    *, taxonomy_rows: Optional[List[Dict[str, Any]]] = None,
-) -> List[Dict[str, Any]]:
+    experience_items: list[dict[str, Any]] | None = None,
+    candidate_skills: list[str] | None = None,
+    *, taxonomy_rows: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     """
     Full Context Enrichment:
     1. Matches skill spans via spaCy PhraseMatcher.
@@ -127,13 +125,13 @@ def enrich_candidate_skills(
         curr_offset += line_len + 1
 
     # Map experience items by entry_index (1-indexed)
-    exp_by_idx: Dict[int, Dict[str, Any]] = {}
+    exp_by_idx: dict[int, dict[str, Any]] = {}
     if experience_items:
         for idx, item in enumerate(experience_items, start=1):
             exp_by_idx[idx] = item
 
     # Group mentions by canonical skill name
-    mentions_by_skill: Dict[str, List[Dict[str, Any]]] = {}
+    mentions_by_skill: dict[str, list[dict[str, Any]]] = {}
 
     for m in rich_matches:
         cname = m["canonical_name"]
@@ -238,7 +236,7 @@ def enrich_candidate_skills(
         "education": 0,
     }
 
-    enriched_entities: List[Dict[str, Any]] = []
+    enriched_entities: list[dict[str, Any]] = []
 
     for cname, mentions in mentions_by_skill.items():
         max_weight = max(m["evidence_weight"] for m in mentions)

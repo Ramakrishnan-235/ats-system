@@ -1,9 +1,11 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
+
 from ats_core.parsers.llm_residue_extractor import (
     LLMResidueExtractor,
-    LLMResidueSkill,
     LLMResidueOutput,
+    LLMResidueSkill,
 )
 from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
 

@@ -1,11 +1,11 @@
+import logging
 import os
 import secrets
-import logging
-from enum import Enum
 from dataclasses import dataclass
-from typing import Optional, Set
-from fastapi import Request, Security, HTTPException, status
-from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
+from enum import Enum
+
+from fastapi import HTTPException, Request, Security, status
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
 logger = logging.getLogger("ats.api.auth")
 
@@ -26,17 +26,17 @@ class Role(str, Enum):
     VIEWER = "viewer"
 
 
-PII_ROLES: Set[str] = {Role.ADMIN.value, Role.RECRUITER.value, Role.COMPLIANCE.value}
-AUDIT_ROLES: Set[str] = {Role.ADMIN.value, Role.RECRUITER.value, Role.COMPLIANCE.value}
-TAXONOMY_MANAGE_ROLES: Set[str] = {Role.ADMIN.value, Role.RECRUITER.value}
-TAXONOMY_ADMIN_ROLES: Set[str] = {Role.ADMIN.value}
+PII_ROLES: set[str] = {Role.ADMIN.value, Role.RECRUITER.value, Role.COMPLIANCE.value}
+AUDIT_ROLES: set[str] = {Role.ADMIN.value, Role.RECRUITER.value, Role.COMPLIANCE.value}
+TAXONOMY_MANAGE_ROLES: set[str] = {Role.ADMIN.value, Role.RECRUITER.value}
+TAXONOMY_ADMIN_ROLES: set[str] = {Role.ADMIN.value}
 
 
 @dataclass
 class UserIdentity:
     user_id: str
     role: str
-    email: Optional[str] = None
+    email: str | None = None
 
     def can_view_pii(self) -> bool:
         if not self.user_id or not self.role:
@@ -59,7 +59,7 @@ class UserIdentity:
         return self.role.strip().lower() in TAXONOMY_ADMIN_ROLES
 
 
-def extract_user_identity(request: Optional[Request] = None) -> UserIdentity:
+def extract_user_identity(request: Request | None = None) -> UserIdentity:
     user_id = ""
     role_header = ""
     email = None
@@ -107,8 +107,8 @@ def validate_auth_configuration() -> None:
 
 async def verify_api_key(
     request: Request = None,
-    header_key: Optional[str] = Security(api_key_header),
-    bearer_creds: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme),
+    header_key: str | None = Security(api_key_header),
+    bearer_creds: HTTPAuthorizationCredentials | None = Security(bearer_scheme),
 ) -> str:
     """
     Validates client authentication via X-API-Key header or Authorization: Bearer token.

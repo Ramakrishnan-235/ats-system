@@ -13,25 +13,26 @@ Features:
 5. Emits the Structured Scoring Engine Matrix consumed by compliance and match evaluators.
 """
 
-import re
 import logging
-from datetime import datetime, date
-from typing import Dict, Any, List, Optional, Tuple, Set
+import re
 from collections import defaultdict
+from datetime import datetime
+from typing import Any
+
 import dateparser
 
 from ats_core.parsers.context_enricher import EVIDENCE_WEIGHTS
-from ats_core.parsers.normalizers import PRESENT_TOKENS, normalize_date
+from ats_core.parsers.normalizers import PRESENT_TOKENS
 from ats_core.taxonomy.seed_data import TAXONOMY_VERSION
 
 logger = logging.getLogger("ats.parsers.skill_aggregator")
 
 
 def parse_date_to_datetime(
-    date_str: Optional[str],
+    date_str: str | None,
     is_end: bool = False,
-    reference_date: Optional[datetime] = None
-) -> Optional[datetime]:
+    reference_date: datetime | None = None
+) -> datetime | None:
     """
     Parses a normalized date string ("2021-05", "2020", "Present") into a datetime object.
     For end dates of a month/year, aligns to the end of that period.
@@ -73,7 +74,7 @@ def parse_date_to_datetime(
     return dt
 
 
-def merge_date_intervals(intervals: List[Tuple[datetime, datetime]]) -> List[Tuple[datetime, datetime]]:
+def merge_date_intervals(intervals: list[tuple[datetime, datetime]]) -> list[tuple[datetime, datetime]]:
     """
     Merges overlapping and contiguous datetime intervals so concurrent roles
     mentioning the same skill are not double counted.
@@ -92,7 +93,7 @@ def merge_date_intervals(intervals: List[Tuple[datetime, datetime]]) -> List[Tup
     # Sort chronologically by start date
     valid_intervals.sort(key=lambda x: x[0])
 
-    merged: List[Tuple[datetime, datetime]] = [valid_intervals[0]]
+    merged: list[tuple[datetime, datetime]] = [valid_intervals[0]]
 
     for current in valid_intervals[1:]:
         prev_start, prev_end = merged[-1]
@@ -109,10 +110,10 @@ def merge_date_intervals(intervals: List[Tuple[datetime, datetime]]) -> List[Tup
 
 
 def aggregate_skill_mentions(
-    mentions: List[Dict[str, Any]],
-    reference_date: Optional[datetime] = None,
-    candidate_id: Optional[str] = None
-) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+    mentions: list[dict[str, Any]],
+    reference_date: datetime | None = None,
+    candidate_id: str | None = None
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
     """
     Aggregates granular skill mentions:
     Returns:
@@ -120,20 +121,20 @@ def aggregate_skill_mentions(
     2. Structured Scoring Engine Matrix keyed by lowercase canonical skill name.
     """
     ref_dt = reference_date or datetime.now()
-    by_skill: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    by_skill: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
     for m in mentions:
         skill_key = m.get("canonical_name") or m.get("surface") or "Unknown"
         by_skill[skill_key].append(m)
 
-    db_rows: List[Dict[str, Any]] = []
-    scoring_matrix: Dict[str, Dict[str, Any]] = {}
+    db_rows: list[dict[str, Any]] = []
+    scoring_matrix: dict[str, dict[str, Any]] = {}
 
     for skill_name, ms in by_skill.items():
         skill_id = ms[0].get("skill_id") or f"skill-{skill_name.lower().replace(' ', '-')}"
 
         # Collect date intervals
-        raw_intervals: List[Tuple[datetime, datetime]] = []
+        raw_intervals: list[tuple[datetime, datetime]] = []
         for m in ms:
             d_start = m.get("start_date")
             d_end = m.get("end_date")
@@ -190,9 +191,9 @@ def aggregate_skill_mentions(
                 f"across {roles_count or 1} role(s)"
             )
         elif is_certified:
-            explanation = f"Certified credential, demonstrated in resume"
+            explanation = "Certified credential, demonstrated in resume"
         else:
-            explanation = f"Claimed in skills summary"
+            explanation = "Claimed in skills summary"
 
         # 1. Database Row Record
         row = {

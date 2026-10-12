@@ -1,9 +1,7 @@
 import io
-import os
 import sys
-import tempfile
-import uuid
 from pathlib import Path
+
 import fitz
 from fastapi.testclient import TestClient
 
@@ -17,9 +15,9 @@ root_dir = str(Path(__file__).resolve().parent.parent)
 if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
-from main import app
 from ats_core.workers.celery_app import celery_app
 from ats_core.workers.tasks import BaseTaskWithRetry
+from main import app
 
 
 def create_sample_pdf_bytes() -> bytes:
@@ -89,8 +87,8 @@ def test_fastapi_async_upload_endpoint(monkeypatch):
 
 def test_process_resume_pdf_pipeline_direct():
     pdf_data = create_sample_pdf_bytes()
-    from ats_core.parsers.pdf_parser import HybridPDFParser
     from ats_core.parsers.anonymizer import ResumeAnonymizer
+    from ats_core.parsers.pdf_parser import HybridPDFParser
 
     parser = HybridPDFParser()
     anonymizer = ResumeAnonymizer(min_score_threshold=0.55)

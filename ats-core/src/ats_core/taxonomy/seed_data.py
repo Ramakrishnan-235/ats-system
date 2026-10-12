@@ -4,12 +4,12 @@ Curated open taxonomy seed dataset sourced from Lightcast Open Skills, ESCO,
 O*NET Tools & Technology, and Stack Overflow tag ontology.
 """
 
-from typing import List, Dict, Any
+from typing import Any
 
 TAXONOMY_VERSION = "2026.08.1"
 
 # Curated high-precision tech skills taxonomy
-SEED_SKILLS: List[Dict[str, Any]] = [
+SEED_SKILLS: list[dict[str, Any]] = [
     # =========================================================================
     # 1. LANGUAGES
     # =========================================================================

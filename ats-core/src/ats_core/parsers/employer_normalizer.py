@@ -6,9 +6,8 @@ Cleans messy company names by stripping corporate legal suffixes (Inc, LLC, Ltd,
 and normalizing common tech employer aliases (e.g. 'Amazon Web Services' -> 'Amazon').
 """
 
-import re
 import logging
-from typing import Optional
+import re
 
 logger = logging.getLogger("ats.parsers.employer_normalizer")
 
@@ -84,7 +83,7 @@ TOP_EMPLOYER_ALIASES = {
 }
 
 
-def normalize_employer(raw_name: Optional[str]) -> str:
+def normalize_employer(raw_name: str | None) -> str:
     """
     Normalizes a company or employer name:
     1. Strips parenthetical annotations.

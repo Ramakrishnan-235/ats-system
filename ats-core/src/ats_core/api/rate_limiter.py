@@ -6,9 +6,9 @@ and unthrottled endpoint abuse.
 """
 
 import os
-import time
 import threading
-from typing import Dict, List, Optional
+import time
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -24,7 +24,7 @@ class SlidingWindowRateLimiter:
         self.requests_per_minute = requests_per_minute
         self.window_seconds = 60.0
         self._lock = threading.Lock()
-        self._history: Dict[str, List[float]] = {}
+        self._history: dict[str, list[float]] = {}
         self._last_cleanup = time.time()
 
     def is_allowed(self, key: str) -> bool:
@@ -75,7 +75,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     Middleware intercepting incoming HTTP requests to enforce rate limits.
     """
 
-    def __init__(self, app, requests_per_minute: Optional[int] = None):
+    def __init__(self, app, requests_per_minute: int | None = None):
         super().__init__(app)
         rpm = requests_per_minute or int(os.getenv("ATS_RATE_LIMIT_PER_MINUTE", "120"))
         self.limiter = SlidingWindowRateLimiter(requests_per_minute=rpm)

@@ -9,14 +9,13 @@ Comprehensive regression tests for Finding 2.5:
 """
 
 import pytest
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from ats_core.api import auth
 from ats_core.api.audit import audit_store
 from ats_core.api.v1.taxonomy import router as taxonomy_router
 from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
-
 
 TEST_API_KEY = "sec-taxonomy-test-key-25"
 

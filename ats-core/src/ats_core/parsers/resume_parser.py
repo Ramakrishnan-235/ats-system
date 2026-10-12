@@ -1,35 +1,33 @@
+import logging
 import os
 import re
-import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
-from ats_core.parsers.pdf_parser import HybridPDFParser
-from ats_core.taxonomy.seed_data import TAXONOMY_VERSION
-from ats_core.parsers.section_anchor import (
-    anchor_sections,
-    get_section_text,
-    get_section_lines,
-    extract_structured_experience_entries,
-    anchor_skill_mentions,
-    DATE_RANGE_RE,
-)
-from ats_core.parsers.skill_matcher import SkillMatcher
-from ats_core.parsers.llm_residue_extractor import LLMResidueExtractor
-from ats_core.parsers.normalization_cascade import resolve_skill, resolve_skills_batch
+from typing import Any
+
 from ats_core.parsers.context_enricher import enrich_candidate_skills
-from ats_core.parsers.skill_aggregator import aggregate_skill_mentions
-from ats_core.evaluator.skill_evaluator import evaluate_candidate_skills_coverage
-from ats_core.parsers.title_normalizer import parse_title, calculate_title_trajectory
 from ats_core.parsers.employer_normalizer import normalize_employer
+from ats_core.parsers.llm_residue_extractor import LLMResidueExtractor
+from ats_core.parsers.normalization_cascade import resolve_skills_batch
 from ats_core.parsers.normalizers import (
     normalize_date,
     normalize_date_range,
     normalize_phone,
     normalize_skill,
     normalize_skills_list,
-    SKILL_ALIASES,
 )
+from ats_core.parsers.pdf_parser import HybridPDFParser
+from ats_core.parsers.section_anchor import (
+    DATE_RANGE_RE,
+    anchor_sections,
+    anchor_skill_mentions,
+    extract_structured_experience_entries,
+    get_section_lines,
+)
+from ats_core.parsers.skill_aggregator import aggregate_skill_mentions
+from ats_core.parsers.skill_matcher import SkillMatcher
+from ats_core.parsers.title_normalizer import calculate_title_trajectory, parse_title
+from ats_core.taxonomy.seed_data import TAXONOMY_VERSION
 
 logger = logging.getLogger("ats.parsers.resume")
 
@@ -57,12 +55,12 @@ TECH_SKILLS_CATALOG = [
     "Git", "GitHub", "GitLab", "Jira", "Agile", "Scrum", "Microservices", "System Design", "Distributed Systems", "TDD", "Unit Testing", "Postman", "Operating System"
 ]
 
-def extract_text_from_document(file_bytes: bytes, filename: str = "resume.pdf") -> Tuple[str, str, str]:
+def extract_text_from_document(file_bytes: bytes, filename: str = "resume.pdf") -> tuple[str, str, str]:
     """Extracts clean formatted text from PDF documents using HybridPDFParser."""
     raw_text, engine = _pdf_parser.parse_pdf(file_bytes, filename=filename)
     return raw_text, engine, "pdf"
 
-def extract_candidate_name(lines: List[str], filename: str = "", email: str = "") -> str:
+def extract_candidate_name(lines: list[str], filename: str = "", email: str = "") -> str:
     """
     Intelligently extracts and validates a candidate's real personal name.
     Handles side-by-side header formats (e.g. 'Deva Kumar B    Cuddalore, Tamil Nadu').
@@ -134,7 +132,7 @@ def extract_email_address(raw_text: str) -> str:
         return "N/A"
 
     # 1. Clean mailto links if present
-    mailto_match = re.search(r"mailto:\s*([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)", raw_text, re.I)
+    mailto_match = re.search(r"mailto:\s*([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)", raw_text, re.IGNORECASE)
     if mailto_match:
         return mailto_match.group(1).strip()
 
@@ -235,7 +233,7 @@ def extract_location(raw_text: str, candidate_name: str = "") -> str:
     ]
 
     for pattern in location_patterns:
-        loc_m = re.search(pattern, raw_text, re.I)
+        loc_m = re.search(pattern, raw_text, re.IGNORECASE)
         if loc_m:
             loc_candidate = loc_m.group(1).strip()
             # Remove candidate's name if accidentally included in the matched string
@@ -259,7 +257,7 @@ def extract_linkedin(raw_text: str) -> str:
     if not raw_text:
         return "N/A"
 
-    linkedin_match = re.search(r"(?:https?:\/\/)?(?:www\.)?linkedin\.com\/(?:in|pub)\/([a-zA-Z0-9_\-\.]+)", raw_text, re.I)
+    linkedin_match = re.search(r"(?:https?:\/\/)?(?:www\.)?linkedin\.com\/(?:in|pub)\/([a-zA-Z0-9_\-\.]+)", raw_text, re.IGNORECASE)
     if linkedin_match:
         handle = linkedin_match.group(1).strip().rstrip("/")
         return f"linkedin.com/in/{handle}"
@@ -297,7 +295,7 @@ def extract_education(raw_text: str) -> str:
         r"((?:Bachelor of Technology|Bachelor of Engineering|Master of Science|B\.Tech|M\.Tech|B\.S\.|M\.S\.)[^\n]{3,60})"
     ]
     for pat in edu_patterns:
-        edu_m = re.search(pat, raw_text, re.I)
+        edu_m = re.search(pat, raw_text, re.IGNORECASE)
         if edu_m:
             edu_candidate = edu_m.group(1).strip()
             edu_candidate = re.split(r"(?i)\b(?:cgpa|gpa|hsc|sslc)\b", edu_candidate)[0].strip()
@@ -307,7 +305,7 @@ def extract_education(raw_text: str) -> str:
 
     return "N/A"
 
-def extract_skills_from_text(raw_text: str, taxonomy_rows=None, allow_llm: bool = True) -> List[str]:
+def extract_skills_from_text(raw_text: str, taxonomy_rows=None, allow_llm: bool = True) -> list[str]:
     """
     Extracts and deterministically normalizes skills using the complete 6-step architecture:
     1. spaCy PhraseMatcher Gazetteer against active ~500+ taxonomy entries.
@@ -315,8 +313,8 @@ def extract_skills_from_text(raw_text: str, taxonomy_rows=None, allow_llm: bool 
     3. LLM Residue Pass with strict verbatim evidence containment verification.
     4. 4-Layer Normalization Cascade (Exact -> Fuzzy -> Embedding -> Flywheel Queue).
     """
-    found_skills: List[str] = []
-    freeform_tokens: List[str] = []
+    found_skills: list[str] = []
+    freeform_tokens: list[str] = []
 
     # 1. Fast Token-Boundary Accurate Gazetteer Matching with spaCy PhraseMatcher (Step 3 & 4)
     try:
@@ -382,7 +380,7 @@ def extract_skills_from_text(raw_text: str, taxonomy_rows=None, allow_llm: bool 
     # 5. Check catalog fallbacks
     for skill in TECH_SKILLS_CATALOG:
         pattern = r"(?<!\w)" + re.escape(skill) + r"(?![\w+#])"
-        if re.search(pattern, raw_text, re.I):
+        if re.search(pattern, raw_text, re.IGNORECASE):
             normalized = normalize_skill(skill, register_flywheel=enable_flywheel)
             if normalized not in found_skills:
                 found_skills.append(normalized)
@@ -397,12 +395,12 @@ def extract_skills_from_text(raw_text: str, taxonomy_rows=None, allow_llm: bool 
 
     return normalized_list
 
-def extract_experience_sections(raw_text: str, default_headline: str = "Software Engineer") -> List[Dict[str, str]]:
+def extract_experience_sections(raw_text: str, default_headline: str = "Software Engineer") -> list[dict[str, str]]:
     """
     Extracts structured experience and internships from the resume text using
     deterministic Section Anchoring and date-range boundary detection.
     """
-    experience_items: List[Dict[str, str]] = []
+    experience_items: list[dict[str, str]] = []
     lines, anchors = anchor_sections(raw_text)
     structured_entries = extract_structured_experience_entries(lines, anchors)
 
@@ -480,14 +478,14 @@ def extract_experience_sections(raw_text: str, default_headline: str = "Software
 
 
 def calculate_candidate_experience_years(
-    raw_text: str, reference_date: Optional[datetime] = None
+    raw_text: str, reference_date: datetime | None = None
 ) -> float:
     """Estimate tenure from dated employment entries, merging concurrent roles.
 
     Education, certificates, undated projects and counts of the word "intern"
     do not establish employment duration. Missing evidence returns zero.
     """
-    from ats_core.parsers.skill_aggregator import parse_date_to_datetime, merge_date_intervals
+    from ats_core.parsers.skill_aggregator import merge_date_intervals, parse_date_to_datetime
 
     reference = reference_date or datetime.now()
     lines, anchors = anchor_sections(raw_text)
@@ -514,9 +512,9 @@ def calculate_candidate_experience_years(
 def parse_resume_to_candidate(
     file_bytes: bytes,
     filename: str = "resume.pdf",
-    target_job: Optional[Dict[str, Any]] = None,
+    target_job: dict[str, Any] | None = None,
     *, taxonomy_rows=None, allow_llm: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Parses a PDF resume with high-precision extractors for candidate name,
     complete phone numbers, location, education, skills, and work experience.

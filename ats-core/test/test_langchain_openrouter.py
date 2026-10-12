@@ -1,15 +1,20 @@
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+
 from pydantic import BaseModel, Field
 
+from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
+from ats_core.evaluator.llm_evaluator import EvaluationReport, LLMEvaluator
 from ats_core.llm.client import get_llm_config, get_openrouter_chat_model, get_structured_llm
-from ats_core.parsers.ollama_extractor import OllamaCandidateExtractor, LangChainCandidateExtractor
-from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator, LangChainDeepEvaluator
-from ats_core.evaluator.llm_evaluator import LLMEvaluator, EvaluationReport
+from ats_core.parsers.ollama_extractor import OllamaCandidateExtractor
 from ats_core.schema.candidate import CandidateProfile
-from ats_core.schema.timeline import EmploymentTimeline
+from ats_core.schema.evaluation import (
+    CriterionCategory,
+    CriterionScore,
+    DeepCandidateEvaluationReport,
+    QualificationTier,
+)
 from ats_core.schema.skills import SkillsTaxonomy
-from ats_core.schema.evaluation import DeepCandidateEvaluationReport, QualificationTier, CriterionScore, CriterionCategory
+from ats_core.schema.timeline import EmploymentTimeline
 
 
 class DummySchema(BaseModel):

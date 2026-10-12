@@ -1,10 +1,8 @@
-import pytest
 from ats_core.parsers.context_enricher import (
-    classify_mention,
-    enrich_candidate_skills,
-    EVIDENCE_WEIGHTS,
     ACTION_VERB_RE,
     METRIC_RE,
+    classify_mention,
+    enrich_candidate_skills,
 )
 
 

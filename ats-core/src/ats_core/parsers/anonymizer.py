@@ -1,10 +1,11 @@
-import re
 import logging
-from typing import List, Optional, Dict, Any, Tuple, Union
+import re
+from typing import Any
+
 from presidio_analyzer import AnalyzerEngine, RecognizerResult
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
-from presidio_anonymizer.entities import OperatorConfig, EngineResult
+from presidio_anonymizer.entities import EngineResult, OperatorConfig
 
 logger = logging.getLogger("ats.parsers.anonymizer")
 
@@ -42,10 +43,10 @@ NAME_DISQUALIFY_WORDS = {
 
 import threading
 
-_ANALYZER_CACHE: Dict[str, AnalyzerEngine] = {}
-_ANONYMIZER_CACHE: Optional[AnonymizerEngine] = None
+_ANALYZER_CACHE: dict[str, AnalyzerEngine] = {}
+_ANONYMIZER_CACHE: AnonymizerEngine | None = None
 _CACHE_LOCK = threading.Lock()
-_SHARED_ANONYMIZERS: Dict[Tuple[str, float], "ResumeAnonymizer"] = {}
+_SHARED_ANONYMIZERS: dict[tuple[str, float], "ResumeAnonymizer"] = {}
 _SHARED_LOCK = threading.Lock()
 
 
@@ -129,9 +130,9 @@ class ResumeAnonymizer:
     def analyze(
         self,
         text: str,
-        entities: Optional[List[str]] = None,
-        score_threshold: Optional[float] = None
-    ) -> List[RecognizerResult]:
+        entities: list[str] | None = None,
+        score_threshold: float | None = None
+    ) -> list[RecognizerResult]:
         """
         Identifies PII bounding spans and confidence scores in the input text.
         """
@@ -150,7 +151,7 @@ class ResumeAnonymizer:
         """
         Redacts phone numbers without wiping employment date intervals like 2019 - 2023.
         """
-        placeholders: Dict[str, str] = {}
+        placeholders: dict[str, str] = {}
         counter = 0
 
         def stash_date(match: re.Match) -> str:
@@ -177,12 +178,12 @@ class ResumeAnonymizer:
     def redact_known_identifiers(
         self,
         text: str,
-        name: Optional[str] = None,
-        email: Optional[str] = None,
-        phone: Optional[str] = None,
-        location: Optional[str] = None,
-        urls: Optional[List[str]] = None,
-        extra_identifiers: Optional[List[str]] = None,
+        name: str | None = None,
+        email: str | None = None,
+        phone: str | None = None,
+        location: str | None = None,
+        urls: list[str] | None = None,
+        extra_identifiers: list[str] | None = None,
     ) -> str:
         """
         Explicitly scrubs known entities extracted by the parser (name, email, phone, location, URLs).
@@ -252,16 +253,16 @@ class ResumeAnonymizer:
     def check_preflight_leak(
         self,
         text: str,
-        name: Optional[str] = None,
-        email: Optional[str] = None,
-        phone: Optional[str] = None,
-        urls: Optional[List[str]] = None,
-    ) -> Tuple[bool, List[str]]:
+        name: str | None = None,
+        email: str | None = None,
+        phone: str | None = None,
+        urls: list[str] | None = None,
+    ) -> tuple[bool, list[str]]:
         """
         Validates that no candidate PII leaks into the text before transmission to an external LLM (e.g. OpenRouter).
         Returns (is_clean, leaked_fields).
         """
-        leaks: List[str] = []
+        leaks: list[str] = []
         if not text:
             return True, []
 
@@ -302,11 +303,11 @@ class ResumeAnonymizer:
     def scrub_residual_pii(
         self,
         text: str,
-        name: Optional[str] = None,
-        email: Optional[str] = None,
-        phone: Optional[str] = None,
-        location: Optional[str] = None,
-        urls: Optional[List[str]] = None,
+        name: str | None = None,
+        email: str | None = None,
+        phone: str | None = None,
+        location: str | None = None,
+        urls: list[str] | None = None,
     ) -> str:
         """
         Aggressively scrubs any remaining residual personal identifiers.
@@ -323,15 +324,15 @@ class ResumeAnonymizer:
     def anonymize(
         self,
         text: str,
-        entities: Optional[List[str]] = None,
-        score_threshold: Optional[float] = None,
-        known_entities: Optional[Dict[str, Any]] = None,
-        known_name: Optional[str] = None,
-        known_email: Optional[str] = None,
-        known_phone: Optional[str] = None,
-        known_location: Optional[str] = None,
-        known_urls: Optional[List[str]] = None,
-        extra_identifiers: Optional[List[str]] = None,
+        entities: list[str] | None = None,
+        score_threshold: float | None = None,
+        known_entities: dict[str, Any] | None = None,
+        known_name: str | None = None,
+        known_email: str | None = None,
+        known_phone: str | None = None,
+        known_location: str | None = None,
+        known_urls: list[str] | None = None,
+        extra_identifiers: list[str] | None = None,
     ) -> str:
         """
         Runs complete multi-stage anonymization:

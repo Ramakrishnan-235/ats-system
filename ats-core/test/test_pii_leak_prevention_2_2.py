@@ -1,10 +1,11 @@
-import pytest
 import hashlib
 from types import SimpleNamespace
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import AsyncMock, Mock
 
-from ats_core.parsers.anonymizer import ResumeAnonymizer
+import pytest
+
 from ats_core.evaluator.audit_logger import AuditLogger, sanitize_audit_prompt
+from ats_core.parsers.anonymizer import ResumeAnonymizer
 from ats_core.schema.evaluation import DeepCandidateEvaluationReport
 
 

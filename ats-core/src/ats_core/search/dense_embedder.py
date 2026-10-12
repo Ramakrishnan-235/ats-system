@@ -2,12 +2,13 @@
 
 import math
 import os
-from typing import List
 
 import httpx
 
 from ats_core.search.embedding_config import (
-    DEFAULT_EMBEDDING_MODEL, EMBEDDING_DIMENSION, validate_embedding,
+    DEFAULT_EMBEDDING_MODEL,
+    EMBEDDING_DIMENSION,
+    validate_embedding,
 )
 
 
@@ -34,8 +35,7 @@ class DenseEmbedder:
             default_url = "http://localhost:8001" if self.backend == "http" else "http://localhost:11434"
             url = (base_url or os.getenv("ATS_EMBEDDING_BASE_URL", default_url)).rstrip("/")
             # The generation client commonly uses /v1; embeddings use native /api/embed.
-            if url.endswith("/v1"):
-                url = url[:-3]
+            url = url.removesuffix("/v1")
             self.client = httpx.Client(base_url=url, timeout=float(os.getenv("ATS_EMBEDDING_TIMEOUT", "120")),
                                        transport=transport, follow_redirects=False)
         else:
@@ -53,7 +53,7 @@ class DenseEmbedder:
             )
             self.model.max_seq_length = min(self.model.max_seq_length, 8192)
 
-    def _encode(self, texts: List[str], prefix: str) -> List[List[float]]:
+    def _encode(self, texts: list[str], prefix: str) -> list[list[float]]:
         if not texts:
             return []
         if any(not isinstance(text, str) or not text.strip() for text in texts):
@@ -84,10 +84,10 @@ class DenseEmbedder:
                 vectors.append([value / norm for value in vector])
         return vectors
 
-    def embed_documents(self, documents: List[str]) -> List[List[float]]:
+    def embed_documents(self, documents: list[str]) -> list[list[float]]:
         return self._encode(documents, "title: none | text: ")
 
-    def embed_query(self, query: str) -> List[float]:
+    def embed_query(self, query: str) -> list[float]:
         return self._encode([query], "task: search result | query: ")[0]
 
     def close(self):

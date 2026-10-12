@@ -1,7 +1,7 @@
 """Deterministic UUID conversion utilities for candidate, job, and application IDs."""
 
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 # Stable namespace UUID for deterministic UUIDv5 generation from custom string IDs
 ATS_NAMESPACE = uuid.UUID("a3bb189e-8bf9-3888-9912-ace4e6543002")
@@ -53,7 +53,7 @@ def coerce_to_uuid(val: Any) -> uuid.UUID:
     return uuid.uuid5(ATS_NAMESPACE, s)
 
 
-def optional_coerce_to_uuid(val: Any) -> Optional[uuid.UUID]:
+def optional_coerce_to_uuid(val: Any) -> uuid.UUID | None:
     """Coerce to UUID if val is provided, else return None."""
     if val is None:
         return None

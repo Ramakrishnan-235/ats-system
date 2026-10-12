@@ -16,10 +16,9 @@ Features:
 """
 
 import logging
-import os
-import time
 import statistics
-from typing import Any, Dict, List, Optional, Tuple
+import time
+from typing import Any
 
 logger = logging.getLogger("ats.evaluator.benchmark")
 
@@ -179,7 +178,7 @@ BENCHMARK_EXAMPLES = [
 
 def sync_langsmith_benchmark_dataset(
     dataset_name: str = "ats-candidate-benchmark-v1",
-) -> Optional[Any]:
+) -> Any | None:
     """
     Creates or retrieves the benchmark dataset on LangSmith (https://smith.langchain.com).
     Uploads the curated candidate test cases if they do not yet exist.
@@ -232,7 +231,7 @@ def sync_langsmith_benchmark_dataset(
 
 # --- EVALUATOR FUNCTIONS ---
 
-def evaluate_tier_accuracy(run_output: Dict[str, Any], example_output: Dict[str, Any]) -> Dict[str, Any]:
+def evaluate_tier_accuracy(run_output: dict[str, Any], example_output: dict[str, Any]) -> dict[str, Any]:
     """Evaluates whether the model's assigned qualification tier matches ground truth."""
     pred_tier = str(run_output.get("qualification_tier", "")).lower().replace(" match", "").replace("_", " ")
     expected_tier = str(example_output.get("expected_tier", "")).lower().replace(" match", "").replace("_", " ")
@@ -245,7 +244,7 @@ def evaluate_tier_accuracy(run_output: Dict[str, Any], example_output: Dict[str,
     }
 
 
-def evaluate_score_calibration(run_output: Dict[str, Any], example_output: Dict[str, Any]) -> Dict[str, Any]:
+def evaluate_score_calibration(run_output: dict[str, Any], example_output: dict[str, Any]) -> dict[str, Any]:
     """Evaluates whether the assigned overall match score falls within expected rubric boundaries."""
     score = float(run_output.get("overall_match_score", 0.0))
     min_score = float(example_output.get("min_score", 0.0))
@@ -259,7 +258,7 @@ def evaluate_score_calibration(run_output: Dict[str, Any], example_output: Dict[
     }
 
 
-def evaluate_citation_grounding(run_output: Dict[str, Any], example_input: Dict[str, Any]) -> Dict[str, Any]:
+def evaluate_citation_grounding(run_output: dict[str, Any], example_input: dict[str, Any]) -> dict[str, Any]:
     """Anti-hallucination evaluator: verifies verbatim citations against candidate profile."""
     profile_text = " ".join(example_input.get("candidate_profile", "").split()).lower()
     criteria = run_output.get("criteria_breakdown", []) or []
@@ -286,7 +285,7 @@ def evaluate_citation_grounding(run_output: Dict[str, Any], example_input: Dict[
     }
 
 
-def evaluate_injection_defense(run_output: Dict[str, Any], example_output: Dict[str, Any]) -> Dict[str, Any]:
+def evaluate_injection_defense(run_output: dict[str, Any], example_output: dict[str, Any]) -> dict[str, Any]:
     """Verifies that adversarial prompt injection was completely defanged."""
     is_adversarial = example_output.get("is_adversarial", False)
     if not is_adversarial:
@@ -307,18 +306,18 @@ def evaluate_injection_defense(run_output: Dict[str, Any], example_output: Dict[
 # --- LOCAL & ONLINE BENCHMARK RUNNER ---
 
 def run_candidate_benchmark(
-    evaluator: Optional[Any] = None,
+    evaluator: Any | None = None,
     target_latency_seconds: float = 3.0,
     dataset_name: str = "ats-candidate-benchmark-v1",
-    model_name: Optional[str] = None,
-) -> Dict[str, Any]:
+    model_name: str | None = None,
+) -> dict[str, Any]:
     """
     Executes the candidate evaluation benchmark across all test cases.
     Tracks model performance metrics (Accuracy, Calibration, Grounding, Latency).
     If LangSmith is configured, syncs dataset and traces runs directly to LangSmith!
     """
     from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
-    from ats_core.evaluator.langsmith_tracker import is_langsmith_enabled, get_langsmith_project
+    from ats_core.evaluator.langsmith_tracker import get_langsmith_project, is_langsmith_enabled
 
     if evaluator is None:
         evaluator = LocalDeepEvaluator(model_name=model_name, temperature=0.1)
@@ -337,12 +336,12 @@ def run_candidate_benchmark(
     if langsmith_active:
         sync_langsmith_benchmark_dataset(dataset_name=dataset_name)
 
-    latencies_sec: List[float] = []
-    tier_accuracy_scores: List[float] = []
-    calibration_scores: List[float] = []
-    grounding_scores: List[float] = []
-    injection_defense_scores: List[float] = []
-    results_table: List[Dict[str, Any]] = []
+    latencies_sec: list[float] = []
+    tier_accuracy_scores: list[float] = []
+    calibration_scores: list[float] = []
+    grounding_scores: list[float] = []
+    injection_defense_scores: list[float] = []
+    results_table: list[dict[str, Any]] = []
 
     print(f"{'Candidate ID':<24} | {'Score':<6} | {'Tier':<14} | {'Grounding':<10} | {'Latency':<9} | {'Status'}")
     print("-" * 85)

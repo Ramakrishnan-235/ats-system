@@ -9,14 +9,15 @@ Normalizes messy resume job titles into structured dimensions:
 4. Career Trajectory: Computes seniority velocity and promotion history across timeline.
 """
 
-import re
 import logging
-from typing import Dict, Any, List, Optional, Tuple
-from rapidfuzz import process, fuzz
+import re
+from typing import Any
+
+from rapidfuzz import fuzz, process
 
 logger = logging.getLogger("ats.parsers.title_normalizer")
 
-SENIORITY_PATTERNS: List[Tuple[str, str]] = [
+SENIORITY_PATTERNS: list[tuple[str, str]] = [
     # Ordered highest -> lowest; first match wins
     (r"\b(?:chief|cto|ceo|cfo|coo|cpo|ciso|cio)\b", "exec"),
     (r"\b(?:vp|vice\s+president|svp|evp|avp)\b", "vp"),
@@ -28,7 +29,7 @@ SENIORITY_PATTERNS: List[Tuple[str, str]] = [
     (r"\b(?:junior|jr\.?|intern|internship|trainee|graduate|entry[- ]level|associate|apprentice)\b", "junior"),
 ]
 
-ROMAN_LEVELS: Dict[str, str] = {
+ROMAN_LEVELS: dict[str, str] = {
     "i": "junior",
     "ii": "mid",
     "iii": "senior",
@@ -36,7 +37,7 @@ ROMAN_LEVELS: Dict[str, str] = {
     "v": "staff",
 }
 
-NUMERIC_LEVELS: Dict[str, str] = {
+NUMERIC_LEVELS: dict[str, str] = {
     "1": "junior",
     "2": "mid",
     "3": "senior",
@@ -44,7 +45,7 @@ NUMERIC_LEVELS: Dict[str, str] = {
     "5": "staff",
 }
 
-TITLE_ABBREVIATIONS: Dict[str, str] = {
+TITLE_ABBREVIATIONS: dict[str, str] = {
     "sde": "software engineer",
     "swe": "software engineer",
     "sse": "senior software engineer",
@@ -70,7 +71,7 @@ TITLE_ABBREVIATIONS: Dict[str, str] = {
 }
 
 # Standard O*NET-aligned canonical functions
-CANONICAL_FUNCTIONS: List[str] = [
+CANONICAL_FUNCTIONS: list[str] = [
     "Software Engineer",
     "Backend Engineer",
     "Frontend Engineer",
@@ -104,7 +105,7 @@ CANONICAL_FUNCTIONS: List[str] = [
     "Product Designer",
 ]
 
-SENIORITY_RANKS: Dict[str, int] = {
+SENIORITY_RANKS: dict[str, int] = {
     "junior": 1,
     "mid": 2,
     "senior": 3,
@@ -172,7 +173,7 @@ def canonicalize_function(raw_func: str, score_cutoff: float = 75.0) -> str:
     return clean.title()
 
 
-def parse_title(raw: Optional[str]) -> Dict[str, Any]:
+def parse_title(raw: str | None) -> dict[str, Any]:
     """
     Parses a raw job title into structured components:
     - seniority: exec | vp | director | manager | staff | lead | senior | mid | junior
@@ -234,7 +235,7 @@ def parse_title(raw: Optional[str]) -> Dict[str, Any]:
     }
 
 
-def calculate_title_trajectory(experience_entries: List[Dict[str, Any]]) -> Dict[str, Any]:
+def calculate_title_trajectory(experience_entries: list[dict[str, Any]]) -> dict[str, Any]:
     """
     Analyzes title trajectory across a candidate's career history (ordered latest -> earliest
     or earliest -> latest).

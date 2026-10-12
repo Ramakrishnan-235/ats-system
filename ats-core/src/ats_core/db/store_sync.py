@@ -8,14 +8,14 @@ Ensures that:
 - Offline/mock test environments gracefully fallback to in-memory stores without error.
 """
 
+import logging
 import os
 import time
-import logging
-from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
 from contextlib import contextmanager
+from datetime import UTC, datetime
+from typing import Any
 
-from ats_core.models.id_utils import coerce_to_uuid, optional_coerce_to_uuid
+from ats_core.models.id_utils import coerce_to_uuid
 
 logger = logging.getLogger("ats.db.sync")
 
@@ -67,7 +67,7 @@ def get_sync_session():
             pass
 
 
-def _candidate_row_to_dict(db_c, original_id: Optional[str] = None) -> Dict[str, Any]:
+def _candidate_row_to_dict(db_c, original_id: str | None = None) -> dict[str, Any]:
     prof = db_c.structured_profile or {}
     cid = original_id or prof.get("candidate_id") or prof.get("id") or f"cand-{db_c.id.hex}"
     
@@ -108,7 +108,7 @@ def _candidate_row_to_dict(db_c, original_id: Optional[str] = None) -> Dict[str,
         "email": prof.get("email", "N/A"),
         "phone": prof.get("phone", "N/A"),
         "linkedin": prof.get("linkedin", "N/A"),
-        "created_at": db_c.created_at.isoformat() if getattr(db_c, "created_at", None) else datetime.now(timezone.utc).isoformat(),
+        "created_at": db_c.created_at.isoformat() if getattr(db_c, "created_at", None) else datetime.now(UTC).isoformat(),
     }
 
 
@@ -118,8 +118,8 @@ def sync_candidates_from_db() -> int:
         if not session:
             return 0
         try:
-            from ats_core.models.db import Candidate
             from ats_core.api.v1.candidates import CANDIDATES_STORE
+            from ats_core.models.db import Candidate
 
             db_candidates = session.query(Candidate).all()
             for db_c in db_candidates:
@@ -138,14 +138,14 @@ def sync_candidates_from_db() -> int:
             return 0
 
 
-def sync_candidate_by_id_from_db(candidate_id: str) -> Optional[Dict[str, Any]]:
+def sync_candidate_by_id_from_db(candidate_id: str) -> dict[str, Any] | None:
     """Look up a candidate from PostgreSQL by ID and populate CANDIDATES_STORE."""
     with get_sync_session() as session:
         if not session:
             return None
         try:
-            from ats_core.models.db import Candidate
             from ats_core.api.v1.candidates import CANDIDATES_STORE
+            from ats_core.models.db import Candidate
 
             cand_uuid = coerce_to_uuid(candidate_id)
             db_c = session.query(Candidate).filter(Candidate.id == cand_uuid).first()
@@ -160,7 +160,7 @@ def sync_candidate_by_id_from_db(candidate_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def sync_candidate_to_db(cand_dict: Dict[str, Any]) -> bool:
+def sync_candidate_to_db(cand_dict: dict[str, Any]) -> bool:
     """Upsert a candidate dictionary into PostgreSQL candidates table."""
     with get_sync_session() as session:
         if not session:
@@ -201,9 +201,10 @@ def sync_jobs_from_db() -> int:
         if not session:
             return 0
         try:
-            from ats_core.models.db import JobPosting, Application
             from sqlalchemy import func
-            from ats_core.api.v1.jobs import JOBS_STORE, JOB_CANDIDATES_STORE
+
+            from ats_core.api.v1.jobs import JOB_CANDIDATES_STORE, JOBS_STORE
+            from ats_core.models.db import Application, JobPosting
 
             db_jobs = session.query(JobPosting).all()
             if not db_jobs:
@@ -257,15 +258,16 @@ def sync_jobs_from_db() -> int:
             return 0
 
 
-def sync_job_by_id_from_db(job_id: str) -> Optional[Dict[str, Any]]:
+def sync_job_by_id_from_db(job_id: str) -> dict[str, Any] | None:
     """Look up a job from PostgreSQL by ID and populate JOBS_STORE."""
     with get_sync_session() as session:
         if not session:
             return None
         try:
-            from ats_core.models.db import JobPosting, Application
             from sqlalchemy import func
-            from ats_core.api.v1.jobs import JOBS_STORE, JOB_CANDIDATES_STORE
+
+            from ats_core.api.v1.jobs import JOB_CANDIDATES_STORE, JOBS_STORE
+            from ats_core.models.db import Application, JobPosting
 
             job_uuid = coerce_to_uuid(job_id)
             db_j = session.query(JobPosting).filter(JobPosting.id == job_uuid).first()
@@ -304,7 +306,7 @@ def sync_job_by_id_from_db(job_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def sync_job_to_db(job_dict: Dict[str, Any]) -> bool:
+def sync_job_to_db(job_dict: dict[str, Any]) -> bool:
     """Upsert a job requisition dictionary into PostgreSQL job_postings table."""
     with get_sync_session() as session:
         if not session:
@@ -349,9 +351,9 @@ def sync_applications_for_job_from_db(job_id: str) -> int:
         if not session:
             return 0
         try:
-            from ats_core.models.db import Application, Candidate
-            from ats_core.api.v1.jobs import JOB_CANDIDATES_STORE, JOBS_STORE
             from ats_core.api.v1.candidates import CANDIDATES_STORE
+            from ats_core.api.v1.jobs import JOB_CANDIDATES_STORE, JOBS_STORE
+            from ats_core.models.db import Application, Candidate
 
             job_uuid = coerce_to_uuid(job_id)
             apps = session.query(Application).filter(Application.job_id == job_uuid).all()
@@ -398,7 +400,7 @@ def sync_applications_for_job_from_db(job_id: str) -> int:
             return 0
 
 
-def sync_application_to_db(job_id: str, candidate_obj: Dict[str, Any]) -> bool:
+def sync_application_to_db(job_id: str, candidate_obj: dict[str, Any]) -> bool:
     """Upsert an application linking a candidate to a job requisition in PostgreSQL."""
     with get_sync_session() as session:
         if not session:
@@ -459,14 +461,14 @@ def delete_application_from_db(job_id: str, candidate_id: str) -> bool:
     return False
 
 
-def sync_task_status_from_db(task_id: str) -> Optional[Dict[str, Any]]:
+def sync_task_status_from_db(task_id: str) -> dict[str, Any] | None:
     """Look up an upload task state from PostgreSQL structured profiles across worker processes."""
     with get_sync_session() as session:
         if not session:
             return None
         try:
-            from ats_core.models.db import Candidate
             from ats_core.api.v1.candidates import UPLOAD_TASKS_STORE
+            from ats_core.models.db import Candidate
 
             db_candidates = session.query(Candidate).all()
             for db_c in db_candidates:
@@ -493,7 +495,7 @@ def sync_task_status_from_db(task_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def sync_all_from_db() -> Dict[str, int]:
+def sync_all_from_db() -> dict[str, int]:
     """Execute full startup/recovery synchronization from PostgreSQL into all in-memory caches."""
     if not is_db_available():
         return {"candidates": 0, "jobs": 0, "applications": 0}

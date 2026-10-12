@@ -2,8 +2,8 @@ import asyncio
 import logging
 import os
 from pathlib import Path
+
 from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy import text
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ats.db.provision")

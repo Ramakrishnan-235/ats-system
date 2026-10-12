@@ -1,10 +1,8 @@
-import json
 import logging
 import os
-import uuid
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 from celery import Task
 from celery.exceptions import SoftTimeLimitExceeded
@@ -13,10 +11,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import DataError, IntegrityError, ProgrammingError
 from sqlalchemy.orm import sessionmaker
 
-from ats_core.workers.celery_app import celery_app
+from ats_core.api.upload_storage import MAX_UPLOAD_BYTES, UPLOAD_STAGING_DIR
 from ats_core.models.db import Candidate
 from ats_core.models.id_utils import coerce_to_uuid
-from ats_core.api.upload_storage import UPLOAD_STAGING_DIR, MAX_UPLOAD_BYTES
+from ats_core.workers.celery_app import celery_app
 
 logger = logging.getLogger("ats.workers.tasks")
 
@@ -39,9 +37,9 @@ def get_session_factory():
 @lru_cache(maxsize=1)
 def get_processing_components():
     # Heavy models load only when a task runs, not when Celery discovers tasks.
-    from ats_core.parsers.pdf_parser import HybridPDFParser
     from ats_core.parsers.anonymizer import ResumeAnonymizer
     from ats_core.parsers.ollama_extractor import OllamaCandidateExtractor
+    from ats_core.parsers.pdf_parser import HybridPDFParser
     from ats_core.search.pgvector_store import PgVectorStore
 
     return (
@@ -100,7 +98,7 @@ def _execute_resume_processing(
     file_path: str,
     candidate_id: str,
     original_filename: str = "resume.pdf"
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Core resume processing pipeline:
     Parses PDF layout, masks PII, extracts structured profile,
@@ -218,7 +216,7 @@ def process_resume_task(
     file_path: str,
     candidate_id: str,
     original_filename: str = "resume.pdf"
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return _execute_resume_processing(self, file_path, candidate_id, original_filename)
 
 
@@ -232,5 +230,5 @@ def process_resume_pdf_task(
     file_path: str,
     candidate_id: str,
     original_filename: str = "resume.pdf"
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return _execute_resume_processing(self, file_path, candidate_id, original_filename)

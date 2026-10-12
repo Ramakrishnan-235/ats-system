@@ -20,16 +20,16 @@ Provides:
 import logging
 import os
 import threading
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 logger = logging.getLogger("ats.evaluator.langsmith")
 
-_client_instance: Optional[Any] = None
+_client_instance: Any | None = None
 _client_lock = threading.Lock()
 _client_init_failed = False
 
 
-def get_langsmith_config() -> Dict[str, Any]:
+def get_langsmith_config() -> dict[str, Any]:
     """
     Resolves LangSmith environment configuration.
     Supports standard LangChain / LangSmith environment variables.
@@ -80,7 +80,7 @@ def get_langsmith_project() -> str:
     return get_langsmith_config()["project"]
 
 
-def get_langsmith_client() -> Optional[Any]:
+def get_langsmith_client() -> Any | None:
     """
     Thread-safe cached singleton for the LangSmith Client.
     Returns None if LangSmith is disabled, unconfigured, or fails to initialize.
@@ -128,9 +128,9 @@ def build_evaluation_run_config(
     job_title: str,
     model_name: str,
     evaluator_type: str = "deep_evaluator",
-    extra_tags: Optional[List[str]] = None,
-    extra_metadata: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    extra_tags: list[str] | None = None,
+    extra_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Builds a LangChain RunnableConfig dictionary containing standardized run name,
     tags, and metadata for tracking in LangSmith.
@@ -138,7 +138,7 @@ def build_evaluation_run_config(
     sanitized_job = (job_title or "General").strip().replace("\n", " ")[:40]
     run_name = f"{evaluator_type}:{sanitized_job}"
 
-    tags: List[str] = [
+    tags: list[str] = [
         "ats-system",
         evaluator_type,
         model_name,
@@ -146,7 +146,7 @@ def build_evaluation_run_config(
     if extra_tags:
         tags.extend([t for t in extra_tags if t and t not in tags])
 
-    metadata: Dict[str, Any] = {
+    metadata: dict[str, Any] = {
         "candidate_id": str(candidate_id),
         "job_title": str(job_title),
         "model_name": str(model_name),
@@ -163,17 +163,17 @@ def build_evaluation_run_config(
     }
 
 
-def get_run_url(run_id: str, project_name: Optional[str] = None) -> str:
+def get_run_url(run_id: str, project_name: str | None = None) -> str:
     """Constructs a direct URL to inspect the run trace in the LangSmith web UI."""
     project = project_name or get_langsmith_project()
     return f"https://smith.langchain.com/o/default/projects/p/{project}/r/{run_id}"
 
 
 def log_evaluation_feedback(
-    run_id: Optional[str],
-    metrics: Dict[str, Any],
-    tags: Optional[List[str]] = None,
-    comment: Optional[str] = None,
+    run_id: str | None,
+    metrics: dict[str, Any],
+    tags: list[str] | None = None,
+    comment: str | None = None,
 ) -> bool:
     """
     Records performance evaluation metrics and feedback for a specific LangSmith run.
@@ -226,9 +226,9 @@ def log_evaluation_feedback(
 
 
 def compute_citation_validity(
-    criteria_breakdown: List[Any],
+    criteria_breakdown: list[Any],
     source_text: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Evaluates anti-hallucination citation adherence:
     Checks how many citations produced by the model are genuinely present

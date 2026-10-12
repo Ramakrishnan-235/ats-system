@@ -1,6 +1,7 @@
 import io
 import logging
-from typing import Tuple, List, Dict, Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
 import fitz  # PyMuPDF
 
 if TYPE_CHECKING:
@@ -28,8 +29,8 @@ class PDFLayoutAnalyzer:
         if len(blocks) < 2:
             return False
 
-        left_column_blocks: List[Tuple[float, float, float, float]] = []
-        right_column_blocks: List[Tuple[float, float, float, float]] = []
+        left_column_blocks: list[tuple[float, float, float, float]] = []
+        right_column_blocks: list[tuple[float, float, float, float]] = []
 
         # Check for side-by-side blocks
         for b in blocks:
@@ -95,7 +96,7 @@ class HybridPDFParser:
         conversion_result = self.docling_converter.convert(doc_stream)
         return conversion_result.document.export_to_markdown()
 
-    def parse_pdf(self, file_bytes: bytes, filename: str = "resume.pdf") -> Tuple[str, str]:
+    def parse_pdf(self, file_bytes: bytes, filename: str = "resume.pdf") -> tuple[str, str]:
         """
         Parses a PDF using the fastest accurate engine.
         Returns: Tuple[extracted_markdown_text, engine_used]
@@ -146,7 +147,7 @@ class HybridPDFParser:
 
                 return extracted_text, "pymupdf"
 
-    def locate_citation_in_pdf(self, file_bytes: bytes, search_phrase: str) -> Optional[Dict[str, Any]]:
+    def locate_citation_in_pdf(self, file_bytes: bytes, search_phrase: str) -> dict[str, Any] | None:
         """
         Searches for a verbatim citation phrase in a PDF document and returns
         the 1-indexed page number and normalized bounding box coordinates (0-100%).

@@ -9,13 +9,13 @@ Regression tests for Finding 2.6:
 6. Flywheel auto-registration is gated by ATS_FLYWHEEL_AUTO_REGISTER (default: False).
 """
 
-import os
-import pytest
 from unittest.mock import MagicMock
-from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService, RESUME_PROSE_STOPWORDS
+
+import pytest
+
 from ats_core.parsers.llm_residue_extractor import LLMResidueExtractor
-from ats_core.parsers.normalization_cascade import resolve_skill, resolve_skills_batch
 from ats_core.parsers.resume_parser import extract_skills_from_text
+from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
 
 
 @pytest.fixture(autouse=True)

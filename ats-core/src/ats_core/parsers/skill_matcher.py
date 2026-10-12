@@ -12,10 +12,10 @@ Uses spaCy's PhraseMatcher for token-boundary accurate gazetteer matching:
 
 import logging
 import threading
-from typing import Dict, Any, List, Optional, Tuple, Set
+from typing import Any, Optional
 
-from ats_core.parsers.section_anchor import anchor_sections
 from ats_core.parsers.disambiguation import is_valid_mention
+from ats_core.parsers.section_anchor import anchor_sections
 
 logger = logging.getLogger("ats.parsers.skill_matcher")
 
@@ -27,14 +27,14 @@ class SkillMatcher:
     _instance: Optional["SkillMatcher"] = None
     _instance_lock: threading.Lock = threading.Lock()
 
-    def __init__(self, taxonomy_rows: Optional[List[Dict[str, Any]]] = None):
+    def __init__(self, taxonomy_rows: list[dict[str, Any]] | None = None):
         import spacy
         from spacy.matcher import PhraseMatcher
 
         self.nlp = spacy.blank("en")
         self.matcher = PhraseMatcher(self.nlp.vocab, attr="LOWER")
-        self.row_by_id: Dict[str, Dict[str, Any]] = {}
-        self.id_by_key: Dict[str, str] = {}
+        self.row_by_id: dict[str, dict[str, Any]] = {}
+        self.id_by_key: dict[str, str] = {}
 
         if taxonomy_rows is None:
             from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
@@ -51,7 +51,7 @@ class SkillMatcher:
                     cls._instance = SkillMatcher()
         return cls._instance
 
-    def reload(self, taxonomy_rows: Optional[List[Dict[str, Any]]] = None):
+    def reload(self, taxonomy_rows: list[dict[str, Any]] | None = None):
         """Re-indexes PhraseMatcher patterns with updated taxonomy rows."""
         from spacy.matcher import PhraseMatcher
 
@@ -66,7 +66,7 @@ class SkillMatcher:
 
         self._build_matcher(taxonomy_rows)
 
-    def _build_matcher(self, taxonomy_rows: List[Dict[str, Any]]):
+    def _build_matcher(self, taxonomy_rows: list[dict[str, Any]]):
         """Compiles phrase patterns into spaCy PhraseMatcher."""
         added_count = 0
         for row in taxonomy_rows:
@@ -93,7 +93,7 @@ class SkillMatcher:
 
         logger.info(f"SkillMatcher indexed {added_count} canonical skills with spaCy PhraseMatcher.")
 
-    def find(self, text: str) -> List[Tuple[str, str, int, int, int, int]]:
+    def find(self, text: str) -> list[tuple[str, str, int, int, int, int]]:
         """
         Extracts skill mentions from text.
         Returns: List of tuples (skill_id, surface_text, tok_start, tok_end, char_start, char_end).
@@ -127,8 +127,8 @@ class SkillMatcher:
 
         # Longest-match-first dedupe: token length desc, char length desc
         matches.sort(key=lambda m: (m[3] - m[2], m[5] - m[4]), reverse=True)
-        taken: List[Tuple[int, int]] = []
-        out: List[Tuple[str, str, int, int, int, int]] = []
+        taken: list[tuple[int, int]] = []
+        out: list[tuple[str, str, int, int, int, int]] = []
 
         for m in matches:
             # Overlap check: char_start < taken_end and taken_start < char_end
@@ -141,12 +141,12 @@ class SkillMatcher:
         out.sort(key=lambda m: m[4])
         return out
 
-    def find_rich(self, text: str) -> List[Dict[str, Any]]:
+    def find_rich(self, text: str) -> list[dict[str, Any]]:
         """
         Returns rich structured matches with metadata for downstream evidence anchoring.
         """
         raw_matches = self.find(text)
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
 
         for skill_id, surface, tok_start, tok_end, char_start, char_end in raw_matches:
             row = self.row_by_id.get(skill_id, {})
@@ -165,13 +165,13 @@ class SkillMatcher:
 
         return results
 
-    def extract_canonical_skills(self, text: str) -> List[str]:
+    def extract_canonical_skills(self, text: str) -> list[str]:
         """
         Returns deduplicated ordered list of canonical skill names detected in text.
         """
         rich_matches = self.find_rich(text)
-        seen: Set[str] = set()
-        canonical_skills: List[str] = []
+        seen: set[str] = set()
+        canonical_skills: list[str] = []
 
         for item in rich_matches:
             cname = item["canonical_name"]
@@ -181,7 +181,7 @@ class SkillMatcher:
 
         return canonical_skills
 
-    def match_skills_with_sections(self, text: str) -> List[Dict[str, Any]]:
+    def match_skills_with_sections(self, text: str) -> list[dict[str, Any]]:
         """
         Combines Gazetteer Matching with Section Anchoring:
         Attaches exact section ('experience', 'skills', 'projects', etc.),
@@ -218,7 +218,7 @@ class SkillMatcher:
             "header": 0.2,
         }
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         for m in rich_matches:
             c_start = m["char_start"]
             # Find the enclosing line

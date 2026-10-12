@@ -1,8 +1,7 @@
-import sys
-import math
 import asyncio
+import math
+import sys
 from pathlib import Path
-from PIL import Image
 
 src_dir = str(Path(__file__).resolve().parent.parent / "src")
 if src_dir not in sys.path:
@@ -13,10 +12,10 @@ if root_dir not in sys.path:
     sys.path.insert(0, root_dir)
 
 import pytest
-from ats_core.search.reranker import CandidateReranker
-from ats_core.search.bm25_indexer import BM25LexicalIndex
+
 from ats_core.evaluator.llm_evaluator import _sanitize_untrusted_prompt_input
-from ats_core.api.auth import verify_api_key
+from ats_core.search.bm25_indexer import BM25LexicalIndex
+from ats_core.search.reranker import CandidateReranker
 
 
 def test_reranker_sigmoid_overflow():
@@ -69,9 +68,16 @@ def test_prompt_injection():
 @pytest.mark.asyncio
 async def test_auth():
     print("[4/4] Testing API Key verification...")
-    # Test dev mode fallback
-    res = await verify_api_key(header_key=None, bearer_creds=None)
-    assert res is not None
+    from unittest.mock import patch
+
+    import ats_core.api.auth as auth_mod
+    with patch.object(auth_mod, "ATS_AUTH_ENABLED", False):
+        res = await auth_mod.verify_api_key(header_key=None, bearer_creds=None)
+        assert res == "anonymous_dev_user"
+    with patch.object(auth_mod, "ATS_AUTH_ENABLED", True), \
+         patch.object(auth_mod, "EXPECTED_API_KEY", "test-auth-key-123"):
+        res = await auth_mod.verify_api_key(header_key="test-auth-key-123", bearer_creds=None)
+        assert res == "test-auth-key-123"
     print("  ✓ API Key verification operational.")
 
 

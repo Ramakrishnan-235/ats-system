@@ -1,10 +1,11 @@
 import pytest
 from fastapi.testclient import TestClient
+
+from ats_core.api import auth
+from ats_core.parsers.normalizers import normalize_skill
+from ats_core.schema.skills import SkillsTaxonomy
 from ats_core.taxonomy.seed_data import SEED_SKILLS, TAXONOMY_VERSION
 from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
-from ats_core.parsers.normalizers import normalize_skill, normalize_skills_list
-from ats_core.schema.skills import SkillsTaxonomy, ExtractedSkill
-from ats_core.api import auth
 from main import app
 
 TEST_API_KEY = "test-only-api-key"

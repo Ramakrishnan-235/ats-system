@@ -103,4 +103,3 @@ func parseBoolEnv(val string, defaultVal bool) bool {
 		return defaultVal
 	}
 }
-

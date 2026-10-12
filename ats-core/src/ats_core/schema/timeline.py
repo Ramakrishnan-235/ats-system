@@ -1,6 +1,8 @@
 from enum import Enum
-from typing import List, Optional, Any
-from pydantic import BaseModel, Field, ConfigDict, model_validator, AliasChoices
+from typing import Any
+
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+
 from ats_core.schema._normalization import normalization_input
 
 
@@ -32,7 +34,7 @@ class WorkExperience(BaseModel):
         description="Start date in YYYY-MM or YYYY format (e.g., '2021-03').",
         validation_alias=AliasChoices("start_date", "start", "from")
     )
-    end_date: Optional[str] = Field(
+    end_date: str | None = Field(
         default="Present",
         description="End date in YYYY-MM / YYYY format, or 'Present' if currently employed.",
         validation_alias=AliasChoices("end_date", "end", "to")
@@ -42,23 +44,23 @@ class WorkExperience(BaseModel):
         description="True if the candidate currently holds this position.",
         validation_alias=AliasChoices("is_current_role", "current", "is_current")
     )
-    duration_months: Optional[int] = Field(
+    duration_months: int | None = Field(
         default=None,
         ge=0,
         description="Total duration of the role in continuous months.",
         validation_alias=AliasChoices("duration_months", "duration")
     )
-    primary_technologies: List[str] = Field(
+    primary_technologies: list[str] = Field(
         default_factory=list,
         description="Key tech stack used specifically in this role.",
         validation_alias=AliasChoices("primary_technologies", "technologies", "tech_stack", "skills")
     )
-    responsibilities: List[str] = Field(
+    responsibilities: list[str] = Field(
         default_factory=list,
         description="Core operational duties and leadership responsibilities.",
         validation_alias=AliasChoices("responsibilities", "duties")
     )
-    quantified_achievements: List[str] = Field(
+    quantified_achievements: list[str] = Field(
         default_factory=list,
         description="High-impact bullet points with metrics (e.g., 'Reduced query latency by 45%').",
         validation_alias=AliasChoices("quantified_achievements", "achievements", "highlights", "impact")
@@ -85,12 +87,12 @@ class WorkExperience(BaseModel):
                     data["workplace_type"] = WorkplaceType.UNKNOWN.value
 
             # Deterministic Date Normalization
-            if "start_date" in data and data["start_date"]:
+            if data.get("start_date"):
                 norm_start = normalize_date(str(data["start_date"]), is_current=False)
                 if norm_start:
                     data["start_date"] = norm_start
 
-            if "end_date" in data and data["end_date"]:
+            if data.get("end_date"):
                 is_curr = bool(data.get("is_current_role", False))
                 norm_end = normalize_date(str(data["end_date"]), is_current=is_curr)
                 if norm_end:
@@ -107,7 +109,7 @@ class EmploymentGap(BaseModel):
     start_date: str = Field(description="Start date of employment gap in YYYY-MM format.")
     end_date: str = Field(description="End date of employment gap in YYYY-MM format.")
     gap_duration_months: int = Field(default=3, ge=1, description="Duration of gap in months.")
-    inferred_reason: Optional[str] = Field(
+    inferred_reason: str | None = Field(
         default=None,
         description="Explanation if referenced in resume (e.g., 'Higher Education', 'Sabbatical')."
     )
@@ -120,21 +122,21 @@ class EmploymentTimeline(BaseModel):
         description="Total cumulative years of professional full-time experience (excluding gaps/internships).",
         validation_alias=AliasChoices("total_continuous_years", "total_years", "years_of_experience", "total_experience_years")
     )
-    positions: List[WorkExperience] = Field(
+    positions: list[WorkExperience] = Field(
         default_factory=list,
         description="Chronologically ordered work history, starting from the most recent role.",
         validation_alias=AliasChoices("positions", "experiences", "work_history", "jobs")
     )
-    career_gaps: List[EmploymentGap] = Field(
+    career_gaps: list[EmploymentGap] = Field(
         default_factory=list,
         description="Identified gaps in employment greater than 3 months.",
         validation_alias=AliasChoices("career_gaps", "gaps")
     )
-    longest_tenure_months: Optional[int] = Field(
+    longest_tenure_months: int | None = Field(
         default=None,
         description="Longest single position tenure in months."
     )
-    average_tenure_months: Optional[float] = Field(
+    average_tenure_months: float | None = Field(
         default=None,
         description="Average duration spent across past roles in months."
     )

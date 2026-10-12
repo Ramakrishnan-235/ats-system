@@ -9,22 +9,21 @@ Ensures all lazy singletons initialize with thread locks and prevent race condit
 """
 
 import sys
-import time
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 # Ensure src is on sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
-from ats_core.parsers.llm_residue_extractor import LLMResidueExtractor
-from ats_core.evaluator import llm_evaluator
 from ats_core.api.v1 import match
+from ats_core.evaluator import llm_evaluator
+from ats_core.parsers.llm_residue_extractor import LLMResidueExtractor
 from ats_core.parsers.skill_matcher import SkillMatcher
+from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
+
 try:
     from ats_core.parsers.normalization_cascade import SkillEmbeddingsIndex
 except ImportError:

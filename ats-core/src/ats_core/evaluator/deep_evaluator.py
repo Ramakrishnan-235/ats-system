@@ -1,38 +1,33 @@
-import logging
 import html
+import logging
 import os
-import re
+import threading
 import time
-from typing import Dict, Any, Optional
+from typing import Any, Optional
+
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
 from langchain_core.tracers.context import collect_runs
 
-from ats_core.schema.evaluation import (
-    DeepCandidateEvaluationReport,
-    QualificationTier,
-    CriterionScore,
-    CriterionCategory,
-    SuggestedInterviewQuestion,
-    QuestionCategory,
-)
-from ats_core.llm.client import get_openrouter_chat_model, get_structured_llm, get_llm_config
-from ats_core.llm.sanitizer import (
-    sanitize_prompt_text,
-    CONTROL_TOKENS_PATTERN,
-    ADVERSARIAL_DIRECTIVES_PATTERN,
-    ROLE_DELIMITER_PATTERN,
-    DEFAULT_XML_TAG_ESCAPE_PATTERN,
-)
 from ats_core.evaluator.langsmith_tracker import (
     build_evaluation_run_config,
-    log_evaluation_feedback,
     compute_citation_validity,
     get_langsmith_project,
     get_run_url,
+    log_evaluation_feedback,
 )
-
-import threading
+from ats_core.llm.client import get_llm_config, get_openrouter_chat_model, get_structured_llm
+from ats_core.llm.sanitizer import (
+    ADVERSARIAL_DIRECTIVES_PATTERN,
+    CONTROL_TOKENS_PATTERN,
+    DEFAULT_XML_TAG_ESCAPE_PATTERN,
+    ROLE_DELIMITER_PATTERN,
+    sanitize_prompt_text,
+)
+from ats_core.schema.evaluation import (
+    DeepCandidateEvaluationReport,
+    QualificationTier,
+)
 
 logger = logging.getLogger("ats.evaluator.deep")
 
@@ -69,11 +64,11 @@ class LocalDeepEvaluator:
     @classmethod
     def get_instance(
         cls,
-        base_url: Optional[str] = None,
-        model_name: Optional[str] = None,
-        api_key: Optional[str] = None,
+        base_url: str | None = None,
+        model_name: str | None = None,
+        api_key: str | None = None,
         temperature: float = 0.0,
-        max_retries: Optional[int] = None,
+        max_retries: int | None = None,
     ) -> "LocalDeepEvaluator":
         """Thread-safe cached singleton for default configuration."""
         if max_retries is None:
@@ -92,14 +87,14 @@ class LocalDeepEvaluator:
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
-        model_name: Optional[str] = None,
-        api_key: Optional[str] = None,
+        base_url: str | None = None,
+        model_name: str | None = None,
+        api_key: str | None = None,
         temperature: float = 0.0,
-        max_retries: Optional[int] = None,
+        max_retries: int | None = None,
         report_schema=DeepCandidateEvaluationReport,
-        structured_method: Optional[str] = None,
-        model_options: Optional[Dict[str, Any]] = None,
+        structured_method: str | None = None,
+        model_options: dict[str, Any] | None = None,
     ):
         config = get_llm_config(base_url=base_url, model_name=model_name, api_key=api_key)
         self.base_url = config["base_url"]
@@ -204,8 +199,8 @@ Generate the complete structured evaluation report adhering strictly to the sche
         job_title: str,
         job_description: str,
         *,
-        citation_source_text: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        citation_source_text: str | None = None,
+    ) -> dict[str, Any]:
         """
         Executes deep evaluation using LangChain and returns structured report alongside performance telemetry.
         Automatically instruments runs for LangSmith tracing and records performance feedback.
@@ -219,7 +214,7 @@ Generate the complete structured evaluation report adhering strictly to the sche
 
         system_message = SYSTEM_EVALUATION_MESSAGE
         t_start = time.time()
-        run_id: Optional[str] = None
+        run_id: str | None = None
 
         run_config = build_evaluation_run_config(
             candidate_id=candidate_id,
@@ -312,7 +307,7 @@ Generate the complete structured evaluation report adhering strictly to the sche
                 f"({report.qualification_tier}) in {latency_ms}ms"
             )
 
-            telemetry: Dict[str, Any] = {
+            telemetry: dict[str, Any] = {
                 "model": self.model_name,
                 "latency_ms": latency_ms,
                 "citation_validity_rate": citation_stats["citation_validity_rate"],
@@ -330,7 +325,7 @@ Generate the complete structured evaluation report adhering strictly to the sche
 
         except Exception as e:
             latency_ms = int((time.time() - t_start) * 1000)
-            logger.error(f"Deep evaluation failed for candidate {candidate_id}: {str(e)}")
+            logger.error(f"Deep evaluation failed for candidate {candidate_id}: {e!s}")
 
             if run_id:
                 log_evaluation_feedback(
@@ -339,7 +334,7 @@ Generate the complete structured evaluation report adhering strictly to the sche
                         "evaluation_success": 0.0,
                         "latency_ms": latency_ms,
                     },
-                    comment=f"Error: {str(e)}",
+                    comment=f"Error: {e!s}",
                 )
 
             telemetry = {

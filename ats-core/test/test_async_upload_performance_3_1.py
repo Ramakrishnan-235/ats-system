@@ -8,17 +8,20 @@ Unit and regression tests for Finding 3.1:
 """
 
 import io
-import time
-from types import SimpleNamespace
 from unittest.mock import MagicMock
+
 import pytest
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from ats_core.api import auth, upload_storage
 from ats_core.api.v1 import candidates, jobs
-from ats_core.parsers.anonymizer import ResumeAnonymizer, get_shared_anonymizer, _ANALYZER_CACHE, _ANONYMIZER_CACHE
 from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
+from ats_core.parsers.anonymizer import (
+    _ANALYZER_CACHE,
+    ResumeAnonymizer,
+    get_shared_anonymizer,
+)
 
 
 def test_resume_anonymizer_caches_engines():

@@ -1090,4 +1090,3 @@ func (s *Store) ListAuditLogs(limit int, actorFilter, actionFilter, resourceFilt
 	}
 	return result
 }
-

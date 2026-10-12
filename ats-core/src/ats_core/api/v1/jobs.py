@@ -1,11 +1,13 @@
-import uuid
 import logging
-from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, status, Query, Request
-from ats_core.api.auth import get_current_user
-from ats_core.api.audit import check_and_audit_pii_access
+import uuid
+from datetime import UTC, datetime
+from typing import Any
+
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, field_validator
+
+from ats_core.api.audit import check_and_audit_pii_access
+from ats_core.api.auth import get_current_user
 
 logger = logging.getLogger("ats.api.jobs")
 router = APIRouter(prefix="/jobs", tags=["Job Postings & Requisitions"])
@@ -739,7 +741,7 @@ RAW_50_JOBS = [
 ]
 
 # Populate in-memory store
-JOBS_STORE: Dict[str, Dict[str, Any]] = {}
+JOBS_STORE: dict[str, dict[str, Any]] = {}
 for i, item in enumerate(RAW_50_JOBS):
     job_id = item["id"]
 
@@ -777,7 +779,7 @@ class CreateJobRequest(BaseModel):
     department: str = Field(default="Software Engineering", max_length=100, description="Department name")
     location: str = Field(default="Remote", max_length=100, description="Job location")
     job_description: str = Field(..., min_length=10, max_length=50000, description="Full text or HTML job description")
-    required_skills: List[str] = Field(default_factory=list, max_length=100, description="Extracted required skills")
+    required_skills: list[str] = Field(default_factory=list, max_length=100, description="Extracted required skills")
     min_years_experience: float = Field(default=3.0, ge=0, le=70, description="Minimum years of experience")
     run_ai_match: bool = Field(default=True, description="Whether to trigger candidate matching")
 
@@ -802,11 +804,11 @@ class UpdateJobRequest(BaseModel):
     """Editable requisition fields only; omitted fields keep their current values."""
     model_config = {"extra": "forbid"}
 
-    title: Optional[str] = Field(default=None, max_length=200)
-    department: Optional[str] = Field(default=None, max_length=100)
-    location: Optional[str] = Field(default=None, max_length=100)
-    job_description: Optional[str] = Field(default=None, max_length=50000)
-    required_skills: Optional[List[str]] = Field(default=None, max_length=100)
+    title: str | None = Field(default=None, max_length=200)
+    department: str | None = Field(default=None, max_length=100)
+    location: str | None = Field(default=None, max_length=100)
+    job_description: str | None = Field(default=None, max_length=50000)
+    required_skills: list[str] | None = Field(default=None, max_length=100)
 
     @field_validator("title", "department", "location", "job_description", "required_skills")
     @classmethod
@@ -817,7 +819,7 @@ class UpdateJobRequest(BaseModel):
 
     @field_validator("title")
     @classmethod
-    def validate_title(cls, v: Optional[str]) -> Optional[str]:
+    def validate_title(cls, v: str | None) -> str | None:
         if v is not None:
             s = v.strip()
             if len(s) < 2 or len(s) > 200:
@@ -827,7 +829,7 @@ class UpdateJobRequest(BaseModel):
 
     @field_validator("job_description")
     @classmethod
-    def validate_job_description(cls, v: Optional[str]) -> Optional[str]:
+    def validate_job_description(cls, v: str | None) -> str | None:
         if v is not None:
             s = v.strip()
             if len(s) < 10 or len(s) > 50000:
@@ -844,20 +846,20 @@ class JobResponse(BaseModel):
     status: str
     posted_date: str
     candidates_count: int
-    avatars: List[str]
-    top_match: Dict[str, Any]
+    avatars: list[str]
+    top_match: dict[str, Any]
     icon_type: str
     job_description: str
     min_years_experience: float
-    required_skills: List[str]
-    structured_criteria: Dict[str, Any]
+    required_skills: list[str]
+    structured_criteria: dict[str, Any]
     created_at: str
     updated_at: str
 
 
-def _normalize_job_dict(j: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_job_dict(j: dict[str, Any]) -> dict[str, Any]:
     jid = j.get("id", "job-unknown")
-    now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     c_count = len(JOB_CANDIDATES_STORE.get(jid, [])) if jid in JOB_CANDIDATES_STORE else j.get("candidates_count", 0)
     return {
         "id": jid,
@@ -884,11 +886,11 @@ def _normalize_job_dict(j: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-@router.get("", response_model=List[JobResponse])
+@router.get("", response_model=list[JobResponse])
 async def list_jobs(
-    status_filter: Optional[str] = Query(None, alias="status"),
-    department: Optional[str] = Query(None),
-    search: Optional[str] = Query(None)
+    status_filter: str | None = Query(None, alias="status"),
+    department: str | None = Query(None),
+    search: str | None = Query(None)
 ):
     try:
         from ats_core.db.store_sync import sync_jobs_from_db
@@ -944,7 +946,7 @@ async def get_job(job_id: str):
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 async def create_job(payload: CreateJobRequest):
     new_id = f"job-{uuid.uuid4().hex[:8]}"
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     now_str = now.strftime("%Y-%m-%d")
     now_iso = now.isoformat().replace("+00:00", "Z")
 
@@ -1020,7 +1022,7 @@ async def update_job(job_id: str, payload: UpdateJobRequest):
     changes = payload.model_dump(exclude_unset=True)
     if changes:
         JOBS_STORE[job_id].update(changes)
-        JOBS_STORE[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        JOBS_STORE[job_id]["updated_at"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         try:
             from ats_core.db.store_sync import sync_job_to_db
             sync_job_to_db(JOBS_STORE[job_id])
@@ -1051,30 +1053,30 @@ async def update_job_status(job_id: str, new_status: str = Query(..., pattern="^
 
 
 class JobCandidatePayload(BaseModel):
-    id: Optional[str] = None
-    rank: Optional[int] = 0
-    name: Optional[str] = ""
-    headline: Optional[str] = ""
-    avatar: Optional[str] = None
-    isImageAvatar: Optional[bool] = False
-    matchScore: Optional[int] = Field(default=None, ge=0, le=100)
-    matchLabel: Optional[str] = None
-    skills: List[str] = Field(default_factory=list)
+    id: str | None = None
+    rank: int | None = 0
+    name: str | None = ""
+    headline: str | None = ""
+    avatar: str | None = None
+    isImageAvatar: bool | None = False
+    matchScore: int | None = Field(default=None, ge=0, le=100)
+    matchLabel: str | None = None
+    skills: list[str] = Field(default_factory=list)
     stage: str = "Screening"
-    stageBadgeStyle: Optional[str] = "bg-zinc-100 text-zinc-700"
-    technicalDepthScore: Optional[float] = Field(default=None, ge=0, le=10)
-    systemDesignScore: Optional[float] = Field(default=None, ge=0, le=10)
-    quote: Optional[str] = ""
-    sourceResumeLink: Optional[str] = None
-    potentialGap: Optional[str] = None
-    suggestedQuestions: Optional[List[str]] = Field(default_factory=list)
+    stageBadgeStyle: str | None = "bg-zinc-100 text-zinc-700"
+    technicalDepthScore: float | None = Field(default=None, ge=0, le=10)
+    systemDesignScore: float | None = Field(default=None, ge=0, le=10)
+    quote: str | None = ""
+    sourceResumeLink: str | None = None
+    potentialGap: str | None = None
+    suggestedQuestions: list[str] | None = Field(default_factory=list)
 
 
 VALID_CANDIDATE_STAGES = {"Screening", "Interview", "Qualified", "Offer", "Hired", "Rejected"}
-JOB_CANDIDATES_STORE: Dict[str, List[Dict[str, Any]]] = {}
+JOB_CANDIDATES_STORE: dict[str, list[dict[str, Any]]] = {}
 
 
-def get_or_create_job_candidates(job_id: str) -> List[Dict[str, Any]]:
+def get_or_create_job_candidates(job_id: str) -> list[dict[str, Any]]:
     if job_id not in JOBS_STORE:
         try:
             from ats_core.db.store_sync import sync_job_by_id_from_db
@@ -1101,7 +1103,7 @@ def _present_job_candidates(current, include_pii):
     return [mask_candidate_pii(candidate) for candidate in current]
 
 
-@router.get("/{job_id}/candidates", response_model=List[Dict[str, Any]])
+@router.get("/{job_id}/candidates", response_model=list[dict[str, Any]])
 async def get_job_candidates(request: Request, job_id: str, include_pii: bool = Query(False)):
     if include_pii:
         user = get_current_user(request)
@@ -1110,7 +1112,7 @@ async def get_job_candidates(request: Request, job_id: str, include_pii: bool = 
     return _present_job_candidates(current, include_pii)
 
 
-@router.post("/{job_id}/candidates", response_model=List[Dict[str, Any]])
+@router.post("/{job_id}/candidates", response_model=list[dict[str, Any]])
 async def add_job_candidate(request: Request, job_id: str, candidate: JobCandidatePayload, include_pii: bool = Query(False)):
     if include_pii:
         user = get_current_user(request)
@@ -1126,9 +1128,9 @@ async def add_job_candidate(request: Request, job_id: str, candidate: JobCandida
 
     from ats_core.api.v1.candidates import (
         CANDIDATES_STORE,
-        register_candidate_profile,
-        is_masked_or_anonymous_name,
         is_generic_or_error_headline,
+        is_masked_or_anonymous_name,
+        register_candidate_profile,
     )
 
     if candidate.id and candidate.id.strip():
@@ -1271,7 +1273,7 @@ async def add_job_candidate(request: Request, job_id: str, candidate: JobCandida
     return _present_job_candidates(updated_list, include_pii)
 
 
-@router.delete("/{job_id}/candidates/{candidate_id}", response_model=List[Dict[str, Any]])
+@router.delete("/{job_id}/candidates/{candidate_id}", response_model=list[dict[str, Any]])
 async def remove_job_candidate(request: Request, job_id: str, candidate_id: str, include_pii: bool = Query(False)):
     if include_pii:
         user = get_current_user(request)

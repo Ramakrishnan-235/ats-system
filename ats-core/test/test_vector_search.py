@@ -9,8 +9,8 @@ src_dir = str(Path(__file__).resolve().parent.parent / "src")
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
-from ats_core.db.vector_store import VectorStore, CandidateSearchParams
 from ats_core.db.init_db import provision_database
+from ats_core.db.vector_store import CandidateSearchParams, VectorStore
 from ats_core.search.embedding_config import EMBEDDING_DIMENSION
 
 DATABASE_URL = os.getenv(

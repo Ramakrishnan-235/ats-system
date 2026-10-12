@@ -1,10 +1,10 @@
+import logging
 import os
 import re
-import logging
-from typing import Optional, List, Dict, Tuple, Set, Any
+
 import dateparser
 import phonenumbers
-from rapidfuzz import process, fuzz
+from rapidfuzz import fuzz, process
 
 logger = logging.getLogger("ats.parsers.normalizers")
 
@@ -12,7 +12,7 @@ logger = logging.getLogger("ats.parsers.normalizers")
 # 1. DATE NORMALIZATION
 # =====================================================================
 
-PRESENT_TOKENS: Set[str] = {
+PRESENT_TOKENS: set[str] = {
     "present", "current", "now", "till date", "to date", 
     "present day", "current role", "till now", "ongoing", 
     "current position", "currently working", "active", "today"
@@ -25,7 +25,7 @@ YEAR_ONLY_REGEX = re.compile(r"^(?:19|20)\d{2}$")
 DATE_RANGE_SPLIT_REGEX = re.compile(r"\s*(?:[-–—/]|(?:\s+to\s+)|\s+until\s+)\s*", re.IGNORECASE)
 
 
-def normalize_date(raw: Optional[str], is_current: bool = False) -> Optional[str]:
+def normalize_date(raw: str | None, is_current: bool = False) -> str | None:
     """
     Deterministically normalizes raw date strings into standardized formats:
     - Current/Present role -> "Present"
@@ -76,7 +76,7 @@ def normalize_date(raw: Optional[str], is_current: bool = False) -> Optional[str
     return None
 
 
-def normalize_date_range(raw_range: str) -> Tuple[Optional[str], Optional[str], bool]:
+def normalize_date_range(raw_range: str) -> tuple[str | None, str | None, bool]:
     """
     Parses a composite date range string (e.g., 'May 2021 – Present', '2019 - 2022', 'Dec 2024-Jan 2025').
     Returns: (start_date, end_date, is_current_role)
@@ -108,10 +108,10 @@ def normalize_date_range(raw_range: str) -> Tuple[Optional[str], Optional[str], 
 # =====================================================================
 
 def normalize_phone(
-    raw: Optional[str],
+    raw: str | None,
     default_region: str = "US",
-    preferred_regions: Tuple[str, ...] = ("US", "IN", "GB", "CA", "DE", "FR", "SG", "AU")
-) -> Optional[str]:
+    preferred_regions: tuple[str, ...] = ("US", "IN", "GB", "CA", "DE", "FR", "SG", "AU")
+) -> str | None:
     """
     Deterministically parses and normalizes phone numbers into international E.164 standard (+14155550182, +918667660065).
     Features multi-region fallback resolution (e.g. automatically recognizes +91 / Indian 10-digit mobile numbers).
@@ -171,13 +171,13 @@ def normalize_phone(
 
 # Crucial Guard: Short or single/double-letter acronyms MUST NEVER pass through fuzzy matching
 # to avoid false-positive over-matching (e.g., 'C' matching 'CI', 'R' matching 'Ruby', 'Go' matching 'Django').
-SHORT_EXACT_SKILLS: Set[str] = {
+SHORT_EXACT_SKILLS: set[str] = {
     "c", "r", "go", "d", "js", "ts", "ai", "ml", "ui", "ux", "ci", "cd", 
     "qa", "db", "ip", "os", "c++", "c#", "f#", "vb", "vb.net", ".net", "sql", "git"
 }
 
 # Distinct short skill canonical mappings
-EXACT_SHORT_MAP: Dict[str, str] = {
+EXACT_SHORT_MAP: dict[str, str] = {
     "c": "C",
     "c++": "C++",
     "cpp": "C++",
@@ -206,7 +206,7 @@ EXACT_SHORT_MAP: Dict[str, str] = {
 }
 
 # Comprehensive Technical Skill Taxonomy (~350+ entries covering modern engineering domains)
-SKILL_ALIASES: Dict[str, str] = {
+SKILL_ALIASES: dict[str, str] = {
     # Programming Languages
     "python": "Python", "py": "Python", "python3": "Python", "python2": "Python",
     "javascript": "JavaScript", "es6": "JavaScript", "es2015": "JavaScript", "ecmascript": "JavaScript",
@@ -316,9 +316,9 @@ SKILL_ALIASES: Dict[str, str] = {
 def normalize_skill(
     raw: str,
     fuzzy_cutoff: float = 88.0,
-    register_flywheel: Optional[bool] = None,
+    register_flywheel: bool | None = None,
     source: str = "resume_parser",
-    context: Optional[str] = None
+    context: str | None = None
 ) -> str:
     """
     Normalizes a skill name through the database-backed SkillTaxonomyService:
@@ -384,11 +384,11 @@ def normalize_skill(
 
 
 def normalize_skills_list(
-    skills: List[str],
+    skills: list[str],
     fuzzy_cutoff: float = 88.0,
-    register_flywheel: Optional[bool] = None,
+    register_flywheel: bool | None = None,
     source: str = "resume_parser"
-) -> List[str]:
+) -> list[str]:
     """
     Normalizes and deduplicates a list of extracted skills while preserving chronological insertion order.
     Feeds unknown skills into the status='pending' Flywheel queue if enabled.
@@ -399,8 +399,8 @@ def normalize_skills_list(
     if register_flywheel is None:
         register_flywheel = os.getenv("ATS_FLYWHEEL_AUTO_REGISTER", "false").strip().lower() in ("true", "1", "yes")
 
-    seen: Set[str] = set()
-    normalized: List[str] = []
+    seen: set[str] = set()
+    normalized: list[str] = []
 
     for s in skills:
         norm = normalize_skill(

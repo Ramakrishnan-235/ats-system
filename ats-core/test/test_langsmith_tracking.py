@@ -4,10 +4,9 @@ Comprehensive test suite verifying LangSmith observability, run configuration,
 model performance feedback telemetry, and benchmark evaluators.
 """
 
-import os
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 # Ensure src is on sys.path
 src_dir = str(Path(__file__).resolve().parent.parent / "src")
@@ -15,30 +14,30 @@ if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
 import pytest
-from ats_core.evaluator.langsmith_tracker import (
-    get_langsmith_config,
-    is_langsmith_enabled,
-    get_langsmith_project,
-    build_evaluation_run_config,
-    log_evaluation_feedback,
-    compute_citation_validity,
-    get_run_url,
-    reset_langsmith_client,
-)
-from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
-from ats_core.evaluator.llm_evaluator import LLMEvaluator, EvaluationReport, CriteriaScore
-from ats_core.schema.evaluation import (
-    DeepCandidateEvaluationReport,
-    QualificationTier,
-    CriterionScore,
-    CriterionCategory,
-)
+
 from ats_core.evaluator.benchmark_langsmith import (
-    evaluate_tier_accuracy,
-    evaluate_score_calibration,
     evaluate_citation_grounding,
     evaluate_injection_defense,
-    BENCHMARK_EXAMPLES,
+    evaluate_score_calibration,
+    evaluate_tier_accuracy,
+)
+from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
+from ats_core.evaluator.langsmith_tracker import (
+    build_evaluation_run_config,
+    compute_citation_validity,
+    get_langsmith_config,
+    get_langsmith_project,
+    get_run_url,
+    is_langsmith_enabled,
+    log_evaluation_feedback,
+    reset_langsmith_client,
+)
+from ats_core.evaluator.llm_evaluator import CriteriaScore, EvaluationReport, LLMEvaluator
+from ats_core.schema.evaluation import (
+    CriterionCategory,
+    CriterionScore,
+    DeepCandidateEvaluationReport,
+    QualificationTier,
 )
 
 

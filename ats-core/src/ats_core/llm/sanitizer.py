@@ -1,5 +1,5 @@
 import re
-from typing import Optional, List, Collection
+from collections.abc import Collection
 
 # Compiled regex patterns for prompt injection defenses
 
@@ -39,7 +39,7 @@ DEFAULT_XML_TAG_ESCAPE_PATTERN = re.compile(
 )
 
 
-def sanitize_prompt_text(text: str, extra_tags: Optional[Collection[str]] = None) -> str:
+def sanitize_prompt_text(text: str, extra_tags: Collection[str] | None = None) -> str:
     """
     Robustly sanitizes untrusted candidate resumes and job inputs before interpolation into LLM prompts:
     1. Neutralizes triple-backtick markdown breakout sequences (``` -> ''').
@@ -85,5 +85,5 @@ class PromptSanitizer:
     XML_TAG_ESCAPE_PATTERN = DEFAULT_XML_TAG_ESCAPE_PATTERN
 
     @classmethod
-    def sanitize(cls, text: str, extra_tags: Optional[Collection[str]] = None) -> str:
+    def sanitize(cls, text: str, extra_tags: Collection[str] | None = None) -> str:
         return sanitize_prompt_text(text, extra_tags=extra_tags)

@@ -1,5 +1,6 @@
 # test_schemas.py
-from ats_core.schema import candidate, timeline, skills
+from ats_core.schema import candidate, skills, timeline
+
 
 def test_schema_generation():
     # 1. Verify JSON Schema export (used by Instructor)

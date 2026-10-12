@@ -9,27 +9,28 @@ Comprehensive regression tests for Finding 2.7:
 6. Tasks and candidate stores prune and maintain bounded memory limits.
 """
 
-import time
 import pytest
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from ats_core.api import auth
-from ats_core.api.rate_limiter import SlidingWindowRateLimiter, RateLimitMiddleware
+from ats_core.api.rate_limiter import RateLimitMiddleware, SlidingWindowRateLimiter
 from ats_core.api.v1.candidates import (
-    router as candidates_router,
+    CANDIDATES_STORE,
+    MAX_CANDIDATES_STORE,
+    MAX_UPLOAD_TASKS,
+    UPLOAD_TASKS_STORE,
     VALID_CANDIDATE_STAGES,
     prune_candidates_store,
     prune_upload_tasks,
-    CANDIDATES_STORE,
-    UPLOAD_TASKS_STORE,
-    MAX_CANDIDATES_STORE,
-    MAX_UPLOAD_TASKS,
 )
-from ats_core.api.v1.jobs import router as jobs_router, JOBS_STORE, JOB_CANDIDATES_STORE
+from ats_core.api.v1.candidates import (
+    router as candidates_router,
+)
+from ats_core.api.v1.jobs import JOB_CANDIDATES_STORE, JOBS_STORE
+from ats_core.api.v1.jobs import router as jobs_router
 from ats_core.api.v1.taxonomy import router as taxonomy_router
 from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
-
 
 TEST_API_KEY = "test-key-bounds-27"
 

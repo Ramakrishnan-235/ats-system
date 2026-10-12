@@ -1,6 +1,8 @@
 from enum import Enum
-from typing import List, Optional, Any
-from pydantic import BaseModel, Field, ConfigDict, model_validator, AliasChoices
+from typing import Any
+
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+
 from ats_core.schema._normalization import normalization_input
 
 
@@ -38,7 +40,7 @@ class ExtractedSkill(BaseModel):
         description="Inferred proficiency level based on years used and depth of responsibilities.",
         validation_alias=AliasChoices("proficiency", "level", "proficiency_level")
     )
-    estimated_years_experience: Optional[float] = Field(
+    estimated_years_experience: float | None = Field(
         default=None,
         ge=0.0,
         description="Estimated total years using this skill across all roles."
@@ -47,7 +49,7 @@ class ExtractedSkill(BaseModel):
         default=False,
         description="True if this is one of the candidate's primary daily tools or specialized strengths."
     )
-    context_evidence: Optional[str] = Field(
+    context_evidence: str | None = Field(
         default=None,
         description="Short snippet or evidence from resume demonstrating applied impact.",
         validation_alias=AliasChoices("context_evidence", "evidence", "details")
@@ -86,19 +88,19 @@ class ExtractedSkill(BaseModel):
 
 class SkillsTaxonomy(BaseModel):
     """Aggregated taxonomy breakdown for vectorization and rule-based matching."""
-    core_languages: List[str] = Field(
+    core_languages: list[str] = Field(
         default_factory=list,
         description="Primary programming languages (e.g., ['Python', 'Go', 'TypeScript'])."
     )
-    frameworks_and_tools: List[str] = Field(
+    frameworks_and_tools: list[str] = Field(
         default_factory=list,
         description="Frameworks, libraries, and developer tools (e.g., ['FastAPI', 'Docker'])."
     )
-    databases_and_infrastructure: List[str] = Field(
+    databases_and_infrastructure: list[str] = Field(
         default_factory=list,
         description="Databases, message brokers, and cloud providers (e.g., ['PostgreSQL', 'AWS'])."
     )
-    detailed_skills: List[ExtractedSkill] = Field(
+    detailed_skills: list[ExtractedSkill] = Field(
         default_factory=list,
         description="Complete list of all detected skills with categorized metadata."
     )

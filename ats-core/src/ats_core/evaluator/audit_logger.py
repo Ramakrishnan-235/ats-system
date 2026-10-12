@@ -1,7 +1,9 @@
 import hashlib
 import logging
+import os
 import uuid
-from typing import Dict, Any, Optional, List
+from typing import Any
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ats_core.models.db import ScoringAudit
@@ -11,10 +13,10 @@ from ats_core.schema.evaluation import DeepCandidateEvaluationReport
 logger = logging.getLogger("ats.evaluator.audit")
 
 # Live in-memory audit registry for EEOC and compliance audits across services
-AUDIT_LOG_STORE: List[ScoringAudit] = []
+AUDIT_LOG_STORE: list[ScoringAudit] = []
 
 
-def sanitize_audit_prompt(prompt: Optional[str]) -> Optional[str]:
+def sanitize_audit_prompt(prompt: str | None) -> str | None:
     """
     Prevents long-term retention of full prompts and potential candidate PII in ScoringAudit.
     Computes a cryptographic SHA-256 fingerprint of the prompt for tamper verification
@@ -34,12 +36,12 @@ class AuditLogger:
 
     @staticmethod
     async def persist_audit_record(
-        session: Optional[AsyncSession],
+        session: AsyncSession | None,
         report: DeepCandidateEvaluationReport,
         candidate_id: str,
         job_id: str,
-        application_id: Optional[str] = None,
-        telemetry: Optional[Dict[str, Any]] = None,
+        application_id: str | None = None,
+        telemetry: dict[str, Any] | None = None,
         raw_prompt: str = "",
     ) -> ScoringAudit:
         """Saves an immutable evaluation record to PostgreSQL or live audit store."""
@@ -108,7 +110,7 @@ class AuditLogger:
         return audit_entry
 
     @classmethod
-    def get_audits(cls, candidate_id: Optional[str] = None, job_id: Optional[str] = None) -> List[ScoringAudit]:
+    def get_audits(cls, candidate_id: str | None = None, job_id: str | None = None) -> list[ScoringAudit]:
         """Retrieve stored in-memory audit records, optionally filtered by candidate or job."""
         c_uuid = optional_coerce_to_uuid(candidate_id) if candidate_id else None
         j_uuid = optional_coerce_to_uuid(job_id) if job_id else None

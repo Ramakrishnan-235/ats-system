@@ -3,8 +3,9 @@ import inspect
 import logging
 import os
 import threading
-from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional
+from datetime import UTC, datetime
+from typing import Any
+
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
 from starlette.concurrency import run_in_threadpool
@@ -39,7 +40,7 @@ def get_reranker():
     return _reranker
 
 
-def sync_candidates_to_retriever(retriever, job_id: Optional[str] = None) -> int:
+def sync_candidates_to_retriever(retriever, job_id: str | None = None) -> int:
     """
     Collects candidates from CANDIDATES_STORE, JOB_CANDIDATES_STORE, and PostgreSQL
     (if available), formats their searchable text and metadata, and indexes them
@@ -48,7 +49,7 @@ def sync_candidates_to_retriever(retriever, job_id: Optional[str] = None) -> int
     from ats_core.api.v1.candidates import CANDIDATES_STORE
     from ats_core.api.v1.jobs import JOB_CANDIDATES_STORE
 
-    gathered: Dict[str, Dict[str, Any]] = {}
+    gathered: dict[str, dict[str, Any]] = {}
 
     # 1. Gather all candidates from in-memory CANDIDATES_STORE
     for cid, cand in CANDIDATES_STORE.items():
@@ -160,7 +161,7 @@ def sync_candidates_to_retriever(retriever, job_id: Optional[str] = None) -> int
 
 
 class MatchRequest(BaseModel):
-    job_id: Optional[str] = Field(default=None, description="Optional target job ID to link and rank candidates")
+    job_id: str | None = Field(default=None, description="Optional target job ID to link and rank candidates")
     job_title: str = Field(min_length=1, max_length=255)
     job_description: str = Field(min_length=1, max_length=50000)
     stage1_retrieve_limit: int = Field(default=100, ge=1, le=500, description="Number of candidates from hybrid search")
@@ -174,18 +175,18 @@ class MatchRequest(BaseModel):
 
 
 class MatchResponse(BaseModel):
-    job_id: Optional[str] = None
+    job_id: str | None = None
     job_title: str
     total_retrieved_stage1: int = Field(default=0)
     total_reranked_stage2: int = Field(default=0)
     stage1_candidates_retrieved: int = Field(default=0)
     stage2_candidates_reranked: int = Field(default=0)
     stage3_final_ranked: int = Field(default=0)
-    final_evaluations: List[Dict[str, Any]] = Field(default_factory=list)
-    candidates: List[Dict[str, Any]] = Field(default_factory=list, description="Ranked candidates for this job")
-    failed_candidate_ids: List[str] = Field(default_factory=list)
+    final_evaluations: list[dict[str, Any]] = Field(default_factory=list)
+    candidates: list[dict[str, Any]] = Field(default_factory=list, description="Ranked candidates for this job")
+    failed_candidate_ids: list[str] = Field(default_factory=list)
     reranker_fallback: bool = Field(default=False, description="True if reranker encountered error and fell back to hybrid search")
-    message: Optional[str] = None
+    message: str | None = None
 
 
 @router.post("/evaluate-job", response_model=MatchResponse)
@@ -267,15 +268,14 @@ async def match_and_evaluate_candidates(request: MatchRequest):
     # -------------------------------------------------------------------------
     # STAGE 3: Deep LLM Evaluation (Top candidates only) (Concurrent bounded evaluation)
     # -------------------------------------------------------------------------
-    from ats_core.evaluator.llm_evaluator import evaluate_candidate, EvaluationReport
+    from ats_core.evaluator.llm_evaluator import EvaluationReport, evaluate_candidate
 
     max_concurrency = int(os.getenv("ATS_MATCH_CONCURRENCY", "10"))
-    if max_concurrency < 1:
-        max_concurrency = 1
+    max_concurrency = max(max_concurrency, 1)
     eval_semaphore = asyncio.Semaphore(max_concurrency)
     eval_timeout = float(os.getenv("ATS_EVAL_TIMEOUT_SECONDS", "45.0"))
 
-    async def _evaluate_single_candidate(rank: int, cand: Dict[str, Any]):
+    async def _evaluate_single_candidate(rank: int, cand: dict[str, Any]):
         cand_id = cand.get("candidate_id", "unknown")
         cand_text = cand.get("text", cand.get("summary_text", ""))
         async with eval_semaphore:
@@ -351,7 +351,7 @@ async def match_and_evaluate_candidates(request: MatchRequest):
     # STAGE 4: Update Candidate Scorecards & Job Pipeline
     # -------------------------------------------------------------------------
     from ats_core.api.v1.candidates import CANDIDATES_STORE
-    from ats_core.api.v1.jobs import JOBS_STORE, JOB_CANDIDATES_STORE
+    from ats_core.api.v1.jobs import JOB_CANDIDATES_STORE, JOBS_STORE
 
     target_job_id = request.job_id
     if not target_job_id:
@@ -380,7 +380,7 @@ async def match_and_evaluate_candidates(request: MatchRequest):
             scorecard["overall_match_score"] = match_score
             scorecard["match_tier"] = tier_label
             scorecard["evaluation_status"] = "COMPLETED"
-            scorecard["evaluated_at"] = datetime.now(timezone.utc).isoformat()
+            scorecard["evaluated_at"] = datetime.now(UTC).isoformat()
 
             cats = []
             for crit in eval_data.get("criteria_breakdown", []):
@@ -451,7 +451,7 @@ async def match_and_evaluate_candidates(request: MatchRequest):
             JOBS_STORE[target_job_id]["top_match"] = {
                 "score": top_cand.get("matchScore"),
                 "label": top_cand.get("matchLabel") or "Top Match",
-                "last_run": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
+                "last_run": datetime.now(UTC).strftime("%Y-%m-%d %H:%M"),
                 "status": "COMPLETED"
             }
         updated_job_candidates = merged_list

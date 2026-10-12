@@ -1,7 +1,7 @@
-import re
-import math
 import logging
-from typing import List, Tuple, Optional
+import math
+import re
+
 from rank_bm25 import BM25Okapi
 
 logger = logging.getLogger("ats.search.bm25")
@@ -19,13 +19,13 @@ class BM25LexicalIndex:
     """Inverted index providing lexical BM25 matching over candidate documents."""
 
     def __init__(self):
-        self.candidate_ids: List[str] = []
-        self.raw_documents: List[str] = []
-        self.tokenized_corpus: List[List[str]] = []
-        self.bm25_model: Optional[BM25Okapi] = None
+        self.candidate_ids: list[str] = []
+        self.raw_documents: list[str] = []
+        self.tokenized_corpus: list[list[str]] = []
+        self.bm25_model: BM25Okapi | None = None
 
     @staticmethod
-    def tokenize(text: str) -> List[str]:
+    def tokenize(text: str) -> list[str]:
         """
         Tokenizes technical text while preserving compound acronyms,
         version identifiers, and programming languages (e.g., C++, .NET, CI/CD).
@@ -38,7 +38,7 @@ class BM25LexicalIndex:
         )
         return [t for t in tokens if t not in TECH_STOPWORDS and (len(t) > 1 or t in {"c", "r"})]
 
-    def build_index(self, candidate_ids: List[str], documents: List[str]):
+    def build_index(self, candidate_ids: list[str], documents: list[str]):
         """Builds or rebuilds the BM25 inverted index from a batch of candidate profiles."""
         if len(candidate_ids) != len(documents):
             raise ValueError("candidate_ids and documents lists must be of identical length.")
@@ -80,7 +80,7 @@ class BM25LexicalIndex:
         self.bm25_model = model
         logger.info(f"Built BM25 index over {len(self.candidate_ids)} candidates.")
 
-    def search(self, query: str, top_k: int = 20) -> List[Tuple[str, float]]:
+    def search(self, query: str, top_k: int = 20) -> list[tuple[str, float]]:
         """
         Searches the BM25 index and returns sorted tuples of (candidate_id, bm25_score).
         """

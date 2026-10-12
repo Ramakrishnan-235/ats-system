@@ -1,9 +1,11 @@
-from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
 from fastapi import APIRouter, Query, Request
-from ats_core.api.auth import get_current_user
-from ats_core.api.audit import check_and_audit_pii_access
 from pydantic import BaseModel
+
+from ats_core.api.audit import check_and_audit_pii_access
+from ats_core.api.auth import get_current_user
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard & Metrics"])
 
@@ -40,20 +42,20 @@ class PipelineCandidate(BaseModel):
     name: str
     role: str
     avatar: str
-    match_score: Optional[int]
+    match_score: int | None
     summary: str
     stage: str
-    probability: Optional[int] = None
+    probability: int | None = None
     applied_time: str
 
 
 class DashboardStatsResponse(BaseModel):
-    stats: List[StatCard]
-    weekly_candidates: List[WeeklyVolume]
-    ai_match_rate: Dict[str, Any]
+    stats: list[StatCard]
+    weekly_candidates: list[WeeklyVolume]
+    ai_match_rate: dict[str, Any]
     processing_resumes: int
     today_evaluations: int
-    pipeline: Dict[str, List[Dict[str, Any]]]
+    pipeline: dict[str, list[dict[str, Any]]]
 
 
 @router.get("/stats", response_model=DashboardStatsResponse)
@@ -77,12 +79,12 @@ async def get_dashboard_stats(request: Request, include_pii: bool = Query(False)
                         if c.get("scorecard", {}).get("evaluation_status") not in ("FAILED", "PENDING")]
     evaluated_scores = [score for score in evaluated_scores if isinstance(score, (int, float))]
     matched_percent = round(100 * sum(score >= 70 for score in evaluated_scores) / len(evaluated_scores)) if evaluated_scores else 0
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     def timestamp(value):
         try:
             date = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            return date.replace(tzinfo=timezone.utc) if date.tzinfo is None else date
+            return date.replace(tzinfo=UTC) if date.tzinfo is None else date
         except (ValueError, TypeError, AttributeError):
             return None
 
@@ -101,7 +103,7 @@ async def get_dashboard_stats(request: Request, include_pii: bool = Query(False)
     for item in weekly_candidates:
         item["is_peak"] = peak > 0 and item["count"] == peak
 
-    pipeline: Dict[str, List[Dict[str, Any]]] = {stage: [] for stage in PIPELINE_STAGES}
+    pipeline: dict[str, list[dict[str, Any]]] = {stage: [] for stage in PIPELINE_STAGES}
 
     for candidate in cand_list:
         c = candidate if include_pii else mask_candidate_pii(candidate)

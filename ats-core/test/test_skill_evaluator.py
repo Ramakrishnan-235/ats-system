@@ -1,4 +1,3 @@
-import pytest
 from ats_core.evaluator.skill_evaluator import evaluate_candidate_skills_coverage
 
 

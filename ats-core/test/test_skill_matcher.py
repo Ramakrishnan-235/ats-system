@@ -1,5 +1,5 @@
-import pytest
 import time
+
 from ats_core.parsers.skill_matcher import SkillMatcher
 from ats_core.taxonomy.seed_data import SEED_SKILLS
 

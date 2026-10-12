@@ -7,20 +7,20 @@ Unit and regression tests for Finding 3.2:
 5. Full failure returns HTTP 502 Bad Gateway
 """
 
-import os
 import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+
 import pytest
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ats_core.api import auth
-from ats_core.api.v1 import match, candidates, jobs
+from ats_core.api.v1 import candidates, jobs, match
 
 
 @pytest.fixture
@@ -158,8 +158,7 @@ def test_match_bounded_concurrency_limit(match_api, monkeypatch):
     def tracking_evaluate(*args, **kwargs):
         nonlocal active_evals, max_active_evals
         active_evals += 1
-        if active_evals > max_active_evals:
-            max_active_evals = active_evals
+        max_active_evals = max(max_active_evals, active_evals)
         time.sleep(0.04)
         active_evals -= 1
         return _make_mock_report(80.0)

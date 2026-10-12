@@ -1,20 +1,19 @@
 import logging
-import os
-import re
-import time
 import threading
-from typing import List, Dict, Any, Optional, Literal
-from pydantic import BaseModel, Field
+import time
+from typing import Any, Literal
+
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
 from langchain_core.tracers.context import collect_runs
+from pydantic import BaseModel, Field
 
-from ats_core.llm.client import get_openrouter_chat_model, get_structured_llm, get_llm_config
-from ats_core.llm.sanitizer import sanitize_prompt_text
 from ats_core.evaluator.langsmith_tracker import (
     build_evaluation_run_config,
     log_evaluation_feedback,
 )
+from ats_core.llm.client import get_llm_config, get_openrouter_chat_model, get_structured_llm
+from ats_core.llm.sanitizer import sanitize_prompt_text
 
 logger = logging.getLogger("ats.evaluator.llm")
 
@@ -31,10 +30,10 @@ class EvaluationReport(BaseModel):
         default="Potential Fit",
         description="Fit category: 'Strong Fit', 'Potential Fit', or 'Low Match'."
     )
-    criteria_breakdown: List[CriteriaScore] = Field(default_factory=list, description="Per-criteria scores.")
-    pros: List[str] = Field(default_factory=list, description="Key strengths aligned with the role.")
-    cons_or_risks: List[str] = Field(default_factory=list, description="Identified gaps, missing skills, or risks.")
-    recommended_interview_questions: List[str] = Field(
+    criteria_breakdown: list[CriteriaScore] = Field(default_factory=list, description="Per-criteria scores.")
+    pros: list[str] = Field(default_factory=list, description="Key strengths aligned with the role.")
+    cons_or_risks: list[str] = Field(default_factory=list, description="Identified gaps, missing skills, or risks.")
+    recommended_interview_questions: list[str] = Field(
         default_factory=list,
         description="Targeted technical questions to probe during the interview."
     )
@@ -75,9 +74,9 @@ class LLMEvaluator:
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
-        model_name: Optional[str] = None,
-        api_key: Optional[str] = None,
+        base_url: str | None = None,
+        model_name: str | None = None,
+        api_key: str | None = None,
         temperature: float = 0.0,
     ):
         config = get_llm_config(base_url=base_url, model_name=model_name, api_key=api_key)
@@ -121,7 +120,7 @@ class LLMEvaluator:
         safe_candidate_text = _sanitize_untrusted_prompt_input(candidate_summary)
         safe_job_desc = _sanitize_untrusted_prompt_input(job_description)
         t_start = time.time()
-        run_id: Optional[str] = None
+        run_id: str | None = None
 
         run_config = build_evaluation_run_config(
             candidate_id="summary_eval",
@@ -200,7 +199,7 @@ class LLMEvaluator:
                 log_evaluation_feedback(
                     run_id=run_id,
                     metrics={"evaluation_success": 0.0, "latency_ms": latency_ms},
-                    comment=f"Error: {str(e)}",
+                    comment=f"Error: {e!s}",
                 )
             logger.error(f"LLM evaluation via ({self.model_name}) failed: {e}")
             raise RuntimeError(f"LLM Evaluation service unavailable or failed: {e}") from e
@@ -210,7 +209,7 @@ class LLMEvaluator:
 LangChainEvaluator = LLMEvaluator
 
 # Module-level convenience function
-_default_evaluator: Optional[LLMEvaluator] = None
+_default_evaluator: LLMEvaluator | None = None
 _default_evaluator_lock: threading.Lock = threading.Lock()
 
 def evaluate_candidate(candidate_summary: str, job_description: str) -> EvaluationReport:

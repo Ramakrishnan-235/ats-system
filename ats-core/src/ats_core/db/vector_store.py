@@ -1,21 +1,23 @@
 import logging
 import uuid
-from typing import List, Optional, Dict, Any
+from typing import Any
+
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, and_, or_, text
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from ats_core.models.db import Candidate, JobPosting, Application, ScoringAudit
+
+from ats_core.models.db import Candidate
 from ats_core.search.embedding_config import validate_embedding
 
 logger = logging.getLogger("ats.db.vector_store")
 
 
 class CandidateSearchParams(BaseModel):
-    min_years_experience: Optional[float] = Field(None, ge=0.0, description="Minimum years of experience")
-    max_years_experience: Optional[float] = Field(None, ge=0.0, description="Maximum years of experience")
-    location: Optional[str] = Field(None, description="Location filter (e.g. 'San Francisco, CA' or 'Remote')")
-    highest_education: Optional[List[str]] = Field(None, description="List of acceptable education levels")
-    required_skills: Optional[List[str]] = Field(None, description="Skills candidate must possess")
+    min_years_experience: float | None = Field(None, ge=0.0, description="Minimum years of experience")
+    max_years_experience: float | None = Field(None, ge=0.0, description="Maximum years of experience")
+    location: str | None = Field(None, description="Location filter (e.g. 'San Francisco, CA' or 'Remote')")
+    highest_education: list[str] | None = Field(None, description="List of acceptable education levels")
+    required_skills: list[str] | None = Field(None, description="Skills candidate must possess")
     limit: int = Field(10, ge=1, le=100, description="Maximum candidate matches to return")
 
 
@@ -25,10 +27,10 @@ class CandidateSearchResult(BaseModel):
     target_headline: str
     years_of_experience: float
     location: str
-    highest_education: Optional[str]
-    core_skills: List[str]
+    highest_education: str | None
+    core_skills: list[str]
     similarity_score: float
-    structured_profile: Dict[str, Any]
+    structured_profile: dict[str, Any]
 
 
 class VectorStore:
@@ -46,11 +48,11 @@ class VectorStore:
         target_headline: str,
         years_of_experience: float,
         location: str = "Remote",
-        highest_education: Optional[str] = None,
-        core_skills: Optional[List[str]] = None,
+        highest_education: str | None = None,
+        core_skills: list[str] | None = None,
         raw_anonymized_text: str = "",
-        structured_profile: Optional[Dict[str, Any]] = None,
-        embedding: Optional[List[float]] = None,
+        structured_profile: dict[str, Any] | None = None,
+        embedding: list[float] | None = None,
         anonymized_name: str = "[CANDIDATE_NAME]",
         parsing_engine: str = "hybrid-pymupdf-docling",
     ) -> Candidate:
@@ -75,9 +77,9 @@ class VectorStore:
 
     async def search_candidates_by_vector(
         self,
-        query_embedding: List[float],
-        params: Optional[CandidateSearchParams] = None,
-    ) -> List[CandidateSearchResult]:
+        query_embedding: list[float],
+        params: CandidateSearchParams | None = None,
+    ) -> list[CandidateSearchResult]:
         """Perform HNSW cosine distance vector similarity search combined with payload filters."""
         if params is None:
             params = CandidateSearchParams()

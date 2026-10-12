@@ -1,5 +1,6 @@
 """Worker validation and persistence tests with deterministic in-memory collaborators."""
 
+import importlib
 import sys
 import uuid
 from datetime import UTC, datetime
@@ -52,6 +53,9 @@ def pipeline(monkeypatch, tmp_path):
 
 
 def test_worker_import_does_not_initialize_database_or_download_models():
+    tasks.get_session_factory.cache_clear()
+    tasks.get_processing_components.cache_clear()
+    importlib.reload(tasks)
     assert tasks.get_session_factory.cache_info().currsize == 0
     assert tasks.get_processing_components.cache_info().currsize == 0
     assert {ValueError, FileNotFoundError}.issubset(set(tasks.BaseTaskWithRetry.dont_autoretry_for))

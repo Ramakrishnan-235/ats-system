@@ -337,15 +337,17 @@ export default function OffersPage() {
             </div>
 
             <div className="flex items-center gap-1.5">
-              {[
-                { id: "all", label: "All Packages (24)" },
-                { id: "in_review", label: "In Review (5)" },
-                { id: "out_for_sign", label: "Out for Sign (4)" },
-              ].map((pill) => (
+              {(
+                [
+                  { id: "all", label: "All Packages (24)" },
+                  { id: "in_review", label: "In Review (5)" },
+                  { id: "out_for_sign", label: "Out for Sign (4)" },
+                ] as const
+              ).map((pill) => (
                 <button
                   key={pill.id}
                   type="button"
-                  onClick={() => setActiveFilterPill(pill.id as any)}
+                  onClick={() => setActiveFilterPill(pill.id)}
                   className={`px-3.5 py-1.5 rounded-xl font-semibold transition-all cursor-pointer ${
                     activeFilterPill === pill.id
                       ? "bg-[#131c29] text-white shadow-xs"

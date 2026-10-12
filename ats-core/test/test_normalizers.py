@@ -1,16 +1,12 @@
-import pytest
 from ats_core.parsers.normalizers import (
     normalize_date,
     normalize_date_range,
     normalize_phone,
     normalize_skill,
     normalize_skills_list,
-    SKILL_ALIASES,
-    SHORT_EXACT_SKILLS,
 )
-from ats_core.schema.skills import SkillsTaxonomy, ExtractedSkill
+from ats_core.schema.skills import SkillsTaxonomy
 from ats_core.schema.timeline import WorkExperience
-
 
 # =====================================================================
 # 1. DATE NORMALIZATION TESTS

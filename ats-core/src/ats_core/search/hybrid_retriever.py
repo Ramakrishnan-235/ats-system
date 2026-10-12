@@ -1,8 +1,9 @@
 import logging
 import math
-from typing import List, Dict, Any, Optional, Tuple
-from ats_core.search.dense_embedder import DenseEmbedder
+from typing import Any
+
 from ats_core.search.bm25_indexer import BM25LexicalIndex
+from ats_core.search.dense_embedder import DenseEmbedder
 
 logger = logging.getLogger("ats.search.hybrid")
 
@@ -12,8 +13,8 @@ class HybridCandidateRetriever:
 
     def __init__(
         self,
-        dense_embedder: Optional[DenseEmbedder] = None,
-        bm25_index: Optional[BM25LexicalIndex] = None,
+        dense_embedder: DenseEmbedder | None = None,
+        bm25_index: BM25LexicalIndex | None = None,
         rrf_constant: int = 60
     ):
         if rrf_constant < 0:
@@ -21,11 +22,11 @@ class HybridCandidateRetriever:
         self.dense = dense_embedder or DenseEmbedder()
         self.bm25 = bm25_index or BM25LexicalIndex()
         self.rrf_constant = rrf_constant
-        self.candidate_metadata: Dict[str, Dict[str, Any]] = {}
-        self.dense_embeddings: Dict[str, List[float]] = {}
-        self.candidate_corpus: Dict[str, str] = {}
+        self.candidate_metadata: dict[str, dict[str, Any]] = {}
+        self.dense_embeddings: dict[str, list[float]] = {}
+        self.candidate_corpus: dict[str, str] = {}
 
-    def index_candidates(self, candidate_records: List[Dict[str, Any]]):
+    def index_candidates(self, candidate_records: list[dict[str, Any]]):
         """
         Indexes candidate batch across both dense and sparse representations.
         Preserves previously indexed candidates without wiping vector memory.
@@ -58,7 +59,7 @@ class HybridCandidateRetriever:
         for cid, vec in zip(ids, new_embeddings):
             self.dense_embeddings[cid] = vec
 
-    def _cosine_similarity(self, a: List[float], b: List[float]) -> float:
+    def _cosine_similarity(self, a: list[float], b: list[float]) -> float:
         if len(a) != len(b) or not all(math.isfinite(v) for v in (*a, *b)):
             raise ValueError("Cosine similarity requires finite vectors of equal dimension")
         dot = sum(x * y for x, y in zip(a, b))
@@ -66,7 +67,7 @@ class HybridCandidateRetriever:
         norm_b = sum(y * y for y in b) ** 0.5
         return dot / (norm_a * norm_b) if norm_a and norm_b else 0.0
 
-    def search_dense(self, query: str, top_k: int = 50) -> List[Tuple[str, float]]:
+    def search_dense(self, query: str, top_k: int = 50) -> list[tuple[str, float]]:
         """Performs vector search in-memory (or replaces with pgvector query)."""
         if top_k < 0:
             raise ValueError("top_k must be nonnegative")
@@ -80,7 +81,7 @@ class HybridCandidateRetriever:
         scored.sort(key=lambda x: x[1], reverse=True)
         return scored[:top_k]
 
-    def hybrid_search(self, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
+    def hybrid_search(self, query: str, top_k: int = 10) -> list[dict[str, Any]]:
         """
         Executes parallel Dense + BM25 searches and applies Reciprocal Rank Fusion (RRF).
         """
@@ -93,9 +94,9 @@ class HybridCandidateRetriever:
         bm25_results = self.bm25.search(query, top_k=retrieval_limit)
 
         # Calculate RRF Scores
-        rrf_scores: Dict[str, float] = {}
-        dense_ranks: Dict[str, int] = {}
-        bm25_ranks: Dict[str, int] = {}
+        rrf_scores: dict[str, float] = {}
+        dense_ranks: dict[str, int] = {}
+        bm25_ranks: dict[str, int] = {}
 
         # 1. Score Dense Ranks
         for rank, (cid, score) in enumerate(dense_results, start=1):

@@ -1,4 +1,3 @@
-import pytest
 from ats_core.parsers.employer_normalizer import normalize_employer
 
 

@@ -1,8 +1,8 @@
-import os
 import sys
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
+import pytest
 
 # Add src to sys.path
 src_dir = str(Path(__file__).resolve().parent.parent / "src")
@@ -10,7 +10,6 @@ if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
 from fastapi import HTTPException
-
 
 # =============================================================================
 # 1. TEST CR-3: CONSTANT-TIME TIMING-SAFE API KEY AUTHENTICATION

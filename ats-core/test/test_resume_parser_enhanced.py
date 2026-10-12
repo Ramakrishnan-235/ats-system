@@ -1,18 +1,16 @@
 import json
 from pathlib import Path
 
-import pytest
 from ats_core.parsers.resume_parser import (
-    parse_resume_to_candidate,
-    extract_candidate_name,
-    extract_email_address,
-    extract_phone_number,
-    extract_location,
-    extract_linkedin,
-    extract_education,
-    extract_skills_from_text,
-    extract_experience_sections,
     calculate_candidate_experience_years,
+    extract_candidate_name,
+    extract_education,
+    extract_email_address,
+    extract_experience_sections,
+    extract_linkedin,
+    extract_location,
+    extract_phone_number,
+    extract_skills_from_text,
 )
 
 DEVA_KUMAR_RESUME_TEXT = """

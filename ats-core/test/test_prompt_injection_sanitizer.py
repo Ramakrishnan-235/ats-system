@@ -1,19 +1,13 @@
-import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from ats_core.llm.sanitizer import (
-    sanitize_prompt_text,
-    PromptSanitizer,
-    CONTROL_TOKENS_PATTERN,
-    ADVERSARIAL_DIRECTIVES_PATTERN,
-    ROLE_DELIMITER_PATTERN,
-    DEFAULT_XML_TAG_ESCAPE_PATTERN,
-)
-from ats_core.parsers.ollama_extractor import OllamaCandidateExtractor
-from ats_core.parsers.llm_residue_extractor import LLMResidueExtractor, LLMResidueOutput, LLMResidueSkill
 from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
 from ats_core.evaluator.llm_evaluator import _sanitize_untrusted_prompt_input
+from ats_core.llm.sanitizer import (
+    sanitize_prompt_text,
+)
+from ats_core.parsers.llm_residue_extractor import LLMResidueExtractor, LLMResidueOutput
+from ats_core.parsers.ollama_extractor import OllamaCandidateExtractor
 
 
 class TestPromptSanitizer:

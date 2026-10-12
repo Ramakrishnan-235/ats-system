@@ -1,9 +1,10 @@
 import logging
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
-from typing import List, Optional
 import uuid
-from fastapi import Request, HTTPException, status
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+
+from fastapi import HTTPException, Request, status
+
 from ats_core.api.auth import UserIdentity
 
 logger = logging.getLogger("ats.api.audit")
@@ -20,8 +21,8 @@ class AuditRecord:
     resource_id: str
     decision: str  # "ALLOWED" or "DENIED"
     details: str
-    ip_address: Optional[str] = None
-    user_agent: Optional[str] = None
+    ip_address: str | None = None
+    user_agent: str | None = None
 
     def to_dict(self):
         return asdict(self)
@@ -30,7 +31,7 @@ class AuditRecord:
 class PIIAuditLogger:
     def __init__(self, max_entries: int = 10000):
         self.max_entries = max_entries
-        self._entries: List[AuditRecord] = []
+        self._entries: list[AuditRecord] = []
 
     def record(
         self,
@@ -41,12 +42,12 @@ class PIIAuditLogger:
         resource_id: str,
         decision: str,
         details: str,
-        ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> AuditRecord:
         record = AuditRecord(
             id=f"aud-{uuid.uuid4().hex[:12]}",
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             actor_id=actor_id or "anonymous",
             actor_role=actor_role or "unknown",
             action=action,
@@ -72,10 +73,10 @@ class PIIAuditLogger:
     def list_records(
         self,
         limit: int = 50,
-        actor_id: Optional[str] = None,
-        action: Optional[str] = None,
-        resource_type: Optional[str] = None,
-    ) -> List[AuditRecord]:
+        actor_id: str | None = None,
+        action: str | None = None,
+        resource_type: str | None = None,
+    ) -> list[AuditRecord]:
         results = list(self._entries)
         if actor_id:
             results = [r for r in results if r.actor_id.lower() == actor_id.lower()]

@@ -1,15 +1,14 @@
 # run_validation_gate.py
-import json
 import logging
 import random
 import sys
 import time
 from dataclasses import dataclass
-from typing import List, Dict, Any
+
+from ats_core.schemas.candidate import CandidateProfile
 
 from ats_core.parsers.anonymizer import ResumeAnonymizer
 from ats_core.parsers.ollama_extractor import OllamaCandidateExtractor
-from ats_core.schemas.candidate import CandidateProfile
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("validation_gate")
@@ -29,9 +28,9 @@ DOMAINS = [
 class BenchmarkItem:
     resume_id: int
     raw_text: str
-    ground_truth_pii: Dict[str, str]
+    ground_truth_pii: dict[str, str]
 
-def generate_benchmark_dataset(count: int = 100) -> List[BenchmarkItem]:
+def generate_benchmark_dataset(count: int = 100) -> list[BenchmarkItem]:
     """Generates 100 diverse resumes with known ground-truth PII for deterministic benchmarking."""
     dataset = []
     for i in range(1, count + 1):

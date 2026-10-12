@@ -13,19 +13,18 @@ Rules:
 
 import logging
 import os
-import json
 import re
 import threading
-from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field
+from typing import Any, Optional
+
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
+from pydantic import BaseModel, Field
 
-from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService, RESUME_PROSE_STOPWORDS
-from ats_core.llm.client import get_openrouter_chat_model, get_structured_llm, get_llm_config
-from ats_core.llm.sanitizer import sanitize_prompt_text
 from ats_core.evaluator.langsmith_tracker import build_evaluation_run_config
-
+from ats_core.llm.client import get_llm_config, get_openrouter_chat_model, get_structured_llm
+from ats_core.llm.sanitizer import sanitize_prompt_text
+from ats_core.taxonomy.taxonomy_service import RESUME_PROSE_STOPWORDS, SkillTaxonomyService
 
 logger = logging.getLogger("ats.parsers.llm_residue")
 
@@ -60,7 +59,7 @@ class LLMResidueSkill(BaseModel):
 
 
 class LLMResidueOutput(BaseModel):
-    new_skills: List[LLMResidueSkill] = Field(
+    new_skills: list[LLMResidueSkill] = Field(
         default_factory=list,
         description="List of newly discovered skills with verbatim source text evidence."
     )
@@ -75,9 +74,9 @@ class LLMResidueExtractor:
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
-        model_name: Optional[str] = None,
-        api_key: Optional[str] = None,
+        base_url: str | None = None,
+        model_name: str | None = None,
+        api_key: str | None = None,
         temperature: float = 0.0,
     ):
         config = get_llm_config(base_url=base_url, model_name=model_name, api_key=api_key)
@@ -154,9 +153,9 @@ class LLMResidueExtractor:
     def extract_residue_skills(
         self,
         resume_text: str,
-        skills_already_found: List[str],
-        register_flywheel: Optional[bool] = None
-    ) -> List[Dict[str, Any]]:
+        skills_already_found: list[str],
+        register_flywheel: bool | None = None
+    ) -> list[dict[str, Any]]:
         """
         Executes residue extraction pass:
         1. Redacts resume PII before accessing the LLM; uses local rules if unavailable.
@@ -173,7 +172,7 @@ class LLMResidueExtractor:
         max_flywheel_per_resume = int(os.getenv("ATS_MAX_FLYWHEEL_PER_RESUME", "5"))
         flywheel_registered_count = 0
 
-        verified_skills: List[Dict[str, Any]] = []
+        verified_skills: list[dict[str, Any]] = []
         try:
             safe_resume_text = self._redact_for_llm(resume_text)
             if not safe_resume_text or not safe_resume_text.strip():
@@ -277,8 +276,8 @@ class LLMResidueExtractor:
     def _fallback_rule_residue(
         self,
         resume_text: str,
-        skills_already_found: List[str]
-    ) -> List[LLMResidueSkill]:
+        skills_already_found: list[str]
+    ) -> list[LLMResidueSkill]:
         """
         Deterministic fallback if local LLM is offline.
         Inspects strictly validated technical terms (CamelCase or technical suffixes)
@@ -286,7 +285,7 @@ class LLMResidueExtractor:
         """
         lines = resume_text.split("\n")
         already_set = {s.lower() for s in skills_already_found}
-        results: List[LLMResidueSkill] = []
+        results: list[LLMResidueSkill] = []
 
         # Technical token matchers:
         # 1. CamelCase (e.g. DeltaLake, LangChain, RoboFlow, TensorFlow, PyTorch, AirFlow)

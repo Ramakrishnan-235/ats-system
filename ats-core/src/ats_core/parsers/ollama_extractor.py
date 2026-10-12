@@ -1,13 +1,14 @@
 import logging
 import os
-from typing import Optional, Any
-from pydantic import ValidationError
+from typing import Any
+
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
+from pydantic import ValidationError
 
-from ats_core.schema.candidate import CandidateProfile
-from ats_core.llm.client import get_openrouter_chat_model, get_structured_llm, get_llm_config
+from ats_core.llm.client import get_llm_config, get_openrouter_chat_model, get_structured_llm
 from ats_core.llm.sanitizer import sanitize_prompt_text
+from ats_core.schema.candidate import CandidateProfile
 
 logger = logging.getLogger("ats.parsers.candidate_extractor")
 
@@ -41,11 +42,11 @@ class OllamaCandidateExtractor:
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
-        model_name: Optional[str] = None,
-        api_key: Optional[str] = None,
+        base_url: str | None = None,
+        model_name: str | None = None,
+        api_key: str | None = None,
         temperature: float = 0.0,
-        max_retries: Optional[int] = None,
+        max_retries: int | None = None,
     ):
         config = get_llm_config(base_url=base_url, model_name=model_name, api_key=api_key)
         self.base_url = config["base_url"]

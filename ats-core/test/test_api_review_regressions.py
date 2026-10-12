@@ -566,7 +566,7 @@ def test_coerce_to_uuid_handles_api_go_and_custom_id_formats():
     assert parsed_api == orig_uuid
 
     # 2. Go server format: cand-<uuid36>
-    go_cand_id = f"cand-{str(orig_uuid)}"
+    go_cand_id = f"cand-{orig_uuid!s}"
     parsed_go = coerce_to_uuid(go_cand_id)
     assert parsed_go == orig_uuid
 

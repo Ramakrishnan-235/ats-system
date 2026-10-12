@@ -1,5 +1,5 @@
-import pytest
 import spacy
+
 from ats_core.parsers.disambiguation import is_valid_mention
 from ats_core.parsers.skill_matcher import SkillMatcher
 

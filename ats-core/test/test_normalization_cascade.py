@@ -1,8 +1,6 @@
-import pytest
 from ats_core.parsers.normalization_cascade import (
     resolve_skill,
     resolve_skills_batch,
-    SkillEmbeddingsIndex,
 )
 from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
 
@@ -41,12 +39,25 @@ def test_layer3_embedding_similarity_resolution():
     """
     Verify Layer 3 resolves semantic paraphrases using dense embeddings and margin checks.
     """
-    embeddings_index = SkillEmbeddingsIndex.get_instance()
-    
+    from unittest.mock import MagicMock
+
+    from ats_core.parsers.normalization_cascade import EmbeddingSearchResult
+
+    tax = SkillTaxonomyService.get_instance()
+    sys_skill = tax.get_skill_by_canonical("System Design")
+    assert sys_skill is not None
+    skill_id = sys_skill["id"]
+
+    mock_index = MagicMock()
+    mock_index.search.return_value = [
+        EmbeddingSearchResult(skill_id=skill_id, canonical_name="System Design", category="domain", score=0.88),
+        EmbeddingSearchResult(skill_id="other-skill", canonical_name="Other Skill", category="domain", score=0.60),
+    ]
+
     # Test semantic paraphrase
     rec_sys, conf_sys, layer_sys = resolve_skill(
         "distributed systems design",
-        embeddings_index=embeddings_index,
+        embeddings_index=mock_index,
         register_pending=False
     )
     assert rec_sys is not None

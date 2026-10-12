@@ -8,7 +8,6 @@ Verifies:
    String(100)/String(255) and Numeric(4,1) DataErrors.
 """
 
-import os
 import sys
 import uuid
 from datetime import UTC, datetime
@@ -23,9 +22,9 @@ from sqlalchemy.exc import DataError, IntegrityError, ProgrammingError
 # Ensure src is on sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
 from ats_core.llm.client import get_openrouter_chat_model
 from ats_core.parsers.ollama_extractor import OllamaCandidateExtractor
-from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
 from ats_core.workers import tasks
 from ats_core.workers.tasks import BaseTaskWithRetry
 

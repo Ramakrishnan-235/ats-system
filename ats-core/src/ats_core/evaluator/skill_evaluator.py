@@ -7,17 +7,17 @@ production tenure compliance, staleness, and evidence quality with complete audi
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 logger = logging.getLogger("ats.evaluator.skill")
 
 
 def evaluate_candidate_skills_coverage(
-    skill_matrix: Dict[str, Dict[str, Any]],
-    required_skills: List[str],
+    skill_matrix: dict[str, dict[str, Any]],
+    required_skills: list[str],
     min_years_experience: float = 0.0,
     max_stale_months: int = 36
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Evaluates candidate's aggregated skill matrix against job requisition requirements.
     
@@ -47,9 +47,9 @@ def evaluate_candidate_skills_coverage(
             "stale_skills": [],
         }
 
-    breakdown: List[Dict[str, Any]] = []
-    missing_skills: List[str] = []
-    stale_skills: List[str] = []
+    breakdown: list[dict[str, Any]] = []
+    missing_skills: list[str] = []
+    stale_skills: list[str] = []
     total_coverage_weight = 0.0
 
     TIER_SCORE_MAP = {
@@ -125,7 +125,7 @@ def evaluate_candidate_skills_coverage(
                 "is_certified": False,
                 "evidence_tier": "none",
                 "weighted_score": 0.0,
-                "explanation": f"Missing from candidate profile; no verified evidence found",
+                "explanation": "Missing from candidate profile; no verified evidence found",
             })
 
     matched_count = len(required_skills) - len(missing_skills)
