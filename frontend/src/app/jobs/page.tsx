@@ -62,99 +62,7 @@ interface PipelineCardData {
   email?: string;
 }
 
-const DEFAULT_PIPELINE_CARDS: PipelineCardData[] = [
-  // Applied
-  {
-    id: "cand-mv",
-    name: "Marcus Vance",
-    avatar:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuBmpiO91aOaMavCHv-NiljXk26oUdApqC95PU7xA0b5lD1svYIFXaI0v7z9_MgQ2BR8dZC5nFwJnRTS87uWk26xolSVy46HlUcfuT5bdgzOCOIpRDt-Hak-mpR7wUHcHSAViPBhPJgbX_BP49Za7i1kokTErgaP0EITSLOnRmvdSS7v7zw6VZ1SOBMPadGUtjq7fjvVOynXL4b04utAKw7Sac3I8ifmkFmbH-8i3nz7WeTeyu8ohoQ0dA",
-    stage: "Applied",
-    jobMatch: 94,
-    timeInStage: "4d in stage",
-    source: "Referral",
-    tags: ["11y exp", "Ex-Stripe", "Distributed Sys"],
-    owner: "Elena V.",
-    ownerAvatar:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuDM5t6ISeAvgD2fFYxXR6cEqSm42Jac-Q_-xNGIwHtVtdDvbEnEeb2UUBMCATmi6D-iNvGmYrWYK-qYCnQxaCjXkWsZvQsKv8yTVB7NuKZHRhIiNSErApveE9ws7hqanVl1WjyDPm9bLYQlhtMYUDs1rrGVz3vEZCNsxDy4-KadIeDhwNAySx5dXxHoDM3RrxEbHYtSaQUkC6HBMyvwRW5Z-fAyiLtmXiyZR9YGpNNr1X5cKarUg8Cjdg",
-    email: "marcus.vance@tech.co",
-  },
-  {
-    id: "cand-sl",
-    name: "Sarah Lin",
-    stage: "Applied",
-    timeInStage: "Just now",
-    source: "LinkedIn",
-    tags: ["AWS", "Terraform"],
-    isProcessing: true,
-    statusNote: "Resume Parsing in Progress",
-    email: "sarah.lin@cloudeng.io",
-  },
-  // Screening
-  {
-    id: "cand-dk",
-    name: "David K.",
-    avatar:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuCI0gTDoCrme-ZgbyTojBo9-yTiRwLcW2V_jJjIq_oN9Jh0bw-mmsmAXCxgXkpG9xKyqHAXi8KLf__nhtP8tDLxGnbXE-VqA7P-lf8gPM9gG13LzV1vG1egSy69FYu-XQDe86ah_lwTdhl7tBDiLAsyABDFirJaY7_nYAcBenVvgzUWbRlf3NzuNxz3YzS1-31wOKJDIi_ahj1kE4pL2_hy1ABbdbe_94628b5fH8-FXtqNGkrFJmHwOQ",
-    stage: "Screening",
-    jobMatch: 86,
-    timeInStage: "2d in stage",
-    source: "Careers Direct",
-    actionRequired: true,
-    statusNote:
-      "Screening interview completed. Recruiter stage transition review required.",
-    email: "david.k@platform-eng.net",
-  },
-  {
-    id: "cand-ao",
-    name: "Amara Okafor",
-    avatar:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuD_Ga71SMV47CI_ywP5uVCoPmPWmFH1YMeRmTKoUwjjr2iNvPCAVx19w9fytXl50OwGLNS64CONkmwD_ZXPBHl3X2I0iv5by65CkL4ttq9JEr2tI-qWhEovPFuW17AtY5KA2N650ByzH_rhjSpwraYtZpdBAKAphtizuQ9qJDOSxeOjn1W_4T7k3Ehg6AKgvfwUTaiSKa95xvYINGWeAZfCwck4c3FqTP4Ch73u3RxjSnWMEOr0j-2qkw",
-    stage: "Screening",
-    jobMatch: 91,
-    timeInStage: "1d in stage",
-    source: "Direct Sourced",
-    statusNote:
-      "Portfolio verified, needs compensation band alignment check.",
-    salaryNote: "Salary: £110k",
-    email: "amara.okafor@infrasystems.co.uk",
-  },
-  // Tech Interview
-  {
-    id: "cand-js",
-    name: "Jordan Smith",
-    stage: "Tech Interview",
-    timeInStage: "3d in stage",
-    source: "Referral",
-    rating: 4.5,
-    statusNote:
-      "Architecture round completed by Lead Infra Eng. Highly recommended for offer review.",
-    interviewer: "C. Miller",
-    email: "jordan.smith@devops.net",
-  },
-  // Offer
-  {
-    id: "cand-er",
-    name: "Elena Rostova",
-    stage: "Offer",
-    jobMatch: 98,
-    timeInStage: "5d in stage",
-    source: "Agency Submission",
-    statusNote: "Offer letter drafted · $185k base + equity. Pending candidate review.",
-    timeNote: "Sent 2 days ago",
-    email: "elena.rostova@engineer.org",
-  } as PipelineCardData & { timeNote?: string },
-  // Hired
-  {
-    id: "cand-lc",
-    name: "Liam Chen",
-    stage: "Hired",
-    timeInStage: "Signed Oct 02",
-    source: "Campus Sourced",
-    statusNote: "Accepted · Start date: Nov 1. Equipment provisioning in progress.",
-    email: "liam.chen@alum.mit.edu",
-  },
-];
+const DEFAULT_PIPELINE_CARDS: PipelineCardData[] = [];
 
 export default function JobsPage() {
   const [allJobs, setAllJobs] = useState<JobRequisition[]>([]);
@@ -170,8 +78,8 @@ export default function JobsPage() {
 
   // Kanban candidates state
   const [pipelineCards, setPipelineCards] = useState<PipelineCardData[]>(DEFAULT_PIPELINE_CARDS);
-  const [selectedCandidateId, setSelectedCandidateId] = useState<string>("cand-dk");
-  const [isDrawerOpen, setIsDrawerOpen] = useState(true);
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // Modals state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -181,7 +89,7 @@ export default function JobsPage() {
     role: string;
     req: string;
   }>({
-    name: "David K.",
+    name: "Candidate",
     role: "Senior Platform Engineer",
     req: "REQ-RE-204",
   });
@@ -207,6 +115,9 @@ export default function JobsPage() {
       .then((jobs) => {
         if (!cancelled && jobs && jobs.length > 0) {
           setAllJobs(jobs);
+          if (!jobs.some((j) => j.id === selectedJobId)) {
+            setSelectedJobId(jobs[0].id);
+          }
         }
       })
       .catch((err) => {
@@ -217,6 +128,42 @@ export default function JobsPage() {
     };
   }, []);
 
+  // Load pipeline candidates for the selected job
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedJobId) return;
+    fetchJobCandidates(selectedJobId)
+      .then((candidates) => {
+        if (cancelled) return;
+        if (candidates && candidates.length > 0) {
+          const mapped: PipelineCardData[] = candidates.map((cand) => ({
+            id: cand.id,
+            name: cand.name,
+            avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80`,
+            role: cand.headline || "Candidate",
+            stage: (["Applied", "Screening", "Tech Interview", "Offer", "Hired"].includes(cand.stage as any)
+              ? (cand.stage as PipelineCardData["stage"])
+              : "Screening"),
+            jobMatch: cand.matchScore ?? undefined,
+            timeInStage: "Recently added",
+            source: "Direct Ingestion",
+            tags: cand.skills || [],
+            owner: "Hiring Team",
+            statusNote: cand.headline || undefined,
+          }));
+          setPipelineCards(mapped);
+        } else {
+          setPipelineCards([]);
+        }
+      })
+      .catch((err) => {
+        console.warn("Could not load candidates for job:", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedJobId]);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
@@ -225,10 +172,11 @@ export default function JobsPage() {
   };
 
   const selectedCandidate = useMemo(() => {
+    if (!selectedCandidateId) return pipelineCards[0] || null;
     return (
       pipelineCards.find((c) => c.id === selectedCandidateId) ||
-      pipelineCards.find((c) => c.id === "cand-dk") ||
-      pipelineCards[0]
+      pipelineCards[0] ||
+      null
     );
   }, [pipelineCards, selectedCandidateId]);
 
@@ -715,11 +663,17 @@ export default function JobsPage() {
                           </div>
 
                           {/* Cards */}
-                          {colCards.map((card) => {
-                            const isSelected = selectedCandidateId === card.id;
-
-                            // CARD: David K. (Screening)
-                            if (card.id === "cand-dk") {
+                          {colCards.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-[#dee2ef] p-6 text-center flex flex-col items-center justify-center gap-1.5 min-h-[130px] bg-white/40">
+                              <div className="w-7 h-7 rounded-full bg-[#f0f3ff] flex items-center justify-center text-[#75777c]">
+                                <SymbolIcon name="inbox" className="text-[15px]" style={{ fontSize: "15px" }} />
+                              </div>
+                              <span className="text-xs font-medium text-[#75777c]">No candidates in stage</span>
+                              <span className="text-[10px] text-[#75777c]/80">Advance candidates to this stage</span>
+                            </div>
+                          ) : (
+                            colCards.map((card) => {
+                              const isSelected = selectedCandidateId === card.id;
                               return (
                                 <div
                                   key={card.id}
@@ -727,101 +681,72 @@ export default function JobsPage() {
                                     setSelectedCandidateId(card.id);
                                     setIsDrawerOpen(true);
                                   }}
-                                  className={`bg-white rounded-xl p-3 shadow-md ring-2 ring-[#6137e0] flex flex-col gap-2.5 cursor-pointer relative transition-all ${
-                                    isSelected ? "shadow-lg" : ""
+                                  className={`bg-white rounded-xl p-3 shadow-xs hover:shadow-md border border-[#dee2ef]/70 transition-all flex flex-col gap-2.5 cursor-pointer group ${
+                                    isSelected ? "ring-2 ring-[#6137e0] shadow-md" : ""
                                   }`}
                                 >
                                   <div className="flex items-start justify-between gap-1">
                                     <div className="flex items-center gap-2">
-                                      <img
-                                        className="w-7 h-7 rounded-full object-cover"
-                                        alt={card.name}
-                                        src={card.avatar}
-                                      />
-                                      <div>
-                                        <div className="text-xs font-bold text-[#171c25] flex items-center gap-1">
-                                          {card.name}
-                                          <SymbolIcon name="check_circle" className="text-[#6137e0] text-[14px]" style={{ fontSize: "14px" }} />
+                                      {card.avatar ? (
+                                        <img
+                                          className="w-7 h-7 rounded-full object-cover"
+                                          alt={card.name}
+                                          src={card.avatar}
+                                        />
+                                      ) : (
+                                        <div className="w-7 h-7 rounded-full bg-[#6137e0]/10 text-[#6137e0] text-[11px] flex items-center justify-center font-bold">
+                                          {card.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() || "CA"}
                                         </div>
-                                        <div className="font-mono text-[10px] text-[#75777c]">{card.timeInStage}</div>
-                                      </div>
-                                    </div>
-                                    <span className="px-1.5 py-0.5 rounded bg-[#e4e8f5] text-[#171c25] font-mono text-[10px] font-bold">
-                                      Job Match: {card.jobMatch}/100
-                                    </span>
-                                  </div>
-
-                                  <div className="p-2 rounded bg-[#f0f3ff] text-[#45474c] text-[11px] leading-relaxed">
-                                    {card.statusNote}
-                                  </div>
-
-                                  <div className="flex items-center justify-between pt-1">
-                                    <span className="text-[11px] text-[#6137e0] font-bold">Action Required</span>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedCandidateId(card.id);
-                                        setIsDrawerOpen(true);
-                                      }}
-                                      className="px-2 py-0.5 rounded bg-[#131c29] text-white text-[11px] font-semibold shadow-xs flex items-center gap-1 hover:bg-[#2c313a] transition-colors cursor-pointer"
-                                      type="button"
-                                    >
-                                      <span>Move</span>
-                                      <SymbolIcon name="chevron_right" className="text-[12px]" style={{ fontSize: "12px" }} />
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            }
-
-                            // CARD: Marcus Vance
-                            if (card.id === "cand-mv") {
-                              return (
-                                <div
-                                  key={card.id}
-                                  onClick={() => {
-                                    setSelectedCandidateId(card.id);
-                                    setIsDrawerOpen(true);
-                                  }}
-                                  className="bg-white rounded-xl p-3 shadow-xs hover:shadow-md border border-[#dee2ef]/70 transition-shadow flex flex-col gap-2.5 group cursor-pointer"
-                                >
-                                  <div className="flex items-start justify-between gap-1">
-                                    <div className="flex items-center gap-2">
-                                      <img
-                                        className="w-7 h-7 rounded-full object-cover"
-                                        alt={card.name}
-                                        src={card.avatar}
-                                      />
+                                      )}
                                       <div>
-                                        <div className="text-xs font-bold text-[#171c25] group-hover:text-[#6137e0] transition-colors">
+                                        <div className="text-xs font-bold text-[#171c25] group-hover:text-[#6137e0] transition-colors flex items-center gap-1">
                                           {card.name}
+                                          {card.actionRequired && (
+                                            <SymbolIcon name="priority_high" className="text-amber-500 text-[12px]" style={{ fontSize: "12px" }} />
+                                          )}
                                         </div>
                                         <div className="font-mono text-[10px] text-[#75777c]">
-                                          {card.timeInStage} · {card.source}
+                                          {card.timeInStage || "Recently added"} {card.source ? `· ${card.source}` : ""}
                                         </div>
                                       </div>
                                     </div>
-                                    <span className="px-1.5 py-0.5 rounded bg-[#e4e8f5] text-[#171c25] font-mono text-[10px] font-bold">
-                                      Job Match: {card.jobMatch}/100
-                                    </span>
-                                  </div>
-
-                                  <div className="flex flex-wrap gap-1">
-                                    {card.tags?.map((t) => (
-                                      <span
-                                        key={t}
-                                        className="px-1.5 py-0.5 rounded bg-[#f0f3ff] text-[#45474c] font-mono text-[10px]"
-                                      >
-                                        {t}
+                                    {typeof card.jobMatch === "number" && (
+                                      <span className="px-1.5 py-0.5 rounded bg-[#e4e8f5] text-[#171c25] font-mono text-[10px] font-bold">
+                                        {card.jobMatch}%
                                       </span>
-                                    ))}
+                                    )}
                                   </div>
 
-                                  <div className="flex items-center justify-between pt-1 text-[#45474c] text-[11px]">
-                                    <span className="flex items-center gap-1 text-[#75777c]">
-                                      <SymbolIcon name="person" className="text-[14px]" style={{ fontSize: "14px" }} />
-                                      {card.owner}
-                                    </span>
+                                  {card.statusNote && (
+                                    <div className="p-2 rounded bg-[#f0f3ff] text-[#45474c] text-[11px] leading-relaxed">
+                                      {card.statusNote}
+                                    </div>
+                                  )}
+
+                                  {card.tags && card.tags.length > 0 && (
+                                    <div className="flex flex-wrap gap-1">
+                                      {card.tags.map((t) => (
+                                        <span
+                                          key={t}
+                                          className="px-1.5 py-0.5 rounded bg-[#f0f3ff] text-[#45474c] font-mono text-[10px]"
+                                        >
+                                          {t}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  <div className="flex items-center justify-between pt-1 text-[11px]">
+                                    {card.owner ? (
+                                      <span className="flex items-center gap-1 text-[#75777c]">
+                                        <SymbolIcon name="person" className="text-[14px]" style={{ fontSize: "14px" }} />
+                                        {card.owner}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[#75777c] font-mono text-[10px]">
+                                        {card.salaryNote || "Standard Process"}
+                                      </span>
+                                    )}
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
@@ -836,216 +761,8 @@ export default function JobsPage() {
                                   </div>
                                 </div>
                               );
-                            }
-
-                            // CARD: Sarah Lin (Resume Ingestion in progress)
-                            if (card.id === "cand-sl") {
-                              return (
-                                <div
-                                  key={card.id}
-                                  className="bg-white rounded-xl p-3 shadow-xs border border-[#dee2ef]/70 flex flex-col gap-2.5 opacity-90 cursor-pointer"
-                                >
-                                  <div className="flex items-start justify-between gap-1">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-7 h-7 rounded-full bg-[#dee2ef] text-[#171c25] text-[11px] flex items-center justify-center font-bold">
-                                        SL
-                                      </div>
-                                      <div>
-                                        <div className="text-xs font-bold text-[#171c25]">{card.name}</div>
-                                        <div className="font-mono text-[10px] text-[#75777c]">
-                                          {card.timeInStage} · {card.source}
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <span className="w-2 h-2 rounded-full bg-[#7a55fa] animate-ping"></span>
-                                  </div>
-
-                                  {/* Ingestion Status */}
-                                  <div className="px-2 py-1 rounded bg-[#e7deff]/60 flex items-center gap-1.5 text-[#1e0060] text-[11px] font-semibold">
-                                    <SymbolIcon name="sync" className="text-[14px] animate-spin" style={{ fontSize: "14px" }} />
-                                    <span>{card.statusNote}</span>
-                                  </div>
-
-                                  <div className="flex flex-wrap gap-1">
-                                    {card.tags?.map((t) => (
-                                      <span
-                                        key={t}
-                                        className="px-1.5 py-0.5 rounded bg-[#f0f3ff] text-[#45474c] font-mono text-[10px]"
-                                      >
-                                        {t}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
-                              );
-                            }
-
-                            // CARD: Amara Okafor
-                            if (card.id === "cand-ao") {
-                              return (
-                                <div
-                                  key={card.id}
-                                  onClick={() => {
-                                    setSelectedCandidateId(card.id);
-                                    setIsDrawerOpen(true);
-                                  }}
-                                  className="bg-white rounded-xl p-3 shadow-xs hover:shadow-md border border-[#dee2ef]/70 transition-shadow flex flex-col gap-2.5 cursor-pointer"
-                                >
-                                  <div className="flex items-start justify-between gap-1">
-                                    <div className="flex items-center gap-2">
-                                      <img
-                                        className="w-7 h-7 rounded-full object-cover"
-                                        alt={card.name}
-                                        src={card.avatar}
-                                      />
-                                      <div>
-                                        <div className="text-xs font-bold text-[#171c25]">{card.name}</div>
-                                        <div className="font-mono text-[10px] text-[#75777c]">{card.timeInStage}</div>
-                                      </div>
-                                    </div>
-                                    <span className="px-1.5 py-0.5 rounded bg-[#e4e8f5] text-[#171c25] font-mono text-[10px] font-bold">
-                                      Job Match: {card.jobMatch}/100
-                                    </span>
-                                  </div>
-
-                                  <div className="p-2 rounded bg-[#f0f3ff] text-[#45474c] text-[11px]">
-                                    {card.statusNote}
-                                  </div>
-
-                                  <div className="flex items-center justify-between pt-1 text-[#45474c] text-[11px]">
-                                    <span className="font-mono text-[10px] text-[#75777c] font-medium">
-                                      {card.salaryNote}
-                                    </span>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleOpenReview(card);
-                                      }}
-                                      className="px-2 py-0.5 rounded bg-[#eaeefb] hover:bg-[#e4e8f5] text-[#171c25] text-[11px] font-semibold transition-colors cursor-pointer"
-                                      type="button"
-                                    >
-                                      Review
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            }
-
-                            // CARD: Jordan Smith (Tech Interview)
-                            if (card.id === "cand-js") {
-                              return (
-                                <div
-                                  key={card.id}
-                                  onClick={() => {
-                                    setSelectedCandidateId(card.id);
-                                    setIsDrawerOpen(true);
-                                  }}
-                                  className="bg-white rounded-xl p-3 shadow-xs hover:shadow-md border border-[#dee2ef]/70 transition-shadow flex flex-col gap-2.5 cursor-pointer"
-                                >
-                                  <div className="flex items-start justify-between gap-1">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-7 h-7 rounded-full bg-[#131c29] text-white text-[11px] flex items-center justify-center font-bold">
-                                        JS
-                                      </div>
-                                      <div>
-                                        <div className="text-xs font-bold text-[#171c25]">{card.name}</div>
-                                        <div className="font-mono text-[10px] text-[#75777c]">{card.timeInStage}</div>
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center gap-0.5 text-[#6137e0] font-mono text-xs font-bold">
-                                      <SymbolIcon name="star" className="text-[14px]" style={{ fontSize: "14px" }} />
-                                      <span>{card.rating}</span>
-                                    </div>
-                                  </div>
-
-                                  <div className="p-2 rounded bg-[#f0f3ff] text-[#45474c] text-[11px]">
-                                    {card.statusNote}
-                                  </div>
-
-                                  <div className="flex items-center justify-between pt-1 text-[#45474c] text-[11px]">
-                                    <span className="text-[10px] text-[#75777c] font-medium">
-                                      Interviewer: {card.interviewer}
-                                    </span>
-                                    <span className="px-2 py-0.5 rounded bg-[#dee2ef] text-[#171c25] text-[10px] font-bold">
-                                      Passed
-                                    </span>
-                                  </div>
-                                </div>
-                              );
-                            }
-
-                            // CARD: Elena Rostova (Offer)
-                            if (card.id === "cand-er") {
-                              return (
-                                <div
-                                  key={card.id}
-                                  onClick={() => {
-                                    setSelectedCandidateId(card.id);
-                                    setIsDrawerOpen(true);
-                                  }}
-                                  className="bg-white rounded-xl p-3 shadow-xs hover:shadow-md border border-[#dee2ef]/70 transition-shadow flex flex-col gap-2.5 cursor-pointer"
-                                >
-                                  <div className="flex items-start justify-between gap-1">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-7 h-7 rounded-full bg-[#6137e0] text-white text-[11px] flex items-center justify-center font-bold">
-                                        ER
-                                      </div>
-                                      <div>
-                                        <div className="text-xs font-bold text-[#171c25]">{card.name}</div>
-                                        <div className="font-mono text-[10px] text-[#75777c]">{card.timeInStage}</div>
-                                      </div>
-                                    </div>
-                                    <span className="px-1.5 py-0.5 rounded bg-[#e4e8f5] text-[#171c25] font-mono text-[10px] font-bold">
-                                      98%
-                                    </span>
-                                  </div>
-
-                                  <div className="p-2 rounded bg-[#f0f3ff] text-[#45474c] text-[11px]">
-                                    {card.statusNote}
-                                  </div>
-
-                                  <div className="flex items-center justify-between pt-1 text-[11px]">
-                                    <span className="text-[#75777c]">Sent 2 days ago</span>
-                                    <SymbolIcon name="mail" className="text-[16px] text-[#6137e0]" style={{ fontSize: "16px" }} />
-                                  </div>
-                                </div>
-                              );
-                            }
-
-                            // CARD: Liam Chen (Hired)
-                            return (
-                              <div
-                                key={card.id}
-                                onClick={() => {
-                                  setSelectedCandidateId(card.id);
-                                  setIsDrawerOpen(true);
-                                }}
-                                className="bg-white rounded-xl p-3 shadow-xs border border-[#dee2ef]/70 flex flex-col gap-2.5 cursor-pointer"
-                              >
-                                <div className="flex items-start justify-between gap-1">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-7 h-7 rounded-full bg-[#dee2ef] text-[#171c25] text-[11px] flex items-center justify-center font-bold">
-                                      LC
-                                    </div>
-                                    <div>
-                                      <div className="text-xs font-bold text-[#171c25]">{card.name}</div>
-                                      <div className="font-mono text-[10px] text-[#75777c]">{card.timeInStage}</div>
-                                    </div>
-                                  </div>
-                                  <SymbolIcon name="verified" className="text-[#6137e0] text-[18px]" style={{ fontSize: "18px" }} />
-                                </div>
-
-                                <div className="p-2 rounded bg-[#f0f3ff] text-[#45474c] text-[11px]">
-                                  {card.statusNote}
-                                </div>
-
-                                <div className="flex items-center justify-between pt-1 text-[11px] text-[#45474c]">
-                                  <span className="font-semibold text-emerald-700">Onboarding active</span>
-                                  <SymbolIcon name="arrow_outward" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
-                                </div>
-                              </div>
-                            );
-                          })}
+                            })
+                          )}
                         </div>
                       );
                     })}
@@ -1053,7 +770,7 @@ export default function JobsPage() {
                 </div>
 
                 {/* Interactive Stage Action Drawer / Dialog (4 Columns Desktop) */}
-                {isDrawerOpen && (
+                {isDrawerOpen && selectedCandidate && (
                   <div className="xl:col-span-4 bg-white rounded-xl p-5 sm:p-6 shadow-md border border-[#dee2ef]/70 flex flex-col gap-4 sticky top-20">
                     {/* Action Drawer Header */}
                     <div className="flex items-start justify-between gap-2 pb-2 border-b border-[#dee2ef]/60">
@@ -1067,9 +784,9 @@ export default function JobsPage() {
                         <p className="text-xs text-[#45474c] mt-0.5">
                           Candidate:{" "}
                           <strong className="text-[#171c25] font-bold">
-                            {selectedCandidate?.name || "David K."}
+                            {selectedCandidate.name}
                           </strong>{" "}
-                          · Current: Screening ({selectedCandidate?.jobMatch || 86}% Match)
+                          · Current: {selectedCandidate.stage} ({selectedCandidate.jobMatch ?? 0}% Match)
                         </p>
                       </div>
                       <button
@@ -1086,14 +803,14 @@ export default function JobsPage() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5 text-[#6137e0] text-xs font-bold">
                           <SymbolIcon name="psychology" className="text-[16px]" style={{ fontSize: "16px" }} />
-                          <span>AI-Assisted Screening Summary</span>
+                          <span>AI Assessment Summary</span>
                         </div>
                         <span className="font-mono text-[10px] bg-white px-2 py-0.5 rounded text-[#171c25] font-semibold border border-[#dee2ef]/60">
                           Rubric Verified
                         </span>
                       </div>
                       <p className="text-xs text-[#45474c] leading-relaxed">
-                        David demonstrated deep grasp of Kafka event sourcing and distributed consistency models. No red flags identified during 18-minute conversational screening.
+                        {selectedCandidate.statusNote || "Candidate actively progressing through hiring pipeline. Verified credentials against role requirements."}
                       </p>
                     </div>
 
@@ -1147,12 +864,12 @@ export default function JobsPage() {
                           </button>
                         </div>
                         <div className="p-3 bg-[#f0f3ff] rounded-lg text-[#45474c] font-mono text-[11px] leading-relaxed border border-[#dee2ef]/40">
-                          <span className="text-[#75777c]">To:</span> {selectedCandidate?.email || "david.k@platform-eng.net"}
+                          <span className="text-[#75777c]">To:</span> {selectedCandidate.email || `${selectedCandidate.name.toLowerCase().replace(/\s+/g, ".")}@candidate.io`}
                           <br />
-                          <span className="text-[#75777c]">Subject:</span> Halden Platform Engineering · Technical Architecture Stage
+                          <span className="text-[#75777c]">Subject:</span> Platform Engineering · Technical Architecture Stage
                           <br />
                           <br />
-                          &quot;Hi {selectedCandidate?.name || "David"}, thanks for completing the technical screening. The team is excited to invite you to our 60-minute system design round with Chris Miller...&quot;
+                          &quot;Hi {selectedCandidate.name}, thanks for completing the preliminary review. The team is excited to invite you to our 60-minute system design interview...&quot;
                         </div>
                       </div>
 

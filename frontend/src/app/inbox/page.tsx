@@ -89,19 +89,19 @@ export default function RecruiterInboxPage() {
     {
       id: "task-mv",
       taskId: "8812",
-      title: "Stage Transition: Marcus Vance",
-      candidateName: "Marcus Vance",
+      title: "Stage Transition: Alex Rivera",
+      candidateName: "Alex Rivera",
       candidateRole: "Senior Platform Engineer • Direct Referral (GitHub Verified)",
       candidateSummary: "11y platform exp • Ex-Stripe Platform Core • London (Hybrid)",
       candidateAvatar:
-        "https://lh3.googleusercontent.com/aida-public/AB6AXuCATJkY5iNt20HC1IM1IsubCQVOR5Pj3eQQ3GmFffu0eqmpXutFTqkO74_Lju-g2-0UTTDyPhJEhgNtqXt3ql578_6X1vud5HQJUx1SamdRyngg0tHr83xF1Y5y6QSG6D3_W6mRr0WQcIBAMG3dMp6v0YtEQoLzRzo26EebJUVr8Gjvwy-3ZCz0W0opo-ScBs3P8u0wgRuhl9u7fOayou_XtUpj0a3JPPfS5x90TwVzbQPl7I0Q1z9oLQ",
+        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80",
       reqCode: "Req-204",
       reqTitle: "Staff Platform Eng",
       priorityLabel: "Overdue: 2h ago",
       priorityColor: "text-red-700 bg-red-100",
       categoryLabel: "Recruiter Review",
       categoryColor: "text-[#6137e0] bg-[#e7deff]/70",
-      initialInitials: "MV",
+      initialInitials: "AR",
       stageNote: "Awaiting Adv. to Screen",
       actionText: "Inspect Proof",
       dueText: "Overdue",
@@ -593,7 +593,7 @@ export default function RecruiterInboxPage() {
                               <CheckCircle2 className="w-3.5 h-3.5" />
                               <span>Rubric Exceeded</span>
                             </span>
-                            <Link href="/candidates/cand-mv" className="text-[#6137e0] text-xs font-bold hover:underline">
+                            <Link href="/candidates" className="text-[#6137e0] text-xs font-bold hover:underline">
                               Verify Line 44
                             </Link>
                           </div>
@@ -619,7 +619,7 @@ export default function RecruiterInboxPage() {
                               <CheckCircle2 className="w-3.5 h-3.5" />
                               <span>Rubric Satisfied</span>
                             </span>
-                            <Link href="/candidates/cand-mv" className="text-[#6137e0] text-xs font-bold hover:underline">
+                            <Link href="/candidates" className="text-[#6137e0] text-xs font-bold hover:underline">
                               Verify Extract
                             </Link>
                           </div>
@@ -741,7 +741,7 @@ export default function RecruiterInboxPage() {
                             type="button"
                             onClick={() => {
                               setBriefingNote(
-                                "Auto-calibrated L6 Focus: Evaluate Marcus on p99 gRPC tail-latency optimizations, bare-metal k8s scheduler tuning, and team mentorship."
+                                "Auto-calibrated L6 Focus: Evaluate candidate on p99 gRPC tail-latency optimizations, bare-metal k8s scheduler tuning, and team mentorship."
                               );
                               showToast("Rubric brief regenerated from candidate evidence!");
                             }}
@@ -762,7 +762,7 @@ export default function RecruiterInboxPage() {
                       {/* Final Workflow Action Buttons */}
                       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
                         <Link
-                          href="/candidates/cand-mv"
+                          href="/candidates"
                           className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-[#eff4ff] hover:bg-[#dee2ef] text-[#141c27] text-xs font-bold transition-colors flex items-center justify-center gap-2 border border-[#dee2ef]/50"
                         >
                           <FolderOpen className="w-4 h-4 text-[#75777c]" />
@@ -795,7 +795,7 @@ export default function RecruiterInboxPage() {
                   {/* Cross-Functional Team Activity Stream for Context */}
                   <div className="bg-white rounded-xl p-4 sm:p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-[#dee2ef]/70 flex flex-col gap-2.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-[#141c27]">Audit Activity on Marcus Vance</span>
+                      <span className="text-xs font-bold text-[#141c27]">Audit Activity on Candidate</span>
                       <span className="text-[11px] text-[#45474c] font-medium">Real-time sync active</span>
                     </div>
 

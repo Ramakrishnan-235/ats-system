@@ -8,6 +8,7 @@ import {
   GraduationCap,
   Sparkles,
   ShieldCheck,
+  User,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CandidateDetail } from "@/types/ats";
@@ -21,25 +22,11 @@ export function CandidateLeftPanel({ candidate }: CandidateLeftPanelProps) {
     <div className="space-y-6">
       {/* Top Profile Card */}
       <div className="bg-white rounded-2xl border border-zinc-200/80 p-6 shadow-xs flex flex-col items-center text-center">
-        {/* Large Avatar or Initials Badge */}
+        {/* Profile Icon Badge */}
         <div className="relative mb-4">
-          {candidate.avatar && candidate.avatar.startsWith("http") ? (
-            <img
-              src={candidate.avatar}
-              alt={candidate.name}
-              className="w-28 h-28 rounded-full object-cover border-4 border-white shadow-md"
-            />
-          ) : (
-            <div className="w-28 h-28 rounded-full bg-gradient-to-br from-zinc-800 to-zinc-950 text-white flex items-center justify-center font-bold text-2xl border-4 border-white shadow-md tracking-wider">
-              {candidate.avatar ||
-                candidate.name
-                  .split(" ")
-                  .map((p) => p[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase()}
-            </div>
-          )}
+          <div className="w-24 h-24 rounded-full bg-[#f4f3ff] text-[#6137e0] flex items-center justify-center border-4 border-white shadow-md">
+            <User className="w-12 h-12 text-[#6137e0]" />
+          </div>
         </div>
 
         {/* Name & Headline */}

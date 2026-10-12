@@ -41,6 +41,7 @@ import {
   CheckCircle2,
   Layers,
   ArrowRight,
+  Users,
 } from "lucide-react";
 
 interface CandidateRosterItem {
@@ -70,125 +71,14 @@ interface CandidateRosterItem {
   actionType: "Review Evidence" | "View Scorecard" | "View Status" | "Select App" | "Match to Job";
 }
 
-const DEFAULT_CANDIDATE_ROSTER: CandidateRosterItem[] = [
-  {
-    id: "cand-mv",
-    name: "Marcus Vance",
-    title: "Staff Platform Engineer · Cloud Infras",
-    companyTag: "ex-Stripe",
-    avatar:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuAJY8ncbeAejDR02cAONL3NeR949_XihWoAXq5lghpXYgj8DfytUD0JvS9k-GubYcOSwCTdWD6jn5Y97gAgPyD9iU1q0IJK0ZPA3eLozxUHlXTr_8As4EkVRh8JnS1DJNFe8bMucr7X3CepVx1hlF0oCpDYvmpXpkoQBT9jFasVF1xavchVtOR0CM8L7-qK_XNfxq3NV79-gFWdJBtbKRql5VNrPE4cFdpNg3z9eWTlzsPf5XWEU0xA5w",
-    isStarred: true,
-    targetJob: "Senior Platform Engineer",
-    matchScore: 94,
-    matchScoreLabel: "(Rubric verified)",
-    stage: "Applied",
-    stageColor: "bg-[#497cff]",
-    skills: ["Kubernetes", "Golang", "Kafka", "Terraform"],
-    experienceYears: 11,
-    location: "London, UK",
-    locationType: "Hybrid",
-    source: "Internal Referral",
-    sourceDetail: "by Alex Chen (VP Eng)",
-    owner: "Elena Varga",
-    ownerAvatar:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuAb-xhC8Gt5a03IKeWoDmDYIb7OA7BFzq9MsVFM-rwt-YyHrVDJuLTTjQMMaNeKBbZMIHcWMSdXGW10tTDx5ZoEOpjrAMNKkwLFKzPxljc_M-xlr0M99deH89FjCESOhATVNQm1yejVm0SIVwzM5g5adk49UfUM46utSaH31Gn5G5kma9PN7GGOCPqOOJ-w4nct86OTEFn2AEOjFwU9p92xWtXzzqpF_a6NmoRqV7rmUek9kATdvAw3vA",
-    actionType: "Review Evidence",
-  },
-  {
-    id: "cand-ps",
-    name: "Priya Sharma",
-    title: "Product Design Lead · Design Systems",
-    companyTag: "ex-Figma",
-    avatar:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuDD8o0ORRU-Xkfh4w7f3aY1eu6FePUSUbRZj63sEeYY453GEJHKUU5JOjZoD4A4fs1XXLkVVXuMQgx5r1Pl492mqa-8WxaGuG18Bs1QNYAAOYHf9cleNeUZolCFDS5eoYa-A1ixr9r9SSEKm6zt1oTDQpvHdtzSXuLIZkhvIuVHnGcR9stS_UpDlQsCVG939dkF6CUyZes8wnSU4u_c06nbc7IZzS_q4afrqmyXsatF8XzMX6avOsFXKA",
-    targetJob: "Lead Product Designer",
-    matchScore: 89,
-    matchScoreLabel: "(Portfolio scored)",
-    stage: "Interview (Stage 2)",
-    stageColor: "bg-[#6137e0]",
-    skills: ["Design Systems", "Figma", "User Research"],
-    experienceYears: 8,
-    location: "Berlin, Germany",
-    locationType: "On-site",
-    source: "Inbound Application",
-    sourceDetail: "Careers Portal · direct",
-    owner: "Tomas Novak",
-    actionType: "View Scorecard",
-  },
-  {
-    id: "cand-sl",
-    name: "Sarah Lin",
-    title: "Cloud Infrastructure Specialist",
-    avatar:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuDiQWLB8KWJKmsEPUGg5gXiEs1Id7UZfD5C0Cml7SP61XViN79AFwMsO5YlyyXa3rlQB4bZnYzFPXwAj1FoCQbJ_SPxPk-HpMrKXDKG94XBZpJnvpjtQeUqCRSyZw3H2bU4TYQ8a5kwXvPGdshO0ob5diWzIJtjFodksZTG_MKoOBjNvtoMBGnuFp6ZG10_Hj5JrIL3Jh2b_A2WVjMb59yu_3725Zzn7Z1XzegZkfEjb9gS5MLaYgDFng",
-    targetJob: "Senior Platform Engineer",
-    isProcessing: true,
-    stage: "Applied",
-    stageColor: "bg-[#497cff]",
-    skills: ["AWS", "Docker"],
-    extractingSkillsCount: 3,
-    experienceYears: 6,
-    location: "Toronto, CA",
-    locationType: "Remote",
-    source: "LinkedIn Import",
-    sourceDetail: "Agent Scraping Run #44",
-    owner: "Elena Varga",
-    ownerAvatar:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuAb-xhC8Gt5a03IKeWoDmDYIb7OA7BFzq9MsVFM-rwt-YyHrVDJuLTTjQMMaNeKBbZMIHcWMSdXGW10tTDx5ZoEOpjrAMNKkwLFKzPxljc_M-xlr0M99deH89FjCESOhATVNQm1yejVm0SIVwzM5g5adk49UfUM46utSaH31Gn5G5kma9PN7GGOCPqOOJ-w4nct86OTEFn2AEOjFwU9p92xWtXzzqpF_a6NmoRqV7rmUek9kATdvAw3vA",
-    actionType: "View Status",
-  },
-  {
-    id: "cand-mc",
-    name: "Michael Chang",
-    title: "Full Stack / Systems Engineer",
-    avatar:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuDWtxPa2N9AlgQG8DN_bb_XhTXUeENW5_2pY3X2872a1l_pVhX_4qQsqRHfejLnqe2E8ScFRvJUKgs9BM8Ccu54FOPH_9WT92plKYNhttTyYYMvZysOONqSn-59o8aAfm223kUuYbgg5qsSlNgYI6w_CKjloS4Dl2iZ9tNaRX9lRaT6Ftgc0SCE7kl_dUfHDSsmGzm5-0EU-930HXsECjSnD4fHCzf9OZPCjY7EyVVmnG_wYkwC2YoaIg",
-    targetJob: "Multiple",
-    applicationsCount: 2,
-    multiApplications: [
-      { title: "Sr Platform Eng", score: 78 },
-      { title: "Site Reliability Lead", score: 91 },
-    ],
-    stage: "Screening",
-    stageColor: "bg-amber-500",
-    skills: ["Python", "TypeScript", "GCP", "Kubernetes"],
-    experienceYears: 7,
-    location: "New York, USA",
-    locationType: "Hybrid",
-    source: "Agency Submission",
-    sourceDetail: "Riviera Partners",
-    owner: "Elena Varga",
-    ownerAvatar:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuAb-xhC8Gt5a03IKeWoDmDYIb7OA7BFzq9MsVFM-rwt-YyHrVDJuLTTjQMMaNeKBbZMIHcWMSdXGW10tTDx5ZoEOpjrAMNKkwLFKzPxljc_M-xlr0M99deH89FjCESOhATVNQm1yejVm0SIVwzM5g5adk49UfUM46utSaH31Gn5G5kma9PN7GGOCPqOOJ-w4nct86OTEFn2AEOjFwU9p92xWtXzzqpF_a6NmoRqV7rmUek9kATdvAw3vA",
-    actionType: "Select App",
-  },
-  {
-    id: "cand-cd",
-    name: "Claire Dubois",
-    title: "Security & Compliance Analyst",
-    avatar:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuBvuzGK93puGmy3B5N4RxjWjC9fTKROn9Ac0zrzqej5RLHJQzpD1Csv6qdzhlkl6O-B7sSi1XIL1uHViZJ4lugGdjgqimlqLYaA4KQ6C0bKPlI2sxy6cpLyXfoDMLdp_s3T5bs5jQZV1D7nhpThILA-xgYvpjIhXzAdd6liQYDeTnVBXBztti_rk69I21fhmI8tCWnhMVJkWtvPfm5COKVn9cvpyyz-dVVUXzYY1SxwKbjDvWMk5FfxpA",
-    targetJob: "None selected",
-    stage: "Talent Pool",
-    stageColor: "bg-[#75777c]",
-    skills: ["SOC2", "ISO27001", "Vendor Risk"],
-    experienceYears: 5,
-    location: "Paris, France",
-    locationType: "Hybrid",
-    source: "Direct Sourced",
-    sourceDetail: "Autonomous Scout #12",
-    owner: "Tomas Novak",
-    actionType: "Match to Job",
-  },
-];
+const DEFAULT_CANDIDATE_ROSTER: CandidateRosterItem[] = [];
 
 export default function CandidateDirectoryPage() {
   const [candidates, setCandidates] = useState<CandidateRosterItem[]>(DEFAULT_CANDIDATE_ROSTER);
-  const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({ "cand-mv": true });
-  const [searchQuery, setSearchQuery] = useState("Senior Platform");
-  const [targetJobLens, setTargetJobLens] = useState("Senior Platform Engineer");
-  const [savedView, setSavedView] = useState("Urgent Reviews (12)");
+  const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [targetJobLens, setTargetJobLens] = useState("All Active Roles");
+  const [savedView, setSavedView] = useState("All Candidates");
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
 
   // Filters
@@ -205,9 +95,9 @@ export default function CandidateDirectoryPage() {
     role: string;
     req: string;
   }>({
-    name: "Marcus Vance",
-    role: "Senior Platform Engineer",
-    req: "Req-204",
+    name: "Candidate",
+    role: "Candidate Profile",
+    req: "Active Role",
   });
 
   const [isAddCandidateOpen, setIsAddCandidateOpen] = useState(false);
@@ -232,37 +122,33 @@ export default function CandidateDirectoryPage() {
     let cancelled = false;
     fetchCandidates()
       .then((live) => {
-        if (!cancelled && live && live.length > 0) {
+        if (!cancelled && live) {
           const mapped: CandidateRosterItem[] = live.map((c) => ({
             id: c.id,
             name: c.name || "Candidate",
-            title: c.target_headline || c.role || "Software Engineer",
+            title: c.target_headline || c.role || "Candidate Profile",
             avatar: c.avatar || undefined,
-            targetJob: c.applied_for_job || "Senior Platform Engineer",
-            matchScore: c.scorecard?.overall_match_score ?? 84,
-            matchScoreLabel: "(Rubric evaluated)",
-            stage: "Applied",
+            targetJob: c.applied_for_job || "Talent Pool",
+            matchScore: c.scorecard?.overall_match_score ?? null,
+            matchScoreLabel: c.scorecard ? "(Rubric evaluated)" : "(Pending)",
+            stage: (["Applied", "Interview (Stage 2)", "Screening", "Talent Pool", "Offer", "Hired"].includes(c.stage as any)
+              ? (c.stage as CandidateRosterItem["stage"])
+              : "Applied"),
             stageColor: "bg-[#497cff]",
-            skills: c.core_skills && c.core_skills.length > 0 ? c.core_skills.slice(0, 4) : ["Python", "AWS"],
-            experienceYears: Math.round(c.years_of_experience || 5),
-            location: c.location || "London, UK",
-            locationType: "Hybrid",
+            skills: c.core_skills && c.core_skills.length > 0 ? c.core_skills.slice(0, 4) : [],
+            experienceYears: Math.round(c.years_of_experience || 0),
+            location: c.location || "Remote",
+            locationType: "Remote",
             source: "Platform Ingest",
             sourceDetail: "Direct upload",
             owner: "Elena Varga",
             actionType: "Review Evidence",
           }));
-
-          // Merge without overriding Marcus Vance
-          setCandidates((prev) => {
-            const existingIds = new Set(prev.map((p) => p.id));
-            const newOnes = mapped.filter((m) => !existingIds.has(m.id));
-            return [...prev, ...newOnes];
-          });
+          setCandidates(mapped);
         }
       })
       .catch((err) => {
-        console.warn("Using offline candidate directory snapshot:", err);
+        console.warn("Could not load candidates from backend:", err);
       });
     return () => {
       cancelled = true;
@@ -673,7 +559,21 @@ export default function CandidateDirectoryPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#eaeefb] text-xs">
-                      {filteredCandidates.map((cand) => {
+                      {filteredCandidates.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="py-12 text-center text-[#75777c]">
+                            <div className="flex flex-col items-center justify-center gap-2">
+                              <Users className="w-8 h-8 text-[#9ea3ae]" />
+                              <p className="font-semibold text-sm text-[#171c25]">No candidates found</p>
+                              <p className="text-xs text-[#75777c]">Upload resumes in the Ingestion Pipeline to add candidates to your directory.</p>
+                              <Link href="/upload" className="mt-2 px-3.5 py-1.5 rounded-lg bg-[#6137e0] text-white text-xs font-semibold hover:bg-[#7a55fa] transition-colors">
+                                Upload Resumes
+                              </Link>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredCandidates.map((cand) => {
                         const isChecked = Boolean(selectedIds[cand.id]);
 
                         return (
@@ -904,7 +804,7 @@ export default function CandidateDirectoryPage() {
                             </td>
                           </tr>
                         );
-                      })}
+                      }))}
                     </tbody>
                   </table>
                 </div>
@@ -1000,8 +900,20 @@ export default function CandidateDirectoryPage() {
               </div>
             ) : (
               /* Grid View Mode */
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredCandidates.map((cand) => (
+              filteredCandidates.length === 0 ? (
+                <div className="py-12 text-center text-[#75777c] bg-white rounded-xl border border-[#dee2ef]/70">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <Users className="w-8 h-8 text-[#9ea3ae]" />
+                    <p className="font-semibold text-sm text-[#171c25]">No candidates found</p>
+                    <p className="text-xs text-[#75777c]">Upload resumes in the Ingestion Pipeline to add candidates to your directory.</p>
+                    <Link href="/upload" className="mt-2 px-3.5 py-1.5 rounded-lg bg-[#6137e0] text-white text-xs font-semibold hover:bg-[#7a55fa] transition-colors">
+                      Upload Resumes
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredCandidates.map((cand) => (
                   <div
                     key={cand.id}
                     className="bg-white rounded-xl p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-[#dee2ef]/70 flex flex-col justify-between gap-4"
@@ -1081,7 +993,7 @@ export default function CandidateDirectoryPage() {
                   </div>
                 ))}
               </div>
-            )}
+            ))}
 
             {/* Agent Summary Insight Panel (Cockpit Style Architecture) */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -1092,27 +1004,24 @@ export default function CandidateDirectoryPage() {
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-1.5 bg-[#e7deff]/15 text-[#e7deff] px-2.5 py-1 rounded-full text-xs font-bold">
                       <SymbolIcon name="auto_awesome" className="text-[14px] text-[#cbbeff]" style={{ fontSize: "14px" }} />
-                      <span>AI-ASSISTED MATCH INSIGHT</span>
+                      <span>AI MATCH INSIGHT</span>
                     </div>
-                    <span className="font-mono text-xs text-[#7b8495]">08:42 AM</span>
                   </div>
                   <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                    Evaluation Ready: Marcus Vance
+                    {candidates.length > 0 ? `Active Talent Pool: ${candidates.length} Profiles` : "Talent Pool Ready"}
                   </h3>
                   <p className="text-xs sm:text-sm text-[#bec7d9] mt-1.5 leading-relaxed">
-                    Candidate matches 3 of 4 core rubric criteria for Senior Platform Engineer. Verified Kubernetes, Go, and eBPF skills with 11y experience. Recruiter review recommended before advancing.
+                    {candidates.length > 0
+                      ? "Profiles ingested with verified semantic citations and skill taxonomy matching. Select a candidate to review rubric evidence."
+                      : "Upload resumes in the Ingestion Pipeline to automatically trigger hybrid vector retrieval, cross-encoder ranking, and rubric scoring."}
                   </p>
                 </div>
                 <div className="mt-6 flex items-center justify-between pt-4 border-t border-white/10">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs text-[#7b8495]">Job Match:</span>
-                    <span className="text-xs text-[#e7deff] font-bold">94/100 (Req-204)</span>
-                  </div>
                   <Link
-                    href="/candidates/cand-mv"
+                    href={candidates.length > 0 ? `/candidates/${candidates[0].id}` : "/upload"}
                     className="px-3.5 py-1.5 rounded-lg bg-[#6137e0] text-white hover:bg-[#7a55fa] transition-colors text-xs font-semibold cursor-pointer inline-flex items-center gap-1.5"
                   >
-                    <span>Review Application</span>
+                    <span>{candidates.length > 0 ? "Review Top Application" : "Upload Resumes"}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </Link>
                 </div>

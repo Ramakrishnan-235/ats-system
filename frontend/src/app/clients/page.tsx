@@ -79,9 +79,9 @@ export default function AgencyClientsPage() {
     {
       id: "sub-mv",
       candidateCode: "#C-9014 · UK Citizen",
-      name: "Marcus Vance",
+      name: "Alex Rivera",
       maskedName: "Candidate #9014 (Masked)",
-      initials: "MV",
+      initials: "AR",
       role: "Staff Platform Engineer",
       department: "Core Banking Cloud",
       subDate: "Oct 4, 2026",
@@ -497,7 +497,7 @@ export default function AgencyClientsPage() {
                                 <div className="flex items-center justify-end gap-1.5">
                                   {sub.id === "sub-mv" ? (
                                     <Link
-                                      href="/candidates/cand-mv"
+                                      href="/candidates"
                                       className="px-2.5 py-1 rounded bg-[#eff4ff] hover:bg-[#dee2ef] text-[#141c27] text-xs font-semibold transition-colors"
                                     >
                                       View Dossier
@@ -575,7 +575,7 @@ export default function AgencyClientsPage() {
                         <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
                         <span>
                           <strong>Elena Varga (Lead Recruiter)</strong> released Full PII for{" "}
-                          <strong>Marcus Vance</strong> upon Stage 2 sign-off
+                          <strong>Alex Rivera</strong> upon Stage 2 sign-off
                         </span>
                       </div>
                       <span className="font-mono text-[11px] text-[#75777c]">Yesterday 16:15</span>
@@ -802,7 +802,7 @@ export default function AgencyClientsPage() {
                     className="w-full h-10 px-3 bg-[#eff4ff] rounded-lg text-xs font-medium text-[#141c27] border border-[#dee2ef] focus:outline-none focus:ring-2 focus:ring-[#6137e0]/40"
                   >
                     <option>Alex Chen · Lead Product Designer</option>
-                    <option>Marcus Vance · Staff Platform Engineer</option>
+                    <option>Alex Rivera · Staff Platform Engineer</option>
                     <option>David Kim · Senior Systems SWE</option>
                     <option>Sarah Lin · Cloud Infrastructure Architect</option>
                   </select>

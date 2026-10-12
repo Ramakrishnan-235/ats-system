@@ -34,7 +34,7 @@ interface CandidateReviewModalProps {
 export function CandidateReviewModal({
   open,
   onOpenChange,
-  candidateName = "Marcus Vance",
+  candidateName = "Candidate",
   roleTitle = "Senior Backend Engineer",
   reqCode = "Req-204",
 }: CandidateReviewModalProps) {

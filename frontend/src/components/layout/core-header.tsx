@@ -67,8 +67,7 @@ export function CoreHeader() {
     { type: "Studio", title: "New Job Requisition (Draft REQ-208)", href: "/jobs/new" },
     { type: "Job", title: "Senior Platform Engineer (Req-204)", href: "/jobs" },
     { type: "Job", title: "Lead Product Designer", href: "/jobs" },
-    { type: "Candidate", title: "Marcus Vance · Review & Evidence (94/100)", href: "/candidates/cand-mv" },
-    { type: "Candidate", title: "Priya Sharma · 88% Match", href: "/candidates" },
+    { type: "Candidate", title: "Candidate Directory & Talent Pool", href: "/candidates" },
     { type: "Agency", title: "Agency Clients & Submissions Roster", href: "/clients" },
     { type: "Tool", title: "Candidate Imports & Parsing Pipeline", href: "/upload" },
     { type: "Tool", title: "Skills Library & Taxonomy", href: "/taxonomy" },
@@ -263,11 +262,11 @@ export function CoreHeader() {
                     <span>4. Recruiter Workspace (/workspace)</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={() => router.push("/candidates/cand-mv")}
+                    onClick={() => router.push("/candidates")}
                     className="text-xs text-[#171c25] hover:bg-[#f0f3ff] px-2.5 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 font-medium"
                   >
                     <Sparkles className="w-4 h-4 text-[#6137e0]" />
-                    <span>5. Candidate Assessment (/cand-mv)</span>
+                    <span>5. Candidates Directory (/candidates)</span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator className="my-1 bg-[#dee2ef]" />
                   <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-wider text-[#75777c] px-2 py-1">

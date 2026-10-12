@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CoreHeader } from "@/components/layout/core-header";
+import { fetchCandidates, fetchJobs, fetchDashboardStats, DashboardData } from "@/lib/api";
+import { CandidateDetail, JobRequisition } from "@/types/ats";
 import {
   CheckCircle2,
   Clock,
@@ -28,7 +30,8 @@ import {
   Briefcase,
   Users,
   ShieldCheck,
-  Laptop,
+  Inbox,
+  User,
 } from "lucide-react";
 import {
   Dialog,
@@ -43,10 +46,81 @@ export default function RecruiterWorkspacePage() {
 
   // State
   const [activeQueueTab, setActiveQueueTab] = useState<"Mine" | "Team">("Mine");
+  const [candidates, setCandidates] = useState<CandidateDetail[]>([]);
+  const [jobs, setJobs] = useState<JobRequisition[]>([]);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [currentDateStr, setCurrentDateStr] = useState("");
+
   const [nudgeSent, setNudgeSent] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
-  const [selectedPool, setSelectedPool] = useState("All 14 Pools");
+  const [selectedPool, setSelectedPool] = useState("All Active Requisitions");
+
+  useEffect(() => {
+    let cancelled = false;
+    setCurrentDateStr(
+      new Date().toLocaleDateString("en-US", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      })
+    );
+    Promise.all([
+      fetchCandidates().catch(() => [] as CandidateDetail[]),
+      fetchJobs().catch(() => [] as JobRequisition[]),
+      fetchDashboardStats().catch(() => null),
+    ]).then(([cands, jobsData, dashStats]) => {
+      if (cancelled) return;
+      if (cands) setCandidates(cands);
+      if (jobsData) setJobs(jobsData);
+      if (dashStats) setDashboardData(dashStats);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Filtered stage segments
+  const appliedCandidates = useMemo(
+    () =>
+      candidates.filter(
+        (c) =>
+          !c.stage ||
+          c.stage.toLowerCase().includes("applied") ||
+          c.stage.toLowerCase().includes("review") ||
+          c.stage.toLowerCase().includes("pool")
+      ),
+    [candidates]
+  );
+
+  const screeningCandidates = useMemo(
+    () => candidates.filter((c) => c.stage?.toLowerCase().includes("screening")),
+    [candidates]
+  );
+
+  const interviewCandidates = useMemo(
+    () =>
+      candidates.filter(
+        (c) =>
+          c.stage?.toLowerCase().includes("interview") ||
+          c.stage?.toLowerCase().includes("screen")
+      ),
+    [candidates]
+  );
+
+  const offerCandidates = useMemo(
+    () => candidates.filter((c) => c.stage?.toLowerCase().includes("offer")),
+    [candidates]
+  );
+
+  const hiredCandidates = useMemo(
+    () => candidates.filter((c) => c.stage?.toLowerCase().includes("hired")),
+    [candidates]
+  );
+
+  const reviewPendingCount = appliedCandidates.length + screeningCandidates.length;
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -55,7 +129,7 @@ export default function RecruiterWorkspacePage() {
 
   const handleSendNudge = () => {
     setNudgeSent(true);
-    showToast("Urgent scorecard nudge dispatched to Chris Miller via Slack & Email");
+    showToast("Urgent scorecard nudge dispatched to interview panel");
   };
 
   const handleExportLedger = () => {
@@ -70,7 +144,6 @@ export default function RecruiterWorkspacePage() {
       {/* Main Workspace Body */}
       <main className="w-full pt-20 bg-[#f8f9ff] flex-1 pb-16">
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6">
-
           {/* Toast Notification */}
           {toastMessage && (
             <div className="fixed bottom-6 right-6 z-50 bg-[#131c29] text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-[#6137e0]/40 animate-in fade-in slide-in-from-bottom-3 duration-300">
@@ -86,20 +159,14 @@ export default function RecruiterWorkspacePage() {
             </div>
           )}
 
-          {/* Top Breadcrumb & Actions */}
+          {/* Top Actions */}
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2 text-xs font-semibold text-[#6137e0] uppercase tracking-wider mb-1">
-                <span className="w-2 h-2 rounded-full bg-[#6137e0]"></span>
-                <span className="text-[#6137e0]">Recruiter Workspace</span>
-                <span className="text-[#9ea3ae]">/</span>
-                <span className="text-[#555a64]">Tablet Optimized (768px Viewport)</span>
-              </div>
               <h1 className="text-3xl sm:text-4xl font-extrabold text-[#111827] tracking-tight">
                 Good morning, Elena
               </h1>
               <p className="text-xs sm:text-sm text-[#555a64] mt-1 font-medium">
-                Tuesday, 6 October • Requisition sync active across 14 enterprise pools
+                {currentDateStr || "Requisition sync active"} • Requisition sync active across active roles
               </p>
             </div>
 
@@ -135,20 +202,30 @@ export default function RecruiterWorkspacePage() {
                 <div>
                   <div className="flex items-center gap-2.5 flex-wrap">
                     <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-                      12 applications need review today
+                      {reviewPendingCount > 0
+                        ? `${reviewPendingCount} application${reviewPendingCount === 1 ? "" : "s"} need review today`
+                        : "All applications reviewed"}
                     </h2>
-                    <span className="px-2.5 py-0.5 rounded-full bg-[#6137e0] text-white text-[11px] font-bold tracking-wide">
-                      High Attention
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide ${
+                        reviewPendingCount > 0
+                          ? "bg-[#6137e0] text-white"
+                          : "bg-emerald-500/20 text-emerald-300"
+                      }`}
+                    >
+                      {reviewPendingCount > 0 ? "High Attention" : "Queue Healthy"}
                     </span>
                   </div>
                   <p className="text-xs sm:text-sm text-[#bec7d9] mt-1 font-normal">
-                    6 executive roles nearing SLA boundary • Human-in-the-loop signoff pending
+                    {reviewPendingCount > 0
+                      ? `${reviewPendingCount} applicant${reviewPendingCount === 1 ? "" : "s"} awaiting evaluation • Human-in-the-loop signoff pending`
+                      : "No pending evaluations • All requisitions within SLA boundaries"}
                   </p>
                 </div>
               </div>
 
               <Link
-                href="/candidates/cand-mv"
+                href="/candidates"
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-white text-[#131c29] text-xs font-bold hover:bg-[#f0f3ff] transition-all shadow-sm shrink-0 self-start md:self-center"
               >
                 <span>Review Priority Applications</span>
@@ -164,10 +241,12 @@ export default function RecruiterWorkspacePage() {
                   Applied
                 </span>
                 <div className="text-2xl sm:text-3xl font-extrabold text-white my-1">
-                  142
+                  {appliedCandidates.length}
                 </div>
                 <span className="text-[11px] font-semibold text-emerald-400">
-                  +14 past 24h
+                  {candidates.length > 0
+                    ? `${Math.round((appliedCandidates.length / candidates.length) * 100)}% total pool`
+                    : "No applicants"}
                 </span>
               </div>
 
@@ -177,10 +256,10 @@ export default function RecruiterWorkspacePage() {
                   Screening
                 </span>
                 <div className="text-2xl sm:text-3xl font-extrabold text-white my-1">
-                  128
+                  {screeningCandidates.length}
                 </div>
                 <span className="text-[11px] font-medium text-[#bec7d9]">
-                  38% total pool
+                  {screeningCandidates.length > 0 ? "In active review" : "Queue clear"}
                 </span>
               </div>
 
@@ -190,10 +269,10 @@ export default function RecruiterWorkspacePage() {
                   Tech Panel
                 </span>
                 <div className="text-2xl sm:text-3xl font-extrabold text-white my-1">
-                  86
+                  {interviewCandidates.length}
                 </div>
                 <span className="text-[11px] font-medium text-[#bec7d9]">
-                  12 panels active
+                  {interviewCandidates.length > 0 ? `${interviewCandidates.length} active` : "None active"}
                 </span>
               </div>
 
@@ -203,23 +282,23 @@ export default function RecruiterWorkspacePage() {
                   Offer Stage
                 </span>
                 <div className="text-2xl sm:text-3xl font-extrabold text-white my-1">
-                  18
+                  {offerCandidates.length}
                 </div>
                 <span className="text-[11px] font-medium text-[#bec7d9]">
-                  3 signoffs due
+                  {offerCandidates.length > 0 ? `${offerCandidates.length} signoff due` : "None pending"}
                 </span>
               </div>
 
-              {/* Hired (Q4) */}
+              {/* Hired */}
               <div className="bg-white/5 rounded-xl p-3.5 border border-white/5 flex flex-col justify-between col-span-2 sm:col-span-1">
                 <span className="text-[11px] font-medium text-[#bec7d9] uppercase tracking-wider">
-                  Hired (Q4)
+                  Hired
                 </span>
                 <div className="text-2xl sm:text-3xl font-extrabold text-white my-1">
-                  15
+                  {hiredCandidates.length}
                 </div>
                 <span className="text-[11px] font-semibold text-emerald-400">
-                  83% target
+                  {hiredCandidates.length > 0 ? `${hiredCandidates.length} completed` : "Target in progress"}
                 </span>
               </div>
             </div>
@@ -227,7 +306,6 @@ export default function RecruiterWorkspacePage() {
 
           {/* 2-Column Workstation Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-
             {/* LEFT COLUMN: Waiting For You */}
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
@@ -236,7 +314,7 @@ export default function RecruiterWorkspacePage() {
                     Waiting for you
                   </h2>
                   <span className="px-2 py-0.5 rounded-full bg-[#eaeefb] text-[#555a64] text-[11px] font-semibold">
-                    Queue Active
+                    {candidates.length > 0 ? "Queue Active" : "Queue Clear"}
                   </span>
                 </div>
 
@@ -250,7 +328,7 @@ export default function RecruiterWorkspacePage() {
                         : "text-[#555a64] hover:text-[#111827]"
                     }`}
                   >
-                    Mine (4)
+                    Mine ({candidates.length > 0 ? Math.min(candidates.length, 3) : 0})
                   </button>
                   <button
                     type="button"
@@ -261,184 +339,242 @@ export default function RecruiterWorkspacePage() {
                         : "text-[#555a64] hover:text-[#111827]"
                     }`}
                   >
-                    Team (9)
+                    Team ({candidates.length})
                   </button>
                 </div>
               </div>
 
-              {/* Card 1: Marcus Vance */}
-              <div className="bg-white rounded-2xl p-5 shadow-sm border border-[#dee2ef]/70 flex flex-col gap-4 hover:shadow-md transition-shadow">
-                {/* Header row */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="relative shrink-0">
-                      <img
-                        className="w-11 h-11 rounded-xl object-cover ring-2 ring-[#dee2ef]"
-                        alt="Marcus Vance"
-                        src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
-                      />
-                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-white"></span>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm font-bold text-[#111827]">
-                          Marcus Vance
-                        </span>
-                        <span className="text-xs font-bold text-[#6137e0]">
-                          • 94 Fit
-                        </span>
-                      </div>
-                      <p className="text-xs text-[#555a64] truncate">
-                        Senior Platform Engineer • Req-204
-                      </p>
-                    </div>
+              {/* Waiting For You Cards or Empty State Placeholder */}
+              {candidates.length === 0 ? (
+                <div className="bg-white rounded-2xl p-8 shadow-sm border border-dashed border-[#dee2ef] flex flex-col items-center justify-center text-center gap-3 min-h-[220px]">
+                  <div className="w-12 h-12 rounded-full bg-[#f0f3ff] text-[#6137e0] flex items-center justify-center">
+                    <Inbox className="w-6 h-6 text-[#6137e0]" />
                   </div>
-
-                  <span className="px-2.5 py-0.5 rounded-full bg-[#f0f3ff] text-[#45474c] text-xs font-semibold shrink-0">
-                    Stage: Screening
-                  </span>
-                </div>
-
-                {/* Evidence Box */}
-                <div className="bg-[#f0f3ff] rounded-xl p-3.5 border border-[#dee2ef]/60 flex flex-col gap-2">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-bold text-[#6137e0] uppercase tracking-wider flex items-center gap-1">
-                      <Sparkles className="w-3 h-3" />
-                      STRUCTURED EVIDENCE EXTRACTED
-                    </span>
-                    <span className="text-[#555a64] font-medium">
-                      GitHub & Referral Source
-                    </span>
+                  <div>
+                    <h3 className="text-sm font-bold text-[#111827]">Queue is clear</h3>
+                    <p className="text-xs text-[#555a64] max-w-xs mt-1">
+                      No applications currently require manual review or interviewer scorecard action.
+                    </p>
                   </div>
-
-                  <p className="text-xs text-[#141c27] leading-relaxed">
-                    11y continuous Go/Kubernetes experience across high-throughput distributed messaging nodes.
-                  </p>
-
-                  <div className="flex items-center gap-2 pt-1 flex-wrap">
-                    <Link
-                      href="/candidates/cand-mv"
-                      className="px-2.5 py-1 rounded-md bg-white border border-[#dee2ef] text-[11px] font-semibold text-[#6137e0] hover:bg-[#e7deff] transition-colors"
-                    >
-                      Resume: P.2 §Architecture
-                    </Link>
-                    <a
-                      href="https://github.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-2.5 py-1 rounded-md bg-white border border-[#dee2ef] text-[11px] font-semibold text-[#6137e0] hover:bg-[#e7deff] transition-colors"
-                    >
-                      PR: #1042 Envoy-Mesh
-                    </a>
-                  </div>
-                </div>
-
-                {/* Footer action row */}
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-xs text-[#75777c] flex items-center gap-1.5 font-medium">
-                    <Clock className="w-3.5 h-3.5 text-[#75777c]" />
-                    Waiting 3h for first contact
-                  </span>
-
                   <Link
-                    href="/candidates/cand-mv"
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#131c29] text-white text-xs font-bold hover:bg-black transition-all shadow-sm"
+                    href="/candidates"
+                    className="mt-1 px-4 py-2 rounded-xl bg-[#131c29] text-white text-xs font-bold hover:bg-black transition-all shadow-sm"
                   >
-                    <span>Review Application</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    View Candidates Roster
                   </Link>
                 </div>
-              </div>
+              ) : (
+                <>
+                  {/* Card 1: Primary Candidate Review */}
+                  {candidates[0] && (
+                    <div className="bg-white rounded-2xl p-5 shadow-sm border border-[#dee2ef]/70 flex flex-col gap-4 hover:shadow-md transition-shadow">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="relative shrink-0">
+                            <div className="w-11 h-11 rounded-xl bg-[#eef2ff] text-[#6137e0] flex items-center justify-center ring-2 ring-[#dee2ef]">
+                              <User className="w-5 h-5 text-[#6137e0]" />
+                            </div>
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-white"></span>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-sm font-bold text-[#111827]">
+                                {candidates[0].name}
+                              </span>
+                              {candidates[0].scorecard?.overall_match_score != null && (
+                                <span className="text-xs font-bold text-[#6137e0]">
+                                  • {Math.round(candidates[0].scorecard.overall_match_score)}% Fit
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-[#555a64] truncate">
+                              {candidates[0].target_headline || candidates[0].role || "Applicant"} • {candidates[0].applied_for_job || "Active Pool"}
+                            </p>
+                          </div>
+                        </div>
 
-              {/* Card 2: Chris Miller for David K. (Scorecard Missing) */}
-              <div className="bg-white rounded-2xl p-5 shadow-sm border border-[#dee2ef]/70 flex flex-col gap-3 hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-[#fee4e2] text-[#d92d20] flex items-center justify-center shrink-0 mt-0.5 border border-[#fecdca]">
-                      <AlertTriangle className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#d92d20] uppercase tracking-wider">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#d92d20]"></span>
-                          SCORECARD MISSING
+                        <span className="px-2.5 py-0.5 rounded-full bg-[#f0f3ff] text-[#45474c] text-xs font-semibold shrink-0">
+                          Stage: {candidates[0].stage || "Screening"}
                         </span>
                       </div>
-                      <h3 className="text-sm font-bold text-[#111827]">
-                        Chris Miller for David K.
-                      </h3>
-                      <p className="text-xs text-[#555a64] mt-0.5">
-                        System Architecture Deep-Dive • Held 22h ago
-                      </p>
+
+                      <div className="bg-[#f0f3ff] rounded-xl p-3.5 border border-[#dee2ef]/60 flex flex-col gap-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-bold text-[#6137e0] uppercase tracking-wider flex items-center gap-1">
+                            <Sparkles className="w-3 h-3" />
+                            STRUCTURED EVIDENCE EXTRACTED
+                          </span>
+                          <span className="text-[#555a64] font-medium">
+                            Verified Credentials
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-[#141c27] leading-relaxed">
+                          {candidates[0].core_skills && candidates[0].core_skills.length > 0
+                            ? `Demonstrated competency across ${candidates[0].core_skills.join(", ")}.`
+                            : "Candidate credentials and timeline extracted and verified against requisition criteria."}
+                        </p>
+
+                        <div className="flex items-center gap-2 pt-1 flex-wrap">
+                          <Link
+                            href={`/candidates/${candidates[0].id}`}
+                            className="px-2.5 py-1 rounded-md bg-white border border-[#dee2ef] text-[11px] font-semibold text-[#6137e0] hover:bg-[#e7deff] transition-colors"
+                          >
+                            Scorecard & Evidence
+                          </Link>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-xs text-[#75777c] flex items-center gap-1.5 font-medium">
+                          <Clock className="w-3.5 h-3.5 text-[#75777c]" />
+                          Priority action pending
+                        </span>
+
+                        <Link
+                          href={`/candidates/${candidates[0].id}`}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#131c29] text-white text-xs font-bold hover:bg-black transition-all shadow-sm"
+                        >
+                          <span>Review Application</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  <button
-                    type="button"
-                    onClick={handleSendNudge}
-                    disabled={nudgeSent}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
-                      nudgeSent
-                        ? "bg-[#ecfdf3] text-[#027a48] border border-[#a6f4c5]"
-                        : "bg-[#f4f3ff] text-[#6137e0] border border-[#d9d6fe] hover:bg-[#ebe9fe]"
-                    }`}
-                  >
-                    <Bell className="w-3.5 h-3.5" />
-                    <span>{nudgeSent ? "Nudge Dispatched" : "Send Nudge"}</span>
-                  </button>
-                </div>
+                  {/* Card 2: Interview / Scorecard Status Follow-up */}
+                  {candidates[1] && (
+                    <div className="bg-white rounded-2xl p-5 shadow-sm border border-[#dee2ef]/70 flex flex-col gap-3 hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-[#f4f3ff] text-[#6137e0] flex items-center justify-center shrink-0 mt-0.5 border border-[#d9d6fe]">
+                            <AlertTriangle className="w-5 h-5 text-[#6137e0]" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#6137e0] uppercase tracking-wider">
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#6137e0]"></span>
+                                STAGE EVALUATION
+                              </span>
+                            </div>
+                            <h3 className="text-sm font-bold text-[#111827]">
+                              {candidates[1].name}
+                            </h3>
+                            <p className="text-xs text-[#555a64] mt-0.5">
+                              {candidates[1].target_headline || candidates[1].role || "Candidate"} • {candidates[1].applied_for_job || "Requisition"}
+                            </p>
+                          </div>
+                        </div>
 
-                <div className="flex items-center justify-between text-xs text-[#555a64] pt-2 border-t border-[#dee2ef]/50">
-                  <span className="text-[#d92d20] font-semibold">
-                    Next Stage: Final Executive Debrief will stall in 2h
-                  </span>
-                  <span className="font-mono text-[11px] text-[#75777c]">
-                    SLA Ref: ESC-881
-                  </span>
-                </div>
-              </div>
+                        <button
+                          type="button"
+                          onClick={handleSendNudge}
+                          disabled={nudgeSent}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                            nudgeSent
+                              ? "bg-[#ecfdf3] text-[#027a48] border border-[#a6f4c5]"
+                              : "bg-[#f4f3ff] text-[#6137e0] border border-[#d9d6fe] hover:bg-[#ebe9fe]"
+                          }`}
+                        >
+                          <Bell className="w-3.5 h-3.5" />
+                          <span>{nudgeSent ? "Nudge Sent" : "Send Nudge"}</span>
+                        </button>
+                      </div>
 
-              {/* Card 3: Priya Sharma (Referral) */}
-              <div className="bg-white rounded-2xl p-5 shadow-sm border border-[#dee2ef]/70 flex items-center justify-between gap-4 hover:shadow-md transition-shadow">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="relative shrink-0">
-                    <img
-                      className="w-11 h-11 rounded-xl object-cover ring-2 ring-[#dee2ef]"
-                      alt="Priya Sharma"
-                      src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80"
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-bold text-[#111827]">
-                        Priya Sharma
-                      </span>
-                      <span className="px-2 py-0.5 rounded-full bg-[#f0fdf9] text-[#0f766e] border border-[#ccfbf1] text-[10px] font-bold">
-                        Referral
-                      </span>
+                      <div className="flex items-center justify-between text-xs text-[#555a64] pt-2 border-t border-[#dee2ef]/50">
+                        <span className="text-[#6137e0] font-semibold">
+                          Stage: {candidates[1].stage || "Screening"}
+                        </span>
+                        <Link
+                          href={`/candidates/${candidates[1].id}`}
+                          className="text-[#6137e0] font-bold hover:underline"
+                        >
+                          Open Candidate Record →
+                        </Link>
+                      </div>
                     </div>
-                    <p className="text-xs text-[#555a64] truncate">
-                      Lead Product Designer • Req-188
-                    </p>
-                    <div className="flex items-center gap-2 mt-1 text-[11px] text-[#75777c]">
-                      <span>Referred by: Marcus Lee (VP Product)</span>
-                      <span>•</span>
-                      <span className="text-[#027a48] font-semibold flex items-center gap-0.5">
-                        <Check className="w-3 h-3" /> Portfolio Verified
-                      </span>
+                  )}
+
+                  {/* Card 3: Direct Ingest Candidate */}
+                  {candidates[2] && (
+                    <div className="bg-white rounded-2xl p-5 shadow-sm border border-[#dee2ef]/70 flex items-center justify-between gap-4 hover:shadow-md transition-shadow">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="relative shrink-0">
+                          <div className="w-11 h-11 rounded-xl bg-[#eef2ff] text-[#6137e0] flex items-center justify-center ring-2 ring-[#dee2ef]">
+                            <User className="w-5 h-5 text-[#6137e0]" />
+                          </div>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-bold text-[#111827]">
+                              {candidates[2].name}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-[#f0fdf9] text-[#0f766e] border border-[#ccfbf1] text-[10px] font-bold">
+                              {candidates[2].stage || "Applicant"}
+                            </span>
+                          </div>
+                          <p className="text-xs text-[#555a64] truncate">
+                            {candidates[2].target_headline || candidates[2].role || "Candidate"} • {candidates[2].applied_for_job || "Talent Pool"}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1 text-[11px] text-[#75777c]">
+                            <span>{candidates[2].location || "Remote"}</span>
+                            <span>•</span>
+                            <span className="text-[#027a48] font-semibold flex items-center gap-0.5">
+                              <Check className="w-3 h-3" /> Credentials Verified
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <Link
+                        href={`/candidates/${candidates[2].id}`}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#131c29] text-white text-xs font-bold hover:bg-black transition-all shadow-sm shrink-0"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>Review</span>
+                      </Link>
                     </div>
-                  </div>
-                </div>
+                  )}
 
-                <Link
-                  href="/interviews"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#131c29] text-white text-xs font-bold hover:bg-black transition-all shadow-sm shrink-0"
-                >
-                  <Phone className="w-3.5 h-3.5" />
-                  <span>Initial Screen</span>
-                </Link>
-              </div>
+                  {/* Additional Team Candidates if Team tab selected */}
+                  {activeQueueTab === "Team" &&
+                    candidates.slice(3).map((cand) => (
+                      <div
+                        key={cand.id}
+                        className="bg-white rounded-2xl p-5 shadow-sm border border-[#dee2ef]/70 flex items-center justify-between gap-4 hover:shadow-md transition-shadow"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="relative shrink-0">
+                            <div className="w-11 h-11 rounded-xl bg-[#eef2ff] text-[#6137e0] flex items-center justify-center ring-2 ring-[#dee2ef]">
+                              <User className="w-5 h-5 text-[#6137e0]" />
+                            </div>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-bold text-[#111827]">
+                                {cand.name}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-[#f0fdf9] text-[#0f766e] border border-[#ccfbf1] text-[10px] font-bold">
+                                {cand.stage || "Applicant"}
+                              </span>
+                            </div>
+                            <p className="text-xs text-[#555a64] truncate">
+                              {cand.target_headline || cand.role || "Candidate"} • {cand.applied_for_job || "Talent Pool"}
+                            </p>
+                          </div>
+                        </div>
 
+                        <Link
+                          href={`/candidates/${cand.id}`}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#131c29] text-white text-xs font-bold hover:bg-black transition-all shadow-sm shrink-0"
+                        >
+                          <span>Review</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
+                    ))}
+                </>
+              )}
             </div>
 
             {/* RIGHT COLUMN: Operational Health & Ingestion */}
@@ -462,70 +598,62 @@ export default function RecruiterWorkspacePage() {
                     </h3>
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full bg-[#f4f3ff] text-[#6137e0] text-xs font-bold border border-[#d9d6fe]">
-                    2 Critical Reqs
+                    {jobs.length} Active Req{jobs.length === 1 ? "" : "s"}
                   </span>
                 </div>
 
-                {/* Role 1: Senior Platform Engineer */}
-                <div className="flex flex-col gap-2 pt-1 border-t border-[#dee2ef]/50">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-[#111827]">
-                      Senior Platform Engineer <span className="font-normal text-[#75777c]">Req-204</span>
-                    </span>
-                    <span className="font-bold text-[#d92d20]">
-                      48h Avg Screen Time
-                    </span>
+                {jobs.length === 0 ? (
+                  <div className="p-6 text-center flex flex-col items-center justify-center gap-2 border border-dashed border-[#dee2ef] rounded-xl bg-[#f8f9ff]">
+                    <TrendingUp className="w-6 h-6 text-[#75777c]" />
+                    <p className="text-xs font-semibold text-[#111827]">No active roles to monitor</p>
+                    <p className="text-[11px] text-[#75777c]">Create requisitions to track health metrics and candidates.</p>
+                    <Link href="/jobs" className="text-xs font-bold text-[#6137e0] hover:underline mt-1">
+                      Open Jobs Directory →
+                    </Link>
                   </div>
+                ) : (
+                  jobs.slice(0, 2).map((job) => (
+                    <div key={job.id} className="flex flex-col gap-2 pt-2 border-t border-[#dee2ef]/50">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-[#111827] truncate max-w-[240px]">
+                          {job.title} <span className="font-normal text-[#75777c] font-mono">{job.id.slice(0, 8)}</span>
+                        </span>
+                        <span className="font-bold text-[#6137e0]">
+                          {job.status === "OPEN" ? "Open Requisition" : "Active Pool"}
+                        </span>
+                      </div>
 
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-[#f8f9ff] rounded-lg p-2 border border-[#dee2ef]/50">
-                      <div className="text-base font-extrabold text-[#111827]">48</div>
-                      <div className="text-[10px] text-[#75777c]">Applicants</div>
-                    </div>
-                    <div className="bg-[#f8f9ff] rounded-lg p-2 border border-[#dee2ef]/50">
-                      <div className="text-base font-extrabold text-[#6137e0]">12</div>
-                      <div className="text-[10px] text-[#75777c]">Screening</div>
-                    </div>
-                    <div className="bg-[#f8f9ff] rounded-lg p-2 border border-[#dee2ef]/50">
-                      <div className="text-base font-extrabold text-[#111827]">6</div>
-                      <div className="text-[10px] text-[#75777c]">Interviews</div>
-                    </div>
-                  </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-[#f8f9ff] rounded-lg p-2 border border-[#dee2ef]/50">
+                          <div className="text-base font-extrabold text-[#111827]">{job.candidates_count}</div>
+                          <div className="text-[10px] text-[#75777c]">Applicants</div>
+                        </div>
+                        <div className="bg-[#f8f9ff] rounded-lg p-2 border border-[#dee2ef]/50">
+                          <div className="text-base font-extrabold text-[#6137e0]">
+                            {job.top_match?.score ? `${Math.round(job.top_match.score)}%` : "Pending"}
+                          </div>
+                          <div className="text-[10px] text-[#75777c]">Top Fit</div>
+                        </div>
+                        <div className="bg-[#f8f9ff] rounded-lg p-2 border border-[#dee2ef]/50">
+                          <div className="text-base font-extrabold text-[#111827]">
+                            {job.required_skills?.length || 0}
+                          </div>
+                          <div className="text-[10px] text-[#75777c]">Skills Tracked</div>
+                        </div>
+                      </div>
 
-                  {/* Progress Line */}
-                  <div className="w-full h-1.5 rounded-full bg-[#dee2ef] overflow-hidden flex">
-                    <div className="bg-[#131c29] h-full" style={{ width: "45%" }}></div>
-                    <div className="bg-[#6137e0] h-full" style={{ width: "35%" }}></div>
-                    <div className="bg-[#a4bcff] h-full" style={{ width: "20%" }}></div>
-                  </div>
-                </div>
-
-                {/* Role 2: Lead Product Designer */}
-                <div className="flex flex-col gap-2 pt-3 border-t border-[#dee2ef]/50">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-[#111827]">
-                      Lead Product Designer <span className="font-normal text-[#75777c]">Req-188</span>
-                    </span>
-                    <span className="font-bold text-emerald-600">
-                      Pacing Ahead (92%)
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-[#f8f9ff] rounded-lg p-2 border border-[#dee2ef]/50">
-                      <div className="text-base font-extrabold text-[#111827]">31</div>
-                      <div className="text-[10px] text-[#75777c]">Applicants</div>
+                      <div className="w-full h-1.5 rounded-full bg-[#dee2ef] overflow-hidden flex">
+                        <div
+                          className="bg-[#131c29] h-full"
+                          style={{
+                            width: `${Math.min(100, Math.max(15, job.candidates_count * 20))}%`,
+                          }}
+                        ></div>
+                        <div className="bg-[#6137e0] h-full" style={{ width: "25%" }}></div>
+                      </div>
                     </div>
-                    <div className="bg-[#f8f9ff] rounded-lg p-2 border border-[#dee2ef]/50">
-                      <div className="text-base font-extrabold text-[#6137e0]">8</div>
-                      <div className="text-[10px] text-[#75777c]">Screening</div>
-                    </div>
-                    <div className="bg-[#f8f9ff] rounded-lg p-2 border border-[#dee2ef]/50">
-                      <div className="text-base font-extrabold text-[#111827]">4</div>
-                      <div className="text-[10px] text-[#75777c]">Design Review</div>
-                    </div>
-                  </div>
-                </div>
+                  ))
+                )}
               </div>
 
               {/* Card 2: Resume Ingestion & Processing */}
@@ -538,7 +666,7 @@ export default function RecruiterWorkspacePage() {
                     </h3>
                   </div>
                   <Link
-                    href="/imports"
+                    href="/upload"
                     className="text-xs font-semibold text-[#6137e0] hover:underline flex items-center gap-1"
                   >
                     <span>View Queue</span>
@@ -546,59 +674,64 @@ export default function RecruiterWorkspacePage() {
                   </Link>
                 </div>
 
-                <div className="flex items-center gap-5 pt-1">
-                  {/* Donut Chart representation */}
-                  <div className="relative w-20 h-20 shrink-0">
-                    <svg className="w-20 h-20 transform -rotate-90" viewBox="0 0 36 36">
-                      <path
-                        className="text-[#dee2ef]"
-                        strokeWidth="3.8"
-                        stroke="currentColor"
-                        fill="none"
-                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                      />
-                      <path
-                        className="text-[#6137e0]"
-                        strokeDasharray="80, 100"
-                        strokeWidth="3.8"
-                        strokeLinecap="round"
-                        stroke="currentColor"
-                        fill="none"
-                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                      />
-                    </svg>
-                    <div className="absolute inset-0 flex items-center justify-center text-sm font-extrabold text-[#111827]">
-                      80%
-                    </div>
+                {candidates.length === 0 && (dashboardData?.processing_resumes ?? 0) === 0 ? (
+                  <div className="p-6 text-center flex flex-col items-center justify-center gap-2 border border-dashed border-[#dee2ef] rounded-xl bg-[#f8f9ff]">
+                    <Layers className="w-6 h-6 text-[#75777c]" />
+                    <p className="text-xs font-semibold text-[#111827]">Ingestion queue is idle</p>
+                    <p className="text-[11px] text-[#75777c]">No resumes currently being parsed or extracted.</p>
+                    <Link href="/upload" className="text-xs font-bold text-[#6137e0] hover:underline mt-1">
+                      Upload Resumes →
+                    </Link>
                   </div>
-
-                  {/* Summary & Legend */}
-                  <div className="flex-1 flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-[#111827]">
-                        64 Files Batch Status
-                      </span>
-                      <span className="px-2 py-0.5 rounded bg-[#f0f3ff] text-[#45474c] text-[10px] font-mono font-bold">
-                        Cluster-04
-                      </span>
+                ) : (
+                  <div className="flex items-center gap-5 pt-1">
+                    <div className="relative w-20 h-20 shrink-0">
+                      <svg className="w-20 h-20 transform -rotate-90" viewBox="0 0 36 36">
+                        <path
+                          className="text-[#dee2ef]"
+                          strokeWidth="3.8"
+                          stroke="currentColor"
+                          fill="none"
+                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                        />
+                        <path
+                          className="text-[#6137e0]"
+                          strokeDasharray="100, 100"
+                          strokeWidth="3.8"
+                          strokeLinecap="round"
+                          stroke="currentColor"
+                          fill="none"
+                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center text-sm font-extrabold text-[#111827]">
+                        100%
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-3 text-xs text-[#555a64] flex-wrap mt-1">
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                        <strong className="text-[#111827]">51</strong> Completed
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-[#6137e0]"></span>
-                        <strong className="text-[#111827]">9</strong> Processing
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                        <strong className="text-[#111827]">2</strong> Warnings
-                      </span>
+                    <div className="flex-1 flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-[#111827]">
+                          {candidates.length} Profiles Ingested
+                        </span>
+                        <span className="px-2 py-0.5 rounded bg-[#f0f3ff] text-[#45474c] text-[10px] font-mono font-bold">
+                          Cluster Active
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-3 text-xs text-[#555a64] flex-wrap mt-1">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                          <strong className="text-[#111827]">{candidates.length}</strong> Completed
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-[#6137e0]"></span>
+                          <strong className="text-[#111827]">{dashboardData?.processing_resumes || 0}</strong> Processing
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Card 3: Upcoming Interviews Today */}
@@ -611,124 +744,56 @@ export default function RecruiterWorkspacePage() {
                     </h3>
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full bg-[#f0f3ff] text-[#45474c] text-xs font-bold">
-                    2 Scheduled
+                    {interviewCandidates.length} Active
                   </span>
                 </div>
 
-                <div className="flex flex-col gap-2.5 pt-1">
-                  {/* Session 1 */}
-                  <div className="p-3 rounded-xl bg-[#f8f9ff] border border-[#dee2ef]/60 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="px-2.5 py-1.5 rounded-lg bg-[#dee2ef] font-mono text-xs font-bold text-[#111827] shrink-0 text-center">
-                        <div className="text-[9px] text-[#75777c] font-sans">START</div>
-                        11:00
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="text-xs font-bold text-[#111827] truncate">
-                          David K.
-                        </h4>
-                        <p className="text-[11px] text-[#555a64] truncate">
-                          Architecture Review • Req-204
-                        </p>
-                      </div>
-                    </div>
-
-                    <Link
-                      href="/interviews"
-                      className="px-3 py-1.5 rounded-lg bg-white border border-[#dee2ef] text-xs font-semibold text-[#111827] hover:bg-[#dee2ef]/30 transition-all shrink-0 shadow-2xs"
-                    >
-                      Join Call
+                {interviewCandidates.length === 0 ? (
+                  <div className="p-6 text-center flex flex-col items-center justify-center gap-2 border border-dashed border-[#dee2ef] rounded-xl bg-[#f8f9ff]">
+                    <Calendar className="w-6 h-6 text-[#75777c]" />
+                    <p className="text-xs font-semibold text-[#111827]">No interviews scheduled today</p>
+                    <p className="text-[11px] text-[#75777c]">Upcoming technical rounds and debriefs will appear here.</p>
+                    <Link href="/interviews" className="text-xs font-bold text-[#6137e0] hover:underline mt-1">
+                      View Interview Schedule →
                     </Link>
                   </div>
+                ) : (
+                  <div className="flex flex-col gap-2.5 pt-1">
+                    {interviewCandidates.slice(0, 2).map((cand, idx) => (
+                      <div
+                        key={cand.id}
+                        className="p-3 rounded-xl bg-[#f8f9ff] border border-[#dee2ef]/60 flex items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="px-2.5 py-1.5 rounded-lg bg-[#dee2ef] font-mono text-xs font-bold text-[#111827] shrink-0 text-center">
+                            <div className="text-[9px] text-[#75777c] font-sans">ROUND</div>
+                            {idx === 0 ? "11:00" : "14:00"}
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="text-xs font-bold text-[#111827] truncate">
+                              {cand.name}
+                            </h4>
+                            <p className="text-[11px] text-[#555a64] truncate">
+                              {cand.target_headline || cand.role || "Technical Evaluation"} • {cand.applied_for_job || "Active Requisition"}
+                            </p>
+                          </div>
+                        </div>
 
-                  {/* Session 2 */}
-                  <div className="p-3 rounded-xl bg-[#f8f9ff] border border-[#dee2ef]/60 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="px-2.5 py-1.5 rounded-lg bg-[#dee2ef] font-mono text-xs font-bold text-[#111827] shrink-0 text-center">
-                        <div className="text-[9px] text-[#75777c] font-sans">START</div>
-                        14:00
+                        <Link
+                          href={`/candidates/${cand.id}`}
+                          className="px-3 py-1.5 rounded-lg bg-white border border-[#dee2ef] text-xs font-semibold text-[#111827] hover:bg-[#dee2ef]/30 transition-all shrink-0 shadow-2xs"
+                        >
+                          Scorecard
+                        </Link>
                       </div>
-                      <div className="min-w-0">
-                        <h4 className="text-xs font-bold text-[#111827] truncate">
-                          Marcus Vance
-                        </h4>
-                        <p className="text-[11px] text-[#555a64] truncate">
-                          Screening Sync • Req-204
-                        </p>
-                      </div>
-                    </div>
-
-                    <Link
-                      href="/candidates/cand-mv"
-                      className="px-3 py-1.5 rounded-lg bg-white border border-[#dee2ef] text-xs font-semibold text-[#111827] hover:bg-[#dee2ef]/30 transition-all shrink-0 shadow-2xs"
-                    >
-                      Pre-Brief
-                    </Link>
+                    ))}
                   </div>
-                </div>
-              </div>
-
-            </div>
-
-          </div>
-
-          {/* Designer Scope Annotation Box */}
-          <div className="w-full bg-[#f0f3ff] rounded-xl p-4 border border-[#dee2ef] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2.5 text-[#45474c]">
-              <Laptop className="w-4 h-4 text-[#6137e0] shrink-0" />
-              <div>
-                <strong className="text-[#111827] uppercase tracking-wider font-bold">
-                  DESIGNER SCOPE ANNOTATION:
-                </strong>{" "}
-                Proposed prototype scope: Tablet layout automatically collapses sidebar navigation into a touch gesture drawer.
+                )}
               </div>
             </div>
-            <span className="px-2.5 py-1 rounded bg-white text-[#6137e0] font-mono text-[11px] font-bold border border-[#dee2ef] shrink-0">
-              Viewport: 768px w-mode
-            </span>
           </div>
-
         </div>
       </main>
-
-      {/* Double Footer Ribbons */}
-      <footer className="w-full bg-white border-t border-[#dee2ef]">
-        {/* Ribbon 1 */}
-        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[#75777c] border-b border-[#f0f3ff]">
-          <span>© 2025 CORE ATS Inc. AI-assisted recruitment workspace.</span>
-          <span className="font-mono text-[11px]">
-            Build 412.0 • Halden Global Production Node
-          </span>
-        </div>
-
-        {/* Ribbon 2 */}
-        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[#555a64]">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-[#111827]">CORE ATS © 2025</span>
-            <span>•</span>
-            <span>EEOC compliant</span>
-            <span>•</span>
-            <span>SOC2 Type II Certified</span>
-            <span>•</span>
-            <span>Verifiable human-in-the-loop audit trails</span>
-          </div>
-
-          <div className="flex items-center gap-4 flex-wrap">
-            <Link href="/audit-log" className="hover:text-[#111827] transition-colors">
-              Audit Log
-            </Link>
-            <Link href="/settings" className="hover:text-[#111827] transition-colors">
-              Data Retention
-            </Link>
-            <Link href="/settings" className="hover:text-[#111827] transition-colors">
-              Security
-            </Link>
-            <Link href="/settings" className="hover:text-[#111827] transition-colors">
-              System Status
-            </Link>
-          </div>
-        </div>
-      </footer>
 
       {/* Pipeline Filter Modal */}
       <Dialog open={isFilterModalOpen} onOpenChange={setIsFilterModalOpen}>
@@ -742,13 +807,10 @@ export default function RecruiterWorkspacePage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex flex-col gap-3 py-3">
+          <div className="flex flex-col gap-3 py-3 max-h-[300px] overflow-y-auto">
             {[
-              "All 14 Enterprise Pools (Halden Global)",
-              "Req-204: Senior Platform Engineer",
-              "Req-188: Lead Product Designer",
-              "Req-208: Staff Data Architect",
-              "Executive Search & Direct Sourcing",
+              "All Active Requisitions",
+              ...jobs.map((j) => `${j.title} (${j.id.slice(0, 8)})`),
             ].map((pool) => (
               <label
                 key={pool}

@@ -215,7 +215,7 @@ export default function AnalyticsPage() {
                     className="w-full h-10 pl-10 pr-9 bg-[#f8f9ff] text-[#141c27] font-medium text-xs rounded-xl border border-[#dee2ef] appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6137e0]"
                   >
                     <option>Elena Varga (Lead Recruiter)</option>
-                    <option>Marcus Vance (Staff Sourcer)</option>
+                    <option>Markus Weber (Staff Sourcer)</option>
                     <option>Sarah Jenkins (Executive Search)</option>
                     <option>Consolidated Team Overview</option>
                   </select>
@@ -937,7 +937,7 @@ export default function AnalyticsPage() {
           </DialogHeader>
           <div className="flex flex-col gap-2 mt-3 max-h-72 overflow-y-auto pr-1">
             {[
-              { name: "Marcus Vance", stage: "Tech Screen", age: "6.2 days", req: "Req-204" },
+              { name: "Alex Rivera", stage: "Tech Screen", age: "6.2 days", req: "Req-204" },
               { name: "Priya Sharma", stage: "Final Loop", age: "5.8 days", req: "Req-188" },
               { name: "David Kim", stage: "Screening", age: "5.4 days", req: "Req-204" },
               { name: "Alex Chen", stage: "Offer", age: "5.1 days", req: "Req-194" },

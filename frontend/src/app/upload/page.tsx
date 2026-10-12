@@ -58,7 +58,7 @@ export default function CandidateImportsPipelinePage() {
   const [dedupStrategy, setDedupStrategy] = useState<"auto_merge" | "manual_review">("auto_merge");
 
   // Table Filters
-  const [statusFilter, setStatusFilter] = useState("All Statuses (64)");
+  const [statusFilter, setStatusFilter] = useState("All Statuses");
   const [targetJobFilter, setTargetJobFilter] = useState("All Ingestion Targets");
 
   // Toast feedback
@@ -76,79 +76,7 @@ export default function CandidateImportsPipelinePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Ingestion Queue State
-  const [queueItems, setQueueItems] = useState<IngestionItem[]>([
-    {
-      id: "ing-1",
-      filename: "Marcus_Vance_Staff_Platform_Engineer_2026.pdf",
-      size: "1.4 MB",
-      hash: "4a9f...b012",
-      status: "Completed & Rubric Indexed",
-      statusColor: "text-emerald-700 bg-emerald-50",
-      duration: "1.84s (6 pages)",
-      targetReq: "REQ-204",
-      targetRole: "Senior Platform Engineer",
-      stageNote: "Stage: Screen",
-      experienceYears: 11,
-      skills: ["Go / K8s"],
-      diagnosticTag: "Rubric Verified: Exceeds K8s Operator benchmark",
-      candidateId: "CAN-41092",
-    },
-    {
-      id: "ing-2",
-      filename: "Sarah_Lin_Cloud_Infrastructure.pdf",
-      size: "2.8 MB",
-      hash: "e312...cc98",
-      status: "Still Processing",
-      statusColor: "text-[#6137e0] bg-[#e7deff]/60",
-      progress: 72,
-      progressPass: "Pass: AST Syntax & Graph Builder",
-      targetReq: "REQ-204",
-      targetRole: "Senior Platform Engineer",
-      diagnosticTag: "Server processing active (Stop waiting leaves task running on daemon)",
-    },
-    {
-      id: "ing-3",
-      filename: "David_Kim_Systems_Lead.pdf",
-      size: "920 KB",
-      hash: "77a1...8fd3",
-      status: "Completed & Rubric Indexed",
-      statusColor: "text-emerald-700 bg-emerald-50",
-      duration: "1.12s (4 pages)",
-      targetReq: "REQ-204",
-      targetRole: "Senior Platform Engineer",
-      stageNote: "Stage: Screen",
-      experienceYears: 9,
-      skills: ["Kafka / Go"],
-      diagnosticTag: "Previous: Principal Engineer @ Confluent Partner",
-      candidateId: "CAN-41093",
-    },
-    {
-      id: "ing-4",
-      filename: "Alex_Chen_Redacted_Portfolio.pdf",
-      size: "8.9 MB",
-      hash: "091f...4d22",
-      status: "Extraction Warning",
-      statusColor: "text-red-700 bg-red-50",
-      targetReq: "REQ-189",
-      targetRole: "Lead Product Designer",
-      warningDetail: "Non-standard PostScript glyph vectoring prevented automatic tokenization of tenure dates.",
-      diagnosticTag: "Partial OCR failure on page 2",
-      isQuarantined: true,
-    },
-    {
-      id: "ing-5",
-      filename: "Michael_Chang_Resume_v2.pdf",
-      size: "1.1 MB",
-      hash: "31e8...51ad",
-      status: "Duplicate Detected & Merged",
-      statusColor: "text-[#171c25] bg-[#dee2ef]",
-      duration: "Deterministic Hash Match",
-      targetReq: "REQ-212",
-      targetRole: "SRE / Platform",
-      duplicateMatchDetail: "Matched existing record Michael Chang (ID-9821). Updated work history with 2024-2025 Staff position without discarding previous recruiter notes.",
-      auditEvent: "Audit Event #AE-8901",
-    },
-  ]);
+  const [queueItems, setQueueItems] = useState<IngestionItem[]>([]);
 
   // Handle uploaded files
   const handleFiles = (files: FileList | null) => {
@@ -619,7 +547,18 @@ export default function CandidateImportsPipelinePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#dee2ef]/40 text-xs">
-                    {filteredItems.map((item) => (
+                    {filteredItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-[#75777c]">
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <Upload className="w-8 h-8 text-[#9ea3ae]" />
+                            <p className="font-semibold text-sm text-[#171c25]">Ingestion Queue is Empty</p>
+                            <p className="text-xs text-[#75777c]">Drop PDF resumes above to start processing and rubric indexing.</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredItems.map((item) => (
                       <tr
                         key={item.id}
                         className={`transition-colors ${
@@ -748,7 +687,7 @@ export default function CandidateImportsPipelinePage() {
                               <div className="flex items-center gap-1.5">
                                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                                 <Link
-                                  href={item.candidateId === "CAN-41092" ? "/candidates/cand-mv" : "/candidates"}
+                                  href={`/candidates/${item.candidateId}`}
                                   className="font-bold text-[#141c27] underline hover:text-[#6137e0]"
                                 >
                                   Candidate Profile Created
@@ -790,7 +729,7 @@ export default function CandidateImportsPipelinePage() {
                         <td className="py-4 px-5 align-top text-right">
                           {item.candidateId ? (
                             <Link
-                              href={item.candidateId === "CAN-41092" ? "/candidates/cand-mv" : "/candidates"}
+                              href={`/candidates/${item.candidateId}`}
                               className="inline-flex items-center gap-1 h-8 px-3 rounded-lg bg-[#000000] text-white text-xs font-semibold hover:bg-[#131c29] transition-all cursor-pointer"
                             >
                               <span>View Candidate</span>
@@ -839,7 +778,7 @@ export default function CandidateImportsPipelinePage() {
                           )}
                         </td>
                       </tr>
-                    ))}
+                    )))}
                   </tbody>
                 </table>
               </div>

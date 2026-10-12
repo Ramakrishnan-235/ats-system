@@ -363,7 +363,7 @@ export default function InterviewsPage() {
                 </div>
               </div>
 
-              {/* Session 2: Marcus Vance */}
+              {/* Session 2: Alex Rivera */}
               <div className="bg-white rounded-2xl p-6 shadow-xs border border-[#dee2ef]/70 flex flex-col gap-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
@@ -374,7 +374,7 @@ export default function InterviewsPage() {
 
                     <div className="flex flex-col">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-base font-bold text-[#141c27]">Marcus Vance</h3>
+                        <h3 className="text-base font-bold text-[#141c27]">Alex Rivera</h3>
                         <span className="text-xs text-[#75777c]">ID #7409</span>
                         <span className="px-2 py-0.5 rounded-full bg-[#e7deff] text-[#1e0060] font-semibold text-[11px] flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-[#6137e0]" /> Confirmed
@@ -387,7 +387,7 @@ export default function InterviewsPage() {
                   </div>
 
                   <Link
-                    href="/candidates/cand-mv"
+                    href="/candidates"
                     className="h-10 px-4 rounded-xl bg-[#eff4ff] hover:bg-[#dee2ef] text-[#141c27] text-xs font-semibold flex items-center gap-2 transition-colors shrink-0"
                   >
                     <FileText className="w-4 h-4" />
@@ -747,7 +747,7 @@ export default function InterviewsPage() {
               <label className="font-semibold text-[#141c27]">Candidate</label>
               <input
                 required
-                placeholder="e.g. Marcus Vance"
+                placeholder="e.g. Candidate Name"
                 className="h-10 px-3 bg-[#f8f9ff] rounded-xl border border-[#dee2ef]"
               />
             </div>
