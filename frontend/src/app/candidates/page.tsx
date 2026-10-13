@@ -78,8 +78,6 @@ export default function CandidateDirectoryPage() {
   const [candidates, setCandidates] = useState<CandidateRosterItem[]>(DEFAULT_CANDIDATE_ROSTER);
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
   const [searchQuery, setSearchQuery] = useState("");
-  const [targetJobLens, setTargetJobLens] = useState("All Active Roles");
-  const [savedView, setSavedView] = useState("All Candidates");
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
 
   // Filters
@@ -232,7 +230,7 @@ export default function CandidateDirectoryPage() {
       id: `cand-${Date.now()}`,
       name: newCandName,
       title: newCandTitle || "Senior Software Engineer",
-      targetJob: targetJobLens,
+      targetJob: "Talent Pool",
       matchScore: 88,
       matchScoreLabel: "(Rubric evaluated)",
       stage: "Applied",
@@ -356,7 +354,7 @@ export default function CandidateDirectoryPage() {
 
             {/* Command & Filter Workspace */}
             <div className="bg-white p-4 sm:p-5 rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_18px_rgba(0,0,0,0.02)] border border-[#dee2ef]/70 flex flex-col gap-4">
-              {/* Primary Filter Bar: Search + Target Role Context Pill + Action CTA */}
+              {/* Primary Filter Bar: Search + Actions */}
               <div className="flex flex-wrap items-center gap-3">
                 {/* Search Input with Keyboard Indicator */}
                 <div className="relative min-w-0 w-full flex-[1_1_320px]">
@@ -375,38 +373,8 @@ export default function CandidateDirectoryPage() {
                   </div>
                 </div>
 
-                {/* Target Job Lens Selector Pill (Crucial: Drives score calculations) */}
-                <div className="flex flex-wrap items-center gap-2 min-w-0 bg-[#131c29] text-white px-3.5 py-1.5 rounded-full shadow-xs">
-                  <SymbolIcon name="tune" className="text-[16px] text-[#497cff]" style={{ fontSize: "16px" }} />
-                  <span className="text-[10px] uppercase font-bold tracking-wider text-[#c5c6cc]">
-                    Match Lens
-                  </span>
-                  <div className="relative inline-flex items-center">
-                    <button
-                      type="button"
-                      className="text-xs text-white font-semibold flex items-center gap-1 hover:text-[#dae3f6] transition-colors cursor-pointer"
-                    >
-                      <span>Target Job: {targetJobLens}</span>
-                      <SymbolIcon name="arrow_drop_down" className="text-[16px]" style={{ fontSize: "16px" }} />
-                    </button>
-                  </div>
-                  <span className="bg-[#6137e0] text-white px-2 py-0.5 rounded-full text-[10px] font-bold">
-                    14 Openings
-                  </span>
-                </div>
-
                 {/* Right Command Actions */}
                 <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
-                  {/* Saved Views Dropdown */}
-                  <button
-                    className="h-10 px-3 rounded-lg bg-[#f0f3ff] hover:bg-[#eaeefb] transition-colors flex items-center gap-2 text-[#171c25] text-xs font-semibold border border-[#dee2ef]/50 cursor-pointer"
-                    type="button"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-[#ba1a1a]"></span>
-                    <span>{savedView}</span>
-                    <SymbolIcon name="expand_more" className="text-[#75777c] text-[18px]" style={{ fontSize: "18px" }} />
-                  </button>
-
                   {/* View Segmented Switch */}
                   <div className="flex items-center bg-[#f0f3ff] p-1 rounded-lg border border-[#dee2ef]/50">
                     <button
@@ -537,9 +505,14 @@ export default function CandidateDirectoryPage() {
             {viewMode === "table" ? (
               <div className="bg-white rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04),0_6px_18px_rgba(0,0,0,0.02)] border border-[#dee2ef]/70 overflow-hidden flex flex-col">
                 {/* Table Scroll Container */}
-                <div className="overflow-x-auto">
+                <div
+                  role="region"
+                  aria-label="Candidate profiles"
+                  tabIndex={0}
+                  className="max-h-[min(60dvh,36rem)] overflow-auto overscroll-contain focus-visible:outline-2 focus-visible:outline-[#6137e0] focus-visible:-outline-offset-2"
+                >
                   <table className="w-full text-left">
-                    <thead>
+                    <thead className="sticky top-0 z-10 bg-[#f0f3ff]">
                       <tr className="bg-[#f0f3ff] text-[#45474c] text-[11px] font-bold uppercase tracking-wider border-b border-[#dee2ef]">
                         <th className="py-3 px-4 w-12 text-center">
                           <input
@@ -905,7 +878,12 @@ export default function CandidateDirectoryPage() {
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div
+                  role="region"
+                  aria-label="Candidate profiles"
+                  tabIndex={0}
+                  className="grid max-h-[min(60dvh,36rem)] grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto overscroll-contain rounded-xl focus-visible:outline-2 focus-visible:outline-[#6137e0] focus-visible:-outline-offset-2"
+                >
                   {filteredCandidates.map((cand) => (
                   <div
                     key={cand.id}
