@@ -27,6 +27,10 @@ pub fn router(state: AppState) -> Router {
             "/jobs/{job}/candidates/{candidate}/stage",
             axum::routing::patch(domain::job_candidate_stage),
         )
+        .route(
+            "/jobs/{job}/candidates/{candidate}/evaluate",
+            post(jobs::evaluate_candidate),
+        )
         .route("/candidates", get(domain::list_candidates))
         .route("/candidates/upload-async", post(jobs::upload))
         .route("/candidates/tasks/{id}", get(jobs::task_status))

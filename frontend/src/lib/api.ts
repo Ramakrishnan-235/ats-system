@@ -119,6 +119,12 @@ export interface UploadWaitOptions {
   pollIntervalMs?: number;
   timeoutMs?: number;
   onProgress?: (task: UploadTask) => void;
+  upload?: CandidateUploadOptions;
+  onAccepted?: (upload: UploadResponse) => void | Promise<void>;
+}
+
+export interface CandidateUploadOptions {
+  candidateId?: string; idempotencyKey?: string; name?: string; headline?: string;
 }
 
 function sleepWithSignal(ms: number, signal?: AbortSignal): Promise<void> {
@@ -143,11 +149,13 @@ function sleepWithSignal(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-export function uploadResumeFile(file: File, jobId?: string, signal?: AbortSignal, options?: {candidateId?: string; idempotencyKey?: string}) {
+export function uploadResumeFile(file: File, jobId?: string, signal?: AbortSignal, options?: CandidateUploadOptions) {
   const data = new FormData();
   data.append("file", file);
   if (jobId) data.append("job_id", jobId);
   if (options?.candidateId) data.append("candidate_id", options.candidateId);
+  if (options?.name) data.append("name", options.name.trim());
+  if (options?.headline) data.append("headline", options.headline.trim());
   return json<UploadResponse>("/candidates/upload-async", { method: "POST", body: data, signal, headers: legacyBackend ? undefined : { "Idempotency-Key": options?.idempotencyKey ?? crypto.randomUUID() } });
 }
 export const fetchUploadTask = (taskId: string, signal?: AbortSignal) => json<UploadTask>(`/candidates/tasks/${id(taskId)}`, { signal });
@@ -178,7 +186,9 @@ export async function uploadAndWait(
     }
   }
 
-  const uploaded = await uploadResumeFile(file, jobId, signal);
+  const waitOptions = signalOrOptions && !(signalOrOptions instanceof AbortSignal) ? signalOrOptions : undefined;
+  const uploaded = await uploadResumeFile(file, jobId, signal, waitOptions?.upload);
+  await waitOptions?.onAccepted?.(uploaded);
 
   if (!uploaded.task_id) {
     if (!uploaded.candidate_id) {
@@ -250,6 +260,31 @@ export interface MatchResponse {
   stage3_final_ranked: number;
   latency_ms: number;
   candidates: RankedCandidate[];
+}
+
+export const queueCandidateEvaluation = (jobId: string, candidateId: string, signal?: AbortSignal) =>
+  json<{ job_id: string; task_ids: string[] }>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}/evaluate`, { method: "POST", signal });
+
+export async function evaluateCandidateForJob(jobId: string, candidateId: string, options: UploadWaitOptions = {}) {
+  const queued = await queueCandidateEvaluation(jobId, candidateId, options.signal);
+  if (queued.job_id !== jobId || queued.task_ids?.length !== 1) throw new ApiError("The backend did not confirm a candidate evaluation task.");
+  const started = Date.now();
+  while (true) {
+    const task = await fetchUploadTask(queued.task_ids[0], options.signal);
+    options.onProgress?.(task);
+    if (task.state === "FAILURE") throw new ApiError(task.error || "AI evaluation failed. The candidate remains available for review.");
+    if (task.state === "SUCCESS") {
+      if (task.result?.candidate_id !== candidateId || task.result?.evaluation_status !== "COMPLETED" || typeof task.result.match_score !== "number") {
+        throw new ApiError("The backend did not return a completed AI score for this candidate.");
+      }
+      const candidates = await fetchJobCandidates(jobId);
+      const saved = candidates.find(candidate => candidate.id === candidateId);
+      if (!saved || typeof saved.matchScore !== "number" || saved.jobId !== jobId) throw new ApiError("The job-specific score has not been saved. Refresh this job to check it.");
+      return candidates;
+    }
+    if (Date.now() - started >= (options.timeoutMs ?? 600000)) throw new ApiError("AI scoring is still processing. Refresh this job later to check the saved score.");
+    await sleepWithSignal(options.pollIntervalMs ?? 1500, options.signal);
+  }
 }
 
 export async function evaluateJobMatching(payload: {

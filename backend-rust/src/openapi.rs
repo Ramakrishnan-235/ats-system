@@ -37,6 +37,12 @@ pub fn document() -> Value {
         ("/jobs/{id}/candidates", "post", Some("object"), 200),
         ("/jobs/{job}/candidates/{candidate}", "delete", None, 200),
         (
+            "/jobs/{job}/candidates/{candidate}/evaluate",
+            "post",
+            None,
+            202,
+        ),
+        (
             "/jobs/{job}/candidates/{candidate}/stage",
             "patch",
             None,
@@ -109,7 +115,7 @@ pub fn document() -> Value {
             let (media, schema) = match body {
                 "upload" => (
                     "multipart/form-data",
-                    json!({"type":"object","required":["file"],"properties":{"file":{"type":"string","format":"binary"},"job_id":{"type":"string","format":"uuid"},"candidate_id":{"type":"string","format":"uuid"}}}),
+                    json!({"type":"object","required":["file"],"properties":{"file":{"type":"string","format":"binary"},"job_id":{"type":"string","format":"uuid"},"candidate_id":{"type":"string","format":"uuid"},"name":{"type":"string","maxLength":200},"headline":{"type":"string","maxLength":200}}}),
                 ),
                 "name" => ("application/json", fields(&["name"])),
                 "member" => ("application/json", fields(&["email", "role"])),

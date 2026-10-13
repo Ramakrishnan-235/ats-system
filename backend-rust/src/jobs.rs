@@ -24,6 +24,8 @@ pub async fn upload(
     let mut filename = String::new();
     let mut job_id = None;
     let mut existing_candidate = None;
+    let mut supplied_name = None;
+    let mut supplied_headline = None;
     while let Some(field) = multipart
         .next_field()
         .await
@@ -64,6 +66,24 @@ pub async fn upload(
                 existing_candidate =
                     Some(Uuid::parse_str(&text).map_err(|_| bad("Invalid candidate ID."))?);
             }
+            "name" | "headline" => {
+                let key = field.name().unwrap_or("").to_owned();
+                let value = field
+                    .text()
+                    .await
+                    .map_err(|_| bad("Invalid candidate details."))?;
+                let value = value.trim().to_owned();
+                if value.is_empty() || value.len() > 200 {
+                    return Err(bad(
+                        "Candidate name and role must be between 1 and 200 characters.",
+                    ));
+                }
+                if key == "name" {
+                    supplied_name = Some(value);
+                } else {
+                    supplied_headline = Some(value);
+                }
+            }
             _ => return Err(bad("Unexpected upload field.")),
         }
     }
@@ -75,7 +95,21 @@ pub async fn upload(
         return Err(bad("Upload a PDF within the configured size limit."));
     }
     let source = hash(&data);
-    let fingerprint = hash(format!("{source}:{job_id:?}:{existing_candidate:?}").as_bytes());
+    if existing_candidate.is_some() && (supplied_name.is_some() || supplied_headline.is_some()) {
+        return Err(bad(
+            "Update existing candidate details through the profile editor.",
+        ));
+    }
+    let fingerprint = if supplied_name.is_some() || supplied_headline.is_some() {
+        hash(
+            format!(
+                "{source}:{job_id:?}:{existing_candidate:?}:{supplied_name:?}:{supplied_headline:?}"
+            )
+            .as_bytes(),
+        )
+    } else {
+        hash(format!("{source}:{job_id:?}:{existing_candidate:?}").as_bytes())
+    };
     let idem = headers
         .get("idempotency-key")
         .and_then(|v| v.to_str().ok())
@@ -134,7 +168,13 @@ pub async fn upload(
         if existing_candidate.is_some() {
             sqlx::query("UPDATE ats_v2.candidates SET revision=$3,processing_status='PENDING',updated_at=now() WHERE id=$1 AND tenant_id=$2").bind(candidate).bind(user.tenant_id).bind(revision).execute(&mut *tx).await?;
             sqlx::query("UPDATE ats_v2.applications SET current_score=NULL WHERE candidate_id=$1 AND tenant_id=$2").bind(candidate).bind(user.tenant_id).execute(&mut *tx).await?;
-        } else {sqlx::query("INSERT INTO ats_v2.candidates(id,tenant_id) VALUES($1,$2)").bind(candidate).bind(user.tenant_id).execute(&mut *tx).await?;}
+        } else {
+            let mut profile = json!({});
+            let mut contact = json!({});
+            if let Some(name) = &supplied_name { contact["name"] = json!(name); contact["_submitted_name"] = json!(name); }
+            if let Some(headline) = &supplied_headline { profile["role"] = json!(headline); profile["target_headline"] = json!(headline); profile["_submitted_headline"] = json!(headline); }
+            sqlx::query("INSERT INTO ats_v2.candidates(id,tenant_id,profile,contact) VALUES($1,$2,$3,$4)").bind(candidate).bind(user.tenant_id).bind(profile).bind(contact).execute(&mut *tx).await?;
+        }
         sqlx::query("INSERT INTO ats_v2.documents(id,tenant_id,candidate_id,version,object_key,source_hash,filename,size_bytes) VALUES($1,$2,$3,$8,$4,$5,$6,$7)").bind(document).bind(user.tenant_id).bind(candidate).bind(&key).bind(&source).bind(&filename).bind(data.len() as i64).bind(version).execute(&mut *tx).await?;
         if let (Some(app),Some(job))=(application,job_id) {application=Some(sqlx::query_scalar("INSERT INTO ats_v2.applications(id,tenant_id,candidate_id,job_id) VALUES($1,$2,$3,$4) ON CONFLICT(tenant_id,candidate_id,job_id) DO UPDATE SET candidate_id=EXCLUDED.candidate_id RETURNING id").bind(app).bind(user.tenant_id).bind(candidate).bind(job).fetch_one(&mut *tx).await?);}
         sqlx::query("INSERT INTO ats_v2.processing_jobs(id,tenant_id,candidate_id,document_id,application_id,operation,input_revision,job_revision,document_version) VALUES($1,$2,$3,$4,$5,'ingest',$7,$6,$8)").bind(task).bind(user.tenant_id).bind(candidate).bind(document).bind(application).bind(job_revision).bind(revision).bind(version).execute(&mut *tx).await?;
@@ -447,7 +487,7 @@ pub async fn result(
         .execute(&mut *tx)
         .await?;
     let current = sqlx::query(
-        "SELECT revision,deleted_at FROM ats_v2.candidates WHERE id=$1 AND tenant_id=$2 FOR UPDATE",
+        "SELECT revision,deleted_at,profile,contact FROM ats_v2.candidates WHERE id=$1 AND tenant_id=$2 FOR UPDATE",
     )
     .bind(candidate)
     .bind(tenant)
@@ -500,6 +540,12 @@ pub async fn result(
                 contact[k] = v.clone();
             }
         }
+        apply_submitted_details(
+            &mut profile,
+            &mut contact,
+            &current.get::<Value, _>("profile"),
+            &current.get::<Value, _>("contact"),
+        );
         sqlx::query("UPDATE ats_v2.candidates SET profile=$3,contact=$4,sanitized_text=$5,processing_status='COMPLETED',updated_at=now() WHERE id=$1 AND tenant_id=$2").bind(candidate).bind(tenant).bind(profile).bind(contact).bind(&input.sanitized_text).execute(&mut *tx).await?;
         if let Some(app) = application {
             sqlx::query("UPDATE ats_v2.applications SET stage='Recruiter Review' WHERE id=$1 AND tenant_id=$2 AND stage='Screening'").bind(app).bind(tenant).execute(&mut *tx).await?;
@@ -713,6 +759,80 @@ pub struct MatchInput {
     pub stage2_rerank_limit: i64,
     #[serde(default = "retrieve_limit")]
     pub stage1_retrieve_limit: i64,
+}
+
+// User-entered identity/role is profile metadata, never fabricated resume evidence.
+pub fn apply_submitted_details(
+    profile: &mut Value,
+    contact: &mut Value,
+    submitted_profile: &Value,
+    submitted_contact: &Value,
+) {
+    if let Some(name) = submitted_contact
+        .get("_submitted_name")
+        .and_then(Value::as_str)
+    {
+        contact["name"] = json!(name);
+    }
+    if let Some(headline) = submitted_profile
+        .get("_submitted_headline")
+        .and_then(Value::as_str)
+    {
+        profile["role"] = json!(headline);
+        profile["target_headline"] = json!(headline);
+    }
+}
+
+pub async fn evaluate_candidate(
+    State(state): State<AppState>,
+    Extension(user): Extension<Identity>,
+    Path((job_id, candidate)): Path<(Uuid, Uuid)>,
+) -> Result<(StatusCode, Json<Value>)> {
+    user.write()?;
+    let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
+    let job =
+        sqlx::query("SELECT * FROM ats_v2.jobs WHERE id=$1 AND tenant_id=$2 AND status='OPEN'")
+            .bind(job_id)
+            .bind(user.tenant_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(missing)?;
+    let row = sqlx::query("SELECT c.id,c.revision,c.sanitized_text,d.id document_id,d.version FROM ats_v2.candidates c JOIN ats_v2.applications a ON a.candidate_id=c.id AND a.tenant_id=c.tenant_id JOIN LATERAL(SELECT id,version FROM ats_v2.documents WHERE candidate_id=c.id AND tenant_id=c.tenant_id ORDER BY version DESC LIMIT 1)d ON true WHERE c.id=$1 AND c.tenant_id=$2 AND a.job_id=$3 AND a.stage NOT IN('Withdrawn','Rejected') AND c.deleted_at IS NULL AND c.processing_status='COMPLETED'")
+        .bind(candidate).bind(user.tenant_id).bind(job_id).fetch_optional(&mut *tx).await?
+        .ok_or_else(|| bad("Add this candidate to the job and upload/process a resume before calculating a score."))?;
+    tx.commit().await?;
+    let input = MatchInput {
+        job_id,
+        stage1_retrieve_limit: 1,
+        stage2_rerank_limit: 1,
+    };
+    let query = format!(
+        "{} {}",
+        job.get::<String, _>("title"),
+        job.get::<String, _>("job_description")
+    );
+    let rankings = std::collections::HashMap::from([(candidate, 1.0)]);
+    let result = enqueue_ranked(
+        &state,
+        &user,
+        &input,
+        &job,
+        vec![row],
+        rankings,
+        false,
+        &query,
+    )
+    .await?;
+    if result.1.0["task_ids"]
+        .as_array()
+        .is_none_or(|ids| ids.len() != 1)
+    {
+        return Err(ApiError(
+            StatusCode::CONFLICT,
+            "The candidate changed. Refresh and calculate the score again.",
+        ));
+    }
+    Ok(result)
 }
 fn limit() -> i64 {
     20

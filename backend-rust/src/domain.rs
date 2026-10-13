@@ -183,6 +183,7 @@ pub async fn candidate_json(
         o.remove("raw_anonymized_text");
         o.remove("structured_profile");
         o.remove("resume_filename");
+        o.remove("_submitted_headline");
     }
     if !pii {
         redact_profile(&mut p, &contact);
