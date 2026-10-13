@@ -2,38 +2,28 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { Sidebar } from "@/components/layout/sidebar";
+import { useParams } from "next/navigation";
+import { CoreHeader } from "@/components/layout/core-header";
+import { CoreFooter } from "@/components/layout/core-footer";
+import { useSession } from "@/components/layout/api-session";
+import { jobPipelineColumns, nextApplicationStage } from "@/lib/job-pipeline";
 import {
   User,
   ArrowLeft,
-  Search,
-  Bell,
   RotateCw,
   Edit2,
   Building2,
   Calendar,
   Users,
   Target,
-  MessageSquare,
   AlertTriangle,
-  ExternalLink,
   MoreVertical,
   Check,
-  Briefcase,
   Sparkles,
-  ChevronRight,
-  Plus,
   ArrowRight,
   X,
-  FileText,
-  Clock,
-  Send,
-  UserCheck,
   UserPlus,
   UserMinus,
-  Trash2,
-  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -65,20 +55,22 @@ import {
 } from "@/lib/api";
 import { JobRequisition, RankedCandidate } from "@/types/ats";
 
-const INITIAL_RANKED_CANDIDATES: RankedCandidate[] = [];
-
 export default function JobPipelineDetailPage() {
   const params = useParams();
-  const router = useRouter();
-  const rawId = (params?.id as string) || "job-001";
+  const { session } = useSession();
+  const rawId = typeof params?.id === "string" ? params.id : "";
+  return <JobDetail key={rawId + ":" + (session?.user.tenant_id || "disconnected")} rawId={rawId} />;
+}
+
+function JobDetail({ rawId }: { rawId: string }) {
 
   // Job Requisition State
   const [job, setJob] = useState<JobRequisition | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<
-    "AI Ranked List" | "Pipeline Board" | "Job Details" | "Activity"
-  >("AI Ranked List");
+    "AI Ranked List" | "Pipeline Board" | "Job Details"
+  >("Pipeline Board");
 
   // Candidates list state
   const [candidates, setCandidates] = useState<RankedCandidate[]>([]);
@@ -105,28 +97,19 @@ export default function JobPipelineDetailPage() {
   const [newSkillText, setNewSkillText] = useState("");
 
   useEffect(() => {
-    async function loadJobAndCandidates() {
-      if (rawId) {
-        const jobData = await fetchJobDetail(rawId);
-        if (jobData) {
-          setJob(jobData);
-          setEditTitle(jobData.title);
-          setEditDepartment(jobData.department);
-          setEditLocation(jobData.location);
-          setEditDescription(jobData.job_description);
-          setEditSkills(jobData.required_skills);
-        }
-
-        const candidateData = await fetchJobCandidates(rawId);
-        if (candidateData && candidateData.length > 0) {
-          setCandidates(candidateData);
-          if (candidateData[0]) {
-            setExpandedCand(candidateData[0].id);
-          }
-        }
-      }
-    }
-    loadJobAndCandidates().catch(reason => setError(getErrorMessage(reason)));
+    let active = true;
+    Promise.all([fetchJobDetail(rawId), fetchJobCandidates(rawId)]).then(([jobData, candidateData]) => {
+      if (!active) return;
+      setJob(jobData);
+      setEditTitle(jobData.title);
+      setEditDepartment(jobData.department);
+      setEditLocation(jobData.location);
+      setEditDescription(jobData.job_description);
+      setEditSkills(jobData.required_skills);
+      setCandidates(candidateData);
+      setExpandedCand(candidateData[0]?.id || null);
+    }).catch(reason => { if (active) setError(getErrorMessage(reason)); });
+    return () => { active = false; };
   }, [rawId]);
 
   const handleReRunMatch = async () => {
@@ -178,7 +161,6 @@ export default function JobPipelineDetailPage() {
       const updatedList = await addJobCandidate(rawId, payload);
       setCandidates(updatedList);
 
-      const targetId = payload.sourceResumeLink?.replace("/candidates/", "") || updatedList[0]?.id;
       const matched = updatedList.find((c) => c.name === payload.name) || updatedList[0];
 
       if (matched) {
@@ -224,32 +206,14 @@ export default function JobPipelineDetailPage() {
     const currentCand = candidates.find((c) => c.id === candId);
     if (!currentCand) { setAdvancingCandId(null); return; }
 
-    const nextStage =
-      currentCand.stage === "Applied"
-        ? "Screening"
-        : currentCand.stage === "Screening"
-        ? "Interview"
-        : currentCand.stage === "Interview"
-        ? "Qualified"
-        : "Offer";
+    const nextStage = nextApplicationStage(currentCand.stage);
+    if (!nextStage) { setAdvancingCandId(null); return; }
 
     try {
-      await updateJobCandidateStage(rawId, candId, nextStage);
+      const saved = await updateJobCandidateStage(rawId, candId, nextStage);
       setAdvancingCandId(null);
       setAdvancedCandidates((prev) => ({ ...prev, [candId]: true }));
-      setCandidates((prev) =>
-        prev.map((c) => {
-          if (c.id !== candId) return c;
-          return {
-            ...c,
-            stage: nextStage,
-            stageBadgeStyle:
-              nextStage === "Qualified" || nextStage === "Offer"
-                ? "bg-emerald-100 text-emerald-900"
-                : "bg-[#ede8dc] text-zinc-800",
-          };
-        })
-      );
+      setCandidates(prev => prev.map(candidate => candidate.id === candId ? saved : candidate));
     } catch (err) {
       setAdvancingCandId(null);
       setError(getErrorMessage(err));
@@ -279,14 +243,13 @@ export default function JobPipelineDetailPage() {
   if (!job) return <div className="p-8">{error ? <p role="alert" className="text-red-700">{error}</p> : <p role="status">Loading job…</p>}<Link href="/jobs">Back to jobs</Link></div>;
 
   return (
-    <div className="min-h-screen flex bg-[#faf9f6] text-zinc-900 font-sans antialiased">
-      {/* Global Sidebar */}
-      <Sidebar />
+    <div className="min-h-screen flex flex-col pt-16 bg-[#f9f9ff] text-zinc-900 font-sans antialiased">
+      <CoreHeader />
 
       {/* Main Container */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Header Breadcrumb & Actions */}
-        <header className="h-16 px-8 flex items-center justify-between border-b border-zinc-200/70 bg-white sticky top-0 z-20">
+        <header className="h-16 px-8 flex items-center justify-between border-b border-zinc-200/70 bg-white sticky top-16 z-20">
           <div className="flex items-center gap-3 text-xs text-zinc-500 font-medium">
             <Link
               href="/jobs"
@@ -303,18 +266,10 @@ export default function JobPipelineDetailPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button className="p-2 rounded-xl text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors">
-              <Search className="w-4 h-4" />
-            </button>
-            <button className="p-2 rounded-xl text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors">
-              <Bell className="w-4 h-4" />
-            </button>
-          </div>
         </header>
 
         {/* Main Content Area */}
-        <main className="flex-1 p-8 max-w-[1280px] w-full mx-auto space-y-6">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1440px] w-full mx-auto space-y-6">
           {error && <p role="alert" className="text-red-700">{error}</p>}
           {/* Re-run notification banner */}
           {reRunMessage && (
@@ -396,18 +351,17 @@ export default function JobPipelineDetailPage() {
               <span>•</span>
               <div className="flex items-center gap-1.5">
                 <Users className="w-3.5 h-3.5 text-zinc-400" />
-                <span>{job.candidates_count} Candidates</span>
+                <span>{candidates.length} Candidates</span>
               </div>
             </div>
           </div>
 
           {/* Sub Navigation Tabs */}
-          <div className="border-b border-zinc-200/80 flex items-center gap-6">
+          <div className="border-b border-zinc-200/80 flex items-center gap-6 overflow-x-auto">
             {[
               { id: "AI Ranked List" as const, label: "AI Ranked List", hasDot: true },
               { id: "Pipeline Board" as const, label: "Pipeline Board" },
               { id: "Job Details" as const, label: "Job Details" },
-              { id: "Activity" as const, label: "Activity" },
             ].map((tab) => {
               const isActive = activeTab === tab.id;
               return (
@@ -488,7 +442,7 @@ export default function JobPipelineDetailPage() {
               ) : (
                 candidates.map((cand) => {
                   const isExpanded = expandedCand === cand.id;
-                  const isAdvanced = !!advancedCandidates[cand.id];
+                  const isAdvanced = !!advancedCandidates[cand.id] || !nextApplicationStage(cand.stage);
                   const isAdvancingThis = advancingCandId === cand.id;
 
                   return (
@@ -723,15 +677,8 @@ export default function JobPipelineDetailPage() {
                                 </span>
                               </div>
 
-                              {(cand.suggestedImprovements && cand.suggestedImprovements.length > 0
-                                ? cand.suggestedImprovements
-                                : cand.suggestedQuestions && cand.suggestedQuestions.length > 0
-                                ? cand.suggestedQuestions
-                                : [
-                                    "1. Upskill in Core Architecture: Deepen hands-on production framework and concurrency experience for this role.",
-                                    "2. Quantify Scale Impact: Add specific throughput, latency, and operational scale metrics to resume work history.",
-                                  ]
-                              ).map((item, itemIdx) => (
+                              {!cand.suggestedImprovements?.length && <p className="text-xs text-zinc-500">No improvement recommendations reported for this application.</p>}
+                              {(cand.suggestedImprovements || []).map((item, itemIdx) => (
                                 <div
                                   key={itemIdx}
                                   className="p-3.5 bg-white rounded-xl border border-zinc-200/90 text-xs text-zinc-700 shadow-2xs leading-relaxed flex items-start gap-2.5 transition-colors hover:border-zinc-300"
@@ -800,47 +747,23 @@ export default function JobPipelineDetailPage() {
           {/* ============================================================ */}
           {activeTab === "Pipeline Board" && (
             <div className="space-y-4 animate-in fade-in-50 duration-150">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {[
-                  {
-                    stage: "Screening",
-                    count: 2,
-                    items: candidates.filter(
-                      (c) => c.stage === "Screening" || c.stage === "Applied"
-                    ),
-                  },
-                  {
-                    stage: "Interview",
-                    count: candidates.filter((c) => c.stage === "Interview").length,
-                    items: candidates.filter((c) => c.stage === "Interview"),
-                  },
-                  {
-                    stage: "Qualified",
-                    count: candidates.filter((c) => c.stage === "Qualified").length,
-                    items: candidates.filter(
-                      (c) => c.stage === "Qualified"
-                    ),
-                  },
-                  {
-                    stage: "Offer",
-                    count: candidates.filter(c => c.stage === "Offer").length,
-                    items: candidates.filter(c => c.stage === "Offer"),
-                  },
-                ].map((col) => (
+              <div className="flex gap-4 overflow-x-auto pb-4">
+                {jobPipelineColumns(candidates).map((col) => (
                   <div
                     key={col.stage}
-                    className="bg-[#f6f5f1] rounded-2xl p-4 flex flex-col gap-3 min-h-[420px]"
+                    className="bg-[#f0f3ff] rounded-2xl p-4 flex flex-col gap-3 min-h-[360px] w-[260px] shrink-0"
                   >
                     <div className="flex items-center justify-between px-1 pb-1">
                       <span className="font-bold text-xs text-zinc-800">
-                        {col.stage}
+                        {col.label}
                       </span>
                       <span className="w-5 h-5 rounded-full bg-[#eae7df] text-zinc-700 font-bold text-[11px] flex items-center justify-center">
                         {col.items.length}
                       </span>
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="space-y-3 max-h-[60dvh] overflow-y-auto overscroll-contain">
+                      {col.items.length === 0 && <p className="text-xs text-zinc-500 py-4 text-center">No candidates</p>}
                       {col.items.map((cand) => (
                         <div
                           key={cand.id}
@@ -887,8 +810,9 @@ export default function JobPipelineDetailPage() {
                             </Link>
                             <div className="flex items-center gap-2">
                               <button
+                                disabled={advancingCandId === cand.id || !nextApplicationStage(cand.stage)}
                                 onClick={() => handleAdvanceCandidate(cand.id)}
-                                className="text-zinc-950 font-bold hover:underline cursor-pointer"
+                                className="text-zinc-950 font-bold hover:underline cursor-pointer disabled:opacity-40 disabled:cursor-default"
                               >
                                 Advance →
                               </button>
@@ -969,7 +893,7 @@ export default function JobPipelineDetailPage() {
                         Target Experience
                       </span>
                       <p className="text-xs text-zinc-800 font-medium">
-                        {job.min_years_experience} + years professional industry experience in backend / distributed systems.
+                        {job.min_years_experience > 0 ? `${job.min_years_experience}+ years of professional experience` : "No minimum experience specified"}
                       </p>
                       <div className="text-xs text-zinc-500 pt-1">
                         Location: <span className="font-semibold text-zinc-800">{job.location}</span>
@@ -982,62 +906,10 @@ export default function JobPipelineDetailPage() {
           )}
 
           {/* ============================================================ */}
-          {/* TAB 4: ACTIVITY LOG */}
-          {/* ============================================================ */}
-          {activeTab === "Activity" && (
-            <div className="bg-white rounded-2xl border border-zinc-200/80 p-6 shadow-xs space-y-5 animate-in fade-in-50 duration-150">
-              <h3 className="font-bold text-base text-zinc-950 border-b border-zinc-100 pb-3">
-                Job Activity & Matching Audit Stream
-              </h3>
-
-              <div className="space-y-4">
-                {[
-                  {
-                    title: "AI Candidate Evaluation Completed",
-                    desc: "Ollama model (gemma4:e2b) finished Stage 3 Rubric evaluations for 34 ingested resumes.",
-                    time: "2 hours ago",
-                    badge: "AI System",
-                  },
-                  {
-                    title: "Priya Sharma Advanced to Interview",
-                    desc: "Recruiter Admin advanced candidate following 95 Top Match score recommendation.",
-                    time: "3 hours ago",
-                    badge: "Recruiter Admin",
-                  },
-                  {
-                    title: "Batch Resume Ingestion Triggered",
-                    desc: "12 new candidate resumes parsed and PII redacted via Microsoft Presidio.",
-                    time: "Yesterday at 4:20 PM",
-                    badge: "Background Worker",
-                  },
-                ].map((act, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-3 p-3.5 rounded-xl bg-zinc-50/60 border border-zinc-100"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-[#eae7df] text-zinc-800 flex items-center justify-center shrink-0">
-                      <Clock className="w-4 h-4" />
-                    </div>
-                    <div className="space-y-1 flex-1">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-bold text-xs text-zinc-950">
-                          {act.title}
-                        </h4>
-                        <span className="text-[11px] text-zinc-400 font-mono">
-                          {act.time}
-                        </span>
-                      </div>
-                      <p className="text-xs text-zinc-600 leading-relaxed">
-                        {act.desc}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </main>
       </div>
+
+      <CoreFooter />
 
       {/* Edit Job Modal Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>

@@ -29,7 +29,6 @@ import {
   MapPin,
   X,
   RefreshCw,
-  ArrowRight,
   Users,
   User,
 } from "lucide-react";
@@ -128,15 +127,8 @@ export default function CandidateDirectoryPage() {
   const [newCandExp, setNewCandExp] = useState(6);
   const [newCandLocation, setNewCandLocation] = useState("London, UK");
 
-  // Toast / Activity state
+  // Toast state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncTime, setSyncTime] = useState("Just now");
-  const [recentSyncItems, setRecentSyncItems] = useState([
-    { title: "Enriched GitHub for 18 applicants", time: "4m ago", icon: "bolt", color: "text-[#6137e0]" },
-    { title: "Sent auto-confirmation to 7 new leads", time: "21m ago", icon: "mail", color: "text-[#497cff]" },
-    { title: "Synced 34 profiles from Ashby import", time: "1h ago", icon: "sync", color: "text-[#75777c]" },
-  ]);
 
   // Load live candidates and jobs from backend
   useEffect(() => {
@@ -348,24 +340,7 @@ export default function CandidateDirectoryPage() {
     }));
   };
 
-  // Instant sync trigger
-  const handleTriggerInstantSync = () => {
-    setIsSyncing(true);
-    setTimeout(() => {
-      setIsSyncing(false);
-      setSyncTime("Just now");
-      setRecentSyncItems((prev) => [
-        {
-          title: "Scraped & verified 12 new GitHub profiles",
-          time: "Just now",
-          icon: "bolt",
-          color: "text-[#6137e0]",
-        },
-        ...prev.slice(0, 2),
-      ]);
-      showToast("✓ Instant sync completed: 12 new enriched profiles ingested!");
-    }, 1200);
-  };
+
 
   // Quick Action Handler
   const handleQuickAction = (cand: CandidateRosterItem) => {
@@ -466,24 +441,7 @@ export default function CandidateDirectoryPage() {
     showToast(`✓ Exported ${listToExport.length} candidates to CSV`);
   };
 
-  // Metric breakdown based on actual candidates
-  const totalCount = candidates.length;
   const requisitionsCount = jobs.length;
-  const highMatch = useMemo(
-    () => candidates.filter((c) => typeof c.matchScore === "number" && c.matchScore >= 85).length,
-    [candidates]
-  );
-  const medMatch = useMemo(
-    () => candidates.filter((c) => typeof c.matchScore === "number" && c.matchScore >= 65 && c.matchScore < 85).length,
-    [candidates]
-  );
-  const lowMatch = useMemo(
-    () => candidates.filter((c) => typeof c.matchScore !== "number" || c.matchScore < 65).length,
-    [candidates]
-  );
-  const highPct = totalCount > 0 ? Math.round((highMatch / totalCount) * 100) : 0;
-  const medPct = totalCount > 0 ? Math.round((medMatch / totalCount) * 100) : 0;
-  const lowPct = totalCount > 0 ? Math.round((lowMatch / totalCount) * 100) : 0;
 
   return (
     <>
@@ -1452,154 +1410,7 @@ export default function CandidateDirectoryPage() {
               )
             )}
 
-            {/* Agent Summary Insight Panel */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Dark AI Command Briefing Tile */}
-              <div className="bg-[#131c29] text-white p-6 rounded-xl shadow-md flex flex-col justify-between relative overflow-hidden border border-black">
-                <div className="absolute -right-12 -bottom-12 w-48 h-48 rounded-full bg-[#6137e0]/20 blur-2xl pointer-events-none"></div>
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-1.5 bg-[#e7deff]/15 text-[#e7deff] px-2.5 py-1 rounded-full text-xs font-bold">
-                      <SymbolIcon name="auto_awesome" className="text-[14px] text-[#cbbeff]" style={{ fontSize: "14px" }} />
-                      <span>AI MATCH INSIGHT</span>
-                    </div>
-                  </div>
-                  <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                    {candidates.length > 0 ? `Active Talent Pool: ${candidates.length} Profiles` : "Talent Pool Ready"}
-                  </h3>
-                  <p className="text-xs sm:text-sm text-[#bec7d9] mt-1.5 leading-relaxed">
-                    {candidates.length > 0
-                      ? "Profiles ingested with verified semantic citations and skill taxonomy matching. Select a candidate to review rubric evidence."
-                      : "Upload resumes in the Ingestion Pipeline to automatically trigger hybrid vector retrieval, cross-encoder ranking, and rubric scoring."}
-                  </p>
-                </div>
-                <div className="mt-6 flex items-center justify-between pt-4 border-t border-white/10">
-                  <Link
-                    href={candidates.length > 0 ? `/candidates/${candidates[0].id}` : "/upload"}
-                    className="px-3.5 py-1.5 rounded-lg bg-[#6137e0] text-white hover:bg-[#7a55fa] transition-colors text-xs font-semibold cursor-pointer inline-flex items-center gap-1.5"
-                  >
-                    <span>{candidates.length > 0 ? "Review Top Application" : "Upload Resumes"}</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
 
-              {/* Match Distribution Metric Visualization */}
-              <div className="bg-white p-6 rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-[#dee2ef]/70 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-sm font-bold text-[#171c25]">Skill Match Spectrum</h4>
-                    <span className="text-xs text-[#45474c] font-semibold">Target: Evaluated Pool</span>
-                  </div>
-                  <p className="text-xs text-[#45474c]">
-                    {candidates.length} candidates distributed against required rubric competencies
-                  </p>
-
-                  {/* Inline Metric Bars with Live Calculated Proportions */}
-                  <div className="mt-4 flex flex-col gap-3">
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-[#171c25] font-medium">High Match (&gt;85%)</span>
-                        <span className="text-[#6137e0] font-bold">
-                          {highMatch} candidates ({highPct}%)
-                        </span>
-                      </div>
-                      <div className="w-full h-2 rounded-full bg-[#eaeefb] overflow-hidden">
-                        <div
-                          className="h-full bg-[#6137e0] rounded-full transition-all duration-500"
-                          style={{ width: `${Math.max(highPct, highMatch > 0 ? 4 : 0)}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-[#171c25] font-medium">Medium Match (65-84%)</span>
-                        <span className="text-[#45474c] font-semibold">
-                          {medMatch} candidates ({medPct}%)
-                        </span>
-                      </div>
-                      <div className="w-full h-2 rounded-full bg-[#eaeefb] overflow-hidden">
-                        <div
-                          className="h-full bg-[#497cff] rounded-full transition-all duration-500"
-                          style={{ width: `${Math.max(medPct, medMatch > 0 ? 4 : 0)}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-[#171c25] font-medium">Low / Review Needed (&lt;65% or Unscored)</span>
-                        <span className="text-[#45474c] font-semibold">
-                          {lowMatch} candidates ({lowPct}%)
-                        </span>
-                      </div>
-                      <div className="w-full h-2 rounded-full bg-[#eaeefb] overflow-hidden">
-                        <div
-                          className="h-full bg-[#c5c6cc] rounded-full transition-all duration-500"
-                          style={{ width: `${Math.max(lowPct, lowMatch > 0 ? 4 : 0)}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 flex items-center justify-between text-xs text-[#45474c] border-t border-[#dee2ef]/50">
-                  <span>Requisitions evaluated: {jobs.length}</span>
-                  <button
-                    onClick={() => showToast("Rubric weights: Architecture (35%), Coding (35%), System Design (30%)")}
-                    className="text-[#6137e0] hover:underline font-semibold cursor-pointer"
-                  >
-                    Configure weights →
-                  </button>
-                </div>
-              </div>
-
-              {/* Active Inbound / Scout Stream */}
-              <div className="bg-white p-6 rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-[#dee2ef]/70 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-sm font-bold text-[#171c25]">Autonomous Ingest Activity</h4>
-                    <span className="w-2 h-2 rounded-full bg-[#6137e0] animate-pulse"></span>
-                  </div>
-                  <p className="text-xs text-[#45474c]">Real-time candidate extraction and enrichment feed</p>
-
-                  <div className="mt-3 flex flex-col gap-2.5">
-                    {recentSyncItems.map((item, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between p-2 rounded-lg bg-[#f0f3ff] border border-[#dee2ef]/40"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className={`material-symbols-outlined ${item.color} text-[18px]`}>
-                            {item.icon}
-                          </span>
-                          <span className="text-xs text-[#171c25] font-medium truncate">{item.title}</span>
-                        </div>
-                        <span className="font-mono text-[10px] text-[#75777c] shrink-0">{item.time}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 flex items-center justify-between text-xs border-t border-[#dee2ef]/50">
-                  <span className="text-[#45474c]">Ingest status: Connected ({syncTime})</span>
-                  <button
-                    onClick={handleTriggerInstantSync}
-                    disabled={isSyncing}
-                    className="text-[#6137e0] hover:underline font-semibold flex items-center gap-1 cursor-pointer"
-                    type="button"
-                  >
-                    {isSyncing ? (
-                      <>
-                        <RefreshCw className="w-3 h-3 animate-spin" />
-                        <span>Syncing...</span>
-                      </>
-                    ) : (
-                      <span>Trigger instant sync</span>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </main>
