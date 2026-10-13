@@ -1,0 +1,17 @@
+{
+  "task_id": "7d539acc-26a8-4564-9313-e6619b144c5d",
+  "state": "SUCCESS",
+  "candidate_id": "82f6f979-b8de-434f-9b49-64b78135febd",
+  "processing_status": "COMPLETED",
+  "core_skills": [
+    "Docker",
+    "FastAPI",
+    "Git",
+    "PostgreSQL",
+    "Python",
+    "REST APIs",
+    "SQL"
+  ],
+  "evaluation_status": "SKIPPED",
+  "invalid_file_rejected_in_browser": true
+}

@@ -9,37 +9,26 @@ import { CandidateReviewModal } from "@/components/dashboard/candidate-review-mo
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import Image from "next/image";
 import {
-  fetchCandidates,
-  fetchJobs,
-  addJobCandidate,
-  getErrorMessage,
-} from "@/lib/api";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
+import { fetchCandidates, fetchJobs } from "@/lib/api";
 import { CandidateDetail, JobRequisition } from "@/types/ats";
 import {
-  Search,
   Sparkles,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Filter,
-  Download,
-  Plus,
-  Table as TableIcon,
-  LayoutGrid,
   MapPin,
-  Check,
   X,
-  Star,
-  ExternalLink,
-  ShieldCheck,
-  UserCheck,
-  Bolt,
-  Mail,
   RefreshCw,
-  SlidersHorizontal,
-  CheckCircle2,
-  Layers,
   ArrowRight,
   Users,
   User,
@@ -58,7 +47,7 @@ interface CandidateRosterItem {
   isProcessing?: boolean;
   applicationsCount?: number;
   multiApplications?: Array<{ title: string; score: number }>;
-  stage: "Applied" | "Interview (Stage 2)" | "Screening" | "Talent Pool" | "Offer" | "Hired";
+  stage: string;
   stageColor: string;
   skills: string[];
   extractingSkillsCount?: number;
@@ -72,20 +61,53 @@ interface CandidateRosterItem {
   actionType: "Review Evidence" | "View Scorecard" | "View Status" | "Select App" | "Match to Job";
 }
 
-const DEFAULT_CANDIDATE_ROSTER: CandidateRosterItem[] = [];
+const MIN_EXP_OPTIONS = ["All", "1+ yrs", "3+ yrs", "5+ yrs", "8+ yrs", "10+ yrs"];
+
+function getStageBadgeColor(stage: string): { dot: string; bg: string; text: string } {
+  switch (stage?.toLowerCase()) {
+    case "recruiter review":
+      return { dot: "bg-amber-500", bg: "bg-amber-100", text: "text-amber-900" };
+    case "screening":
+      return { dot: "bg-blue-500", bg: "bg-blue-100", text: "text-blue-900" };
+    case "interview":
+    case "interview (stage 2)":
+      return { dot: "bg-purple-500", bg: "bg-purple-100", text: "text-purple-900" };
+    case "qualified":
+      return { dot: "bg-indigo-500", bg: "bg-indigo-100", text: "text-indigo-900" };
+    case "offer":
+    case "offered":
+      return { dot: "bg-emerald-500", bg: "bg-emerald-100", text: "text-emerald-900" };
+    case "hired":
+      return { dot: "bg-green-600", bg: "bg-green-100", text: "text-green-900" };
+    case "talent pool":
+      return { dot: "bg-slate-500", bg: "bg-slate-200", text: "text-slate-800" };
+    case "rejected":
+      return { dot: "bg-rose-500", bg: "bg-rose-100", text: "text-rose-900" };
+    case "applied":
+    default:
+      return { dot: "bg-[#497cff]", bg: "bg-[#dee2ef]", text: "text-[#171c25]" };
+  }
+}
+
+type CandidateWithMeta = CandidateDetail & {
+  source?: string;
+  sourceDetail?: string;
+  owner?: string;
+};
 
 export default function CandidateDirectoryPage() {
-  const [candidates, setCandidates] = useState<CandidateRosterItem[]>(DEFAULT_CANDIDATE_ROSTER);
+  const [candidates, setCandidates] = useState<CandidateRosterItem[]>([]);
+  const [jobs, setJobs] = useState<JobRequisition[]>([]);
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
 
-  // Filters
+  // Filters - All default to "All"
   const [stageFilter, setStageFilter] = useState("All");
-  const [skillsFilterActive, setSkillsFilterActive] = useState(true);
-  const [minExpFilter, setMinExpFilter] = useState("5+ yrs");
-  const [sourceFilter, setSourceFilter] = useState("Referral & Sourced");
-  const [ownerFilter, setOwnerFilter] = useState("Elena Varga");
+  const [minExpFilter, setMinExpFilter] = useState("All");
+  const [sourceFilter, setSourceFilter] = useState("All");
+  const [ownerFilter, setOwnerFilter] = useState("All");
+  const [skillFilter, setSkillFilter] = useState("All");
 
   // Modals
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
@@ -116,39 +138,71 @@ export default function CandidateDirectoryPage() {
     { title: "Synced 34 profiles from Ashby import", time: "1h ago", icon: "sync", color: "text-[#75777c]" },
   ]);
 
-  // Load live candidates from backend
+  // Load live candidates and jobs from backend
   useEffect(() => {
     let cancelled = false;
-    fetchCandidates()
-      .then((live) => {
-        if (!cancelled && live) {
-          const mapped: CandidateRosterItem[] = live.map((c) => ({
-            id: c.id,
-            name: c.name || "Candidate",
-            title: c.target_headline || c.role || "Candidate Profile",
-            avatar: c.avatar || undefined,
-            targetJob: c.applied_for_job || "Talent Pool",
-            matchScore: c.scorecard?.overall_match_score ?? null,
-            matchScoreLabel: c.scorecard ? "(Rubric evaluated)" : "(Pending)",
-            stage: (["Applied", "Interview (Stage 2)", "Screening", "Talent Pool", "Offer", "Hired"].includes(c.stage as any)
-              ? (c.stage as CandidateRosterItem["stage"])
-              : "Applied"),
-            stageColor: "bg-[#497cff]",
-            skills: c.core_skills && c.core_skills.length > 0 ? c.core_skills.slice(0, 4) : [],
-            experienceYears: Math.round(c.years_of_experience || 0),
-            location: c.location || "Remote",
-            locationType: "Remote",
-            source: "Platform Ingest",
-            sourceDetail: "Direct upload",
-            owner: "Elena Varga",
-            actionType: "Review Evidence",
-          }));
-          setCandidates(mapped);
+    Promise.all([fetchCandidates(), fetchJobs()])
+      .then(([liveCandidates, liveJobs]) => {
+        if (!cancelled) {
+          if (liveJobs) {
+            setJobs(liveJobs);
+          }
+          if (liveCandidates) {
+            const defaultOwners = ["Elena Varga", "Tomas Novak", "Marcus Vance", "Sarah Chen"];
+            const defaultSources = ["Direct Upload", "Job Application", "LinkedIn Sourced", "Referral & Sourced"];
+
+            const mapped: CandidateRosterItem[] = liveCandidates.map((c, idx) => {
+              const actualStage = c.stage || "Applied";
+              const stageColors = getStageBadgeColor(actualStage);
+              const candObj = c as CandidateWithMeta;
+              const source =
+                candObj.source ||
+                (c.applied_for_job && c.applied_for_job !== "Talent Pool"
+                  ? "Job Application"
+                  : c.linkedin
+                  ? "LinkedIn Sourced"
+                  : defaultSources[idx % defaultSources.length]);
+              const sourceDetail =
+                candObj.sourceDetail ||
+                (source === "Job Application"
+                  ? c.applied_for_job
+                  : source === "LinkedIn Sourced"
+                  ? "Inbound profile"
+                  : "Direct upload");
+              const owner = candObj.owner || defaultOwners[idx % defaultOwners.length];
+
+              return {
+                id: c.id,
+                name: c.name || "Candidate",
+                title: c.target_headline || c.role || "Candidate Profile",
+                avatar: c.avatar || undefined,
+                targetJob: c.applied_for_job || "Talent Pool",
+                matchScore: c.scorecard?.overall_match_score ?? null,
+                matchScoreLabel: c.scorecard ? "(Rubric evaluated)" : "(Pending)",
+                stage: actualStage,
+                stageColor: stageColors.dot,
+                skills: c.core_skills && c.core_skills.length > 0 ? c.core_skills.slice(0, 5) : [],
+                experienceYears: Math.round(c.years_of_experience || 0),
+                location: c.location || "Remote",
+                locationType: (c.location?.toLowerCase().includes("hybrid")
+                  ? "Hybrid"
+                  : c.location?.toLowerCase().includes("site")
+                  ? "On-site"
+                  : "Remote"),
+                source,
+                sourceDetail,
+                owner,
+                actionType: "Review Evidence",
+              };
+            });
+            setCandidates(mapped);
+          }
         }
       })
       .catch((err) => {
-        console.warn("Could not load candidates from backend:", err);
+        console.warn("Could not load candidates/jobs from backend:", err);
       });
+
     return () => {
       cancelled = true;
     };
@@ -161,16 +215,126 @@ export default function CandidateDirectoryPage() {
     }, 3500);
   };
 
+  // Dynamic filter lists derived from real candidate data
+  const availableStages = useMemo(() => {
+    const stageSet = new Set(candidates.map((c) => c.stage).filter(Boolean));
+    return ["All", ...Array.from(stageSet).sort()];
+  }, [candidates]);
+
+  const availableSources = useMemo(() => {
+    const sourceSet = new Set(candidates.map((c) => c.source).filter(Boolean));
+    return ["All", ...Array.from(sourceSet).sort()];
+  }, [candidates]);
+
+  const availableOwners = useMemo(() => {
+    const ownerSet = new Set(candidates.map((c) => c.owner).filter(Boolean));
+    return ["All", ...Array.from(ownerSet).sort()];
+  }, [candidates]);
+
+  const availableSkills = useMemo(() => {
+    const skillSet = new Set<string>();
+    candidates.forEach((c) => {
+      c.skills.forEach((s) => skillSet.add(s));
+    });
+    return ["All", ...Array.from(skillSet).sort()];
+  }, [candidates]);
+
+  // Active filters helper
+  const hasActiveFilters = useMemo(() => {
+    return (
+      stageFilter !== "All" ||
+      minExpFilter !== "All" ||
+      sourceFilter !== "All" ||
+      ownerFilter !== "All" ||
+      skillFilter !== "All" ||
+      searchQuery.trim().length > 0
+    );
+  }, [stageFilter, minExpFilter, sourceFilter, ownerFilter, skillFilter, searchQuery]);
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (stageFilter !== "All") count++;
+    if (minExpFilter !== "All") count++;
+    if (sourceFilter !== "All") count++;
+    if (ownerFilter !== "All") count++;
+    if (skillFilter !== "All") count++;
+    if (searchQuery.trim().length > 0) count++;
+    return count;
+  }, [stageFilter, minExpFilter, sourceFilter, ownerFilter, skillFilter, searchQuery]);
+
+  // Reset all filters properly
+  const handleResetFilters = () => {
+    setStageFilter("All");
+    setMinExpFilter("All");
+    setSourceFilter("All");
+    setOwnerFilter("All");
+    setSkillFilter("All");
+    setSearchQuery("");
+    showToast("✓ All filters have been reset to default view");
+  };
+
+  // Filtered candidate list
+  const filteredCandidates = useMemo(() => {
+    return candidates.filter((c) => {
+      // 1. Search Query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchesName = c.name.toLowerCase().includes(q);
+        const matchesTitle = c.title.toLowerCase().includes(q);
+        const matchesSkills = c.skills.some((s) => s.toLowerCase().includes(q));
+        const matchesCompany = c.companyTag?.toLowerCase().includes(q);
+        const matchesJob = c.targetJob?.toLowerCase().includes(q);
+        const matchesLocation = c.location?.toLowerCase().includes(q);
+        if (!matchesName && !matchesTitle && !matchesSkills && !matchesCompany && !matchesJob && !matchesLocation) {
+          return false;
+        }
+      }
+
+      // 2. Stage Filter
+      if (stageFilter !== "All" && c.stage.toLowerCase() !== stageFilter.toLowerCase()) {
+        return false;
+      }
+
+      // 3. Min Experience Filter
+      if (minExpFilter !== "All") {
+        const minYears = parseInt(minExpFilter, 10);
+        if (!isNaN(minYears) && c.experienceYears < minYears) {
+          return false;
+        }
+      }
+
+      // 4. Source Filter
+      if (sourceFilter !== "All" && c.source.toLowerCase() !== sourceFilter.toLowerCase()) {
+        return false;
+      }
+
+      // 5. Owner Filter
+      if (ownerFilter !== "All" && c.owner.toLowerCase() !== ownerFilter.toLowerCase()) {
+        return false;
+      }
+
+      // 6. Skill Filter
+      if (skillFilter !== "All") {
+        const hasSkill = c.skills.some((s) => s.toLowerCase() === skillFilter.toLowerCase());
+        if (!hasSkill) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [candidates, searchQuery, stageFilter, minExpFilter, sourceFilter, ownerFilter, skillFilter]);
+
   const selectedCount = Object.values(selectedIds).filter(Boolean).length;
   const allSelected =
-    candidates.length > 0 && candidates.every((c) => selectedIds[c.id]);
+    filteredCandidates.length > 0 && filteredCandidates.every((c) => selectedIds[c.id]);
 
   const toggleSelectAll = () => {
     if (allSelected) {
       setSelectedIds({});
     } else {
       const all: Record<string, boolean> = {};
-      candidates.forEach((c) => {
+      filteredCandidates.forEach((c) => {
         all[c.id] = true;
       });
       setSelectedIds(all);
@@ -223,9 +387,38 @@ export default function CandidateDirectoryPage() {
     }
   };
 
+  // Bulk actions
+  const handleBulkAssignOwner = (ownerName: string) => {
+    if (selectedCount === 0) {
+      showToast("Select candidates first to assign an owner");
+      return;
+    }
+    setCandidates((prev) =>
+      prev.map((c) => (selectedIds[c.id] ? { ...c, owner: ownerName } : c))
+    );
+    showToast(`✓ Assigned ${ownerName} as owner for ${selectedCount} candidates`);
+  };
+
+  const handleBulkMoveStage = (newStage: string) => {
+    if (selectedCount === 0) {
+      showToast("Select candidates first to move stage");
+      return;
+    }
+    const stageColor = getStageBadgeColor(newStage).dot;
+    setCandidates((prev) =>
+      prev.map((c) =>
+        selectedIds[c.id]
+          ? { ...c, stage: newStage, stageColor }
+          : c
+      )
+    );
+    showToast(`✓ Moved ${selectedCount} candidates to stage: ${newStage}`);
+  };
+
   // Add Candidate Handler
   const handleAddCandidate = () => {
     if (!newCandName.trim()) return;
+    const stageColor = getStageBadgeColor("Applied").dot;
     const newCand: CandidateRosterItem = {
       id: `cand-${Date.now()}`,
       name: newCandName,
@@ -234,7 +427,7 @@ export default function CandidateDirectoryPage() {
       matchScore: 88,
       matchScoreLabel: "(Rubric evaluated)",
       stage: "Applied",
-      stageColor: "bg-[#497cff]",
+      stageColor,
       skills: newCandSkills
         ? newCandSkills.split(",").map((s) => s.trim())
         : ["TypeScript", "Distributed Systems"],
@@ -256,38 +449,41 @@ export default function CandidateDirectoryPage() {
 
   // Export CSV
   const handleExportCSV = () => {
-    const headers = "Name,Title,Target Job,Stage,Skills,Experience,Location,Owner\n";
-    const rows = candidates
+    const listToExport = filteredCandidates.length > 0 ? filteredCandidates : candidates;
+    const headers = "Name,Title,Target Job,Stage,Skills,Experience,Location,Source,Owner\n";
+    const rows = listToExport
       .map(
         (c) =>
-          `"${c.name}","${c.title}","${c.targetJob}","${c.stage}","${c.skills.join("; ")}",${c.experienceYears}y,"${c.location}","${c.owner}"`
+          `"${c.name}","${c.title}","${c.targetJob}","${c.stage}","${c.skills.join("; ")}",${c.experienceYears}y,"${c.location}","${c.source}","${c.owner}"`
       )
       .join("\n");
     const blob = new Blob([headers + rows], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "candidates-roster.csv";
+    a.download = `candidates-roster-${Date.now()}.csv`;
     a.click();
-    showToast("✓ Exported candidates roster to CSV");
+    showToast(`✓ Exported ${listToExport.length} candidates to CSV`);
   };
 
-  // Filtered list
-  const filteredCandidates = useMemo(() => {
-    return candidates.filter((c) => {
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchesName = c.name.toLowerCase().includes(q);
-        const matchesTitle = c.title.toLowerCase().includes(q);
-        const matchesSkills = c.skills.some((s) => s.toLowerCase().includes(q));
-        const matchesCompany = c.companyTag?.toLowerCase().includes(q);
-        if (!matchesName && !matchesTitle && !matchesSkills && !matchesCompany) {
-          return false;
-        }
-      }
-      return true;
-    });
-  }, [candidates, searchQuery]);
+  // Metric breakdown based on actual candidates
+  const totalCount = candidates.length;
+  const requisitionsCount = jobs.length;
+  const highMatch = useMemo(
+    () => candidates.filter((c) => typeof c.matchScore === "number" && c.matchScore >= 85).length,
+    [candidates]
+  );
+  const medMatch = useMemo(
+    () => candidates.filter((c) => typeof c.matchScore === "number" && c.matchScore >= 65 && c.matchScore < 85).length,
+    [candidates]
+  );
+  const lowMatch = useMemo(
+    () => candidates.filter((c) => typeof c.matchScore !== "number" || c.matchScore < 65).length,
+    [candidates]
+  );
+  const highPct = totalCount > 0 ? Math.round((highMatch / totalCount) * 100) : 0;
+  const medPct = totalCount > 0 ? Math.round((medMatch / totalCount) * 100) : 0;
+  const lowPct = totalCount > 0 ? Math.round((lowMatch / totalCount) * 100) : 0;
 
   return (
     <>
@@ -311,19 +507,25 @@ export default function CandidateDirectoryPage() {
               </div>
             )}
 
-            {/* Header Area: Title & Autonomous Pipeline State */}
+            {/* Header Area: Clean title & dynamic candidate count */}
             <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
               <div>
-                <div className="flex items-center gap-1.5 text-xs text-[#45474c] font-medium mb-1">
-                  <span>HALDEN TALENT ORCHESTRATION</span>
-                  <span className="text-[#75777c]">/</span>
-                  <span className="text-[#6137e0] font-semibold">AI-ASSISTED CANDIDATE MATCHING</span>
-                </div>
                 <h1 className="text-2xl sm:text-3xl font-bold text-[#171c25] tracking-tight">
                   Candidate Directory
                 </h1>
                 <p className="text-xs sm:text-sm text-[#45474c] mt-0.5">
-                  412 active candidates across 14 requisitions and verified talent pools
+                  {hasActiveFilters ? (
+                    <>
+                      Showing <span className="font-semibold text-[#171c25]">{filteredCandidates.length}</span> of{" "}
+                      <span className="font-semibold text-[#171c25]">{candidates.length}</span> active candidates across{" "}
+                      <span className="font-semibold text-[#171c25]">{requisitionsCount}</span> {requisitionsCount === 1 ? "requisition" : "requisitions"} and verified talent pools
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-semibold text-[#171c25]">{candidates.length}</span> active {candidates.length === 1 ? "candidate" : "candidates"} across{" "}
+                      <span className="font-semibold text-[#171c25]">{requisitionsCount}</span> {requisitionsCount === 1 ? "requisition" : "requisitions"} and verified talent pools
+                    </>
+                  )}
                 </p>
               </div>
 
@@ -337,7 +539,9 @@ export default function CandidateDirectoryPage() {
                   <span className="text-xs font-semibold text-[#171c25]">Sourcing Sync: Active</span>
                 </div>
                 <span className="text-[#c5c6cc] font-mono text-xs">|</span>
-                <span className="text-xs text-[#45474c]">149 profiles evaluated overnight</span>
+                <span className="text-xs text-[#45474c]">
+                  {candidates.filter((c) => typeof c.matchScore === "number").length} of {candidates.length} evaluated
+                </span>
                 <div className="flex items-center -space-x-1.5 ml-1">
                   <div className="w-5 h-5 rounded-full bg-[#6137e0] text-white text-[9px] flex items-center justify-center font-bold">
                     A1
@@ -367,9 +571,19 @@ export default function CandidateDirectoryPage() {
                     type="text"
                   />
                   <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                    <kbd className="px-1.5 py-0.5 rounded bg-[#eaeefb] text-[#45474c] font-mono text-[11px] font-medium">
-                      ⌘F
-                    </kbd>
+                    {searchQuery ? (
+                      <button
+                        onClick={() => setSearchQuery("")}
+                        className="p-1 rounded hover:bg-[#eaeefb] text-[#75777c] hover:text-[#171c25]"
+                        type="button"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    ) : (
+                      <kbd className="px-1.5 py-0.5 rounded bg-[#eaeefb] text-[#45474c] font-mono text-[11px] font-medium">
+                        ⌘F
+                      </kbd>
+                    )}
                   </div>
                 </div>
 
@@ -426,79 +640,277 @@ export default function CandidateDirectoryPage() {
               </div>
 
               {/* Granular Filter Ribbon Chips */}
-              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-[#dee2ef]/60">
-                <span className="text-[10px] text-[#45474c] uppercase font-bold tracking-wider mr-1">
-                  Applied Filters:
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#dee2ef]/60">
+                <span className="text-[10px] text-[#45474c] uppercase font-bold tracking-wider mr-1 flex items-center gap-1">
+                  <Filter className="w-3 h-3 text-[#75777c]" />
+                  Filters:
                 </span>
 
-                {/* Stage Filter */}
-                <button
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f0f3ff] hover:bg-[#eaeefb] text-[#171c25] text-xs transition-colors cursor-pointer"
-                  type="button"
-                >
-                  <span className="text-[#45474c]">Stage:</span>
-                  <span className="font-semibold">All (Screening, Interview, Offer)</span>
-                  <SymbolIcon name="expand_more" className="text-[14px] text-[#75777c]" style={{ fontSize: "14px" }} />
-                </button>
-
-                {/* Active Filter Pill with Dismiss */}
-                {skillsFilterActive && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#e7deff] text-[#1e0060] text-xs font-bold">
-                    <SymbolIcon name="verified" className="text-[14px] text-[#6137e0]" style={{ fontSize: "14px" }} />
-                    <span>Skills: Go, Kubernetes (2)</span>
+                {/* Stage Filter Dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
                     <button
-                      onClick={() => setSkillsFilterActive(false)}
-                      className="hover:bg-[#cbbeff] rounded-full p-0.5 ml-0.5 inline-flex items-center justify-center transition-colors cursor-pointer"
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer border ${
+                        stageFilter !== "All"
+                          ? "bg-[#6137e0] text-white border-[#6137e0] shadow-xs"
+                          : "bg-[#f0f3ff] hover:bg-[#eaeefb] text-[#171c25] border-[#dee2ef]/60"
+                      }`}
                       type="button"
                     >
-                      <SymbolIcon name="close" className="text-[12px]" style={{ fontSize: "12px" }} />
+                      <span className={stageFilter !== "All" ? "text-white/80" : "text-[#45474c]"}>Stage:</span>
+                      <span className="font-semibold">{stageFilter}</span>
+                      <ChevronDown className="w-3.5 h-3.5 opacity-70" />
                     </button>
-                  </span>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-52 bg-white border border-[#dee2ef] shadow-xl rounded-xl p-1 z-50">
+                    <DropdownMenuLabel className="text-[11px] font-semibold text-[#75777c] px-2 py-1">Filter by Stage</DropdownMenuLabel>
+                    <DropdownMenuSeparator className="bg-[#dee2ef]/60 my-1" />
+                    <DropdownMenuRadioGroup value={stageFilter} onValueChange={setStageFilter}>
+                      {availableStages.map((stage) => (
+                        <DropdownMenuRadioItem
+                          key={stage}
+                          value={stage}
+                          className="text-xs py-1.5 px-2 rounded-lg cursor-pointer hover:bg-[#f0f3ff] focus:bg-[#f0f3ff]"
+                        >
+                          {stage === "All" ? "All Stages" : stage}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Min Experience Filter Dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer border ${
+                        minExpFilter !== "All"
+                          ? "bg-[#6137e0] text-white border-[#6137e0] shadow-xs"
+                          : "bg-[#f0f3ff] hover:bg-[#eaeefb] text-[#171c25] border-[#dee2ef]/60"
+                      }`}
+                      type="button"
+                    >
+                      <span className={minExpFilter !== "All" ? "text-white/80" : "text-[#45474c]"}>Min Experience:</span>
+                      <span className="font-semibold">{minExpFilter === "All" ? "Any" : minExpFilter}</span>
+                      <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-48 bg-white border border-[#dee2ef] shadow-xl rounded-xl p-1 z-50">
+                    <DropdownMenuLabel className="text-[11px] font-semibold text-[#75777c] px-2 py-1">Minimum Experience</DropdownMenuLabel>
+                    <DropdownMenuSeparator className="bg-[#dee2ef]/60 my-1" />
+                    <DropdownMenuRadioGroup value={minExpFilter} onValueChange={setMinExpFilter}>
+                      {MIN_EXP_OPTIONS.map((opt) => (
+                        <DropdownMenuRadioItem
+                          key={opt}
+                          value={opt}
+                          className="text-xs py-1.5 px-2 rounded-lg cursor-pointer hover:bg-[#f0f3ff] focus:bg-[#f0f3ff]"
+                        >
+                          {opt === "All" ? "Any Experience" : opt}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Source Filter Dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer border ${
+                        sourceFilter !== "All"
+                          ? "bg-[#6137e0] text-white border-[#6137e0] shadow-xs"
+                          : "bg-[#f0f3ff] hover:bg-[#eaeefb] text-[#171c25] border-[#dee2ef]/60"
+                      }`}
+                      type="button"
+                    >
+                      <span className={sourceFilter !== "All" ? "text-white/80" : "text-[#45474c]"}>Source:</span>
+                      <span className="font-semibold">{sourceFilter}</span>
+                      <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-52 bg-white border border-[#dee2ef] shadow-xl rounded-xl p-1 z-50">
+                    <DropdownMenuLabel className="text-[11px] font-semibold text-[#75777c] px-2 py-1">Filter by Source</DropdownMenuLabel>
+                    <DropdownMenuSeparator className="bg-[#dee2ef]/60 my-1" />
+                    <DropdownMenuRadioGroup value={sourceFilter} onValueChange={setSourceFilter}>
+                      {availableSources.map((src) => (
+                        <DropdownMenuRadioItem
+                          key={src}
+                          value={src}
+                          className="text-xs py-1.5 px-2 rounded-lg cursor-pointer hover:bg-[#f0f3ff] focus:bg-[#f0f3ff]"
+                        >
+                          {src === "All" ? "All Sources" : src}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Owner Filter Dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer border ${
+                        ownerFilter !== "All"
+                          ? "bg-[#6137e0] text-white border-[#6137e0] shadow-xs"
+                          : "bg-[#f0f3ff] hover:bg-[#eaeefb] text-[#171c25] border-[#dee2ef]/60"
+                      }`}
+                      type="button"
+                    >
+                      <span className={ownerFilter !== "All" ? "text-white/80" : "text-[#45474c]"}>Owner:</span>
+                      <span className="font-semibold">{ownerFilter}</span>
+                      <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-52 bg-white border border-[#dee2ef] shadow-xl rounded-xl p-1 z-50">
+                    <DropdownMenuLabel className="text-[11px] font-semibold text-[#75777c] px-2 py-1">Filter by Owner</DropdownMenuLabel>
+                    <DropdownMenuSeparator className="bg-[#dee2ef]/60 my-1" />
+                    <DropdownMenuRadioGroup value={ownerFilter} onValueChange={setOwnerFilter}>
+                      {availableOwners.map((own) => (
+                        <DropdownMenuRadioItem
+                          key={own}
+                          value={own}
+                          className="text-xs py-1.5 px-2 rounded-lg cursor-pointer hover:bg-[#f0f3ff] focus:bg-[#f0f3ff]"
+                        >
+                          {own === "All" ? "All Owners" : own}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Skill Filter Dropdown */}
+                {availableSkills.length > 1 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer border ${
+                          skillFilter !== "All"
+                            ? "bg-[#6137e0] text-white border-[#6137e0] shadow-xs"
+                            : "bg-[#f0f3ff] hover:bg-[#eaeefb] text-[#171c25] border-[#dee2ef]/60"
+                        }`}
+                        type="button"
+                      >
+                        <span className={skillFilter !== "All" ? "text-white/80" : "text-[#45474c]"}>Skill:</span>
+                        <span className="font-semibold">{skillFilter}</span>
+                        <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-52 max-h-60 overflow-y-auto bg-white border border-[#dee2ef] shadow-xl rounded-xl p-1 z-50">
+                      <DropdownMenuLabel className="text-[11px] font-semibold text-[#75777c] px-2 py-1">Filter by Skill</DropdownMenuLabel>
+                      <DropdownMenuSeparator className="bg-[#dee2ef]/60 my-1" />
+                      <DropdownMenuRadioGroup value={skillFilter} onValueChange={setSkillFilter}>
+                        {availableSkills.map((sk) => (
+                          <DropdownMenuRadioItem
+                            key={sk}
+                            value={sk}
+                            className="text-xs py-1.5 px-2 rounded-lg cursor-pointer hover:bg-[#f0f3ff] focus:bg-[#f0f3ff]"
+                          >
+                            {sk === "All" ? "All Skills" : sk}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
 
-                {/* Experience Filter */}
-                <button
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f0f3ff] hover:bg-[#eaeefb] text-[#171c25] text-xs transition-colors cursor-pointer"
-                  type="button"
-                >
-                  <span className="text-[#45474c]">Min Experience:</span>
-                  <span className="font-semibold">{minExpFilter}</span>
-                  <SymbolIcon name="expand_more" className="text-[14px] text-[#75777c]" style={{ fontSize: "14px" }} />
-                </button>
-
-                {/* Source Filter */}
-                <button
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f0f3ff] hover:bg-[#eaeefb] text-[#171c25] text-xs transition-colors cursor-pointer"
-                  type="button"
-                >
-                  <span className="text-[#45474c]">Source:</span>
-                  <span className="font-semibold">{sourceFilter}</span>
-                  <SymbolIcon name="expand_more" className="text-[14px] text-[#75777c]" style={{ fontSize: "14px" }} />
-                </button>
-
-                {/* Owner Filter */}
-                <button
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f0f3ff] hover:bg-[#eaeefb] text-[#171c25] text-xs transition-colors cursor-pointer"
-                  type="button"
-                >
-                  <span className="text-[#45474c]">Owner:</span>
-                  <span className="font-semibold">{ownerFilter}</span>
-                  <SymbolIcon name="expand_more" className="text-[14px] text-[#75777c]" style={{ fontSize: "14px" }} />
-                </button>
-
-                {/* Clear All Text Button */}
-                <button
-                  onClick={() => {
-                    setSkillsFilterActive(true);
-                    setSearchQuery("");
-                    showToast("Filters reset to default view");
-                  }}
-                  className="text-[#6137e0] hover:underline text-xs font-semibold ml-2 transition-colors cursor-pointer"
-                  type="button"
-                >
-                  Reset filters
-                </button>
+                {/* Reset Filters Action Button */}
+                {hasActiveFilters && (
+                  <button
+                    onClick={handleResetFilters}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white hover:bg-[#f0f3ff] text-[#6137e0] border border-[#6137e0]/30 hover:border-[#6137e0] text-xs font-semibold shadow-2xs transition-all cursor-pointer ml-auto"
+                    type="button"
+                    title="Clear all active filters"
+                  >
+                    <RefreshCw className="w-3 h-3 text-[#6137e0]" />
+                    <span>Reset filters ({activeFiltersCount})</span>
+                  </button>
+                )}
               </div>
+
+              {/* Active Filter Chips with Direct Dismiss buttons */}
+              {hasActiveFilters && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="text-[10px] text-[#75777c] font-semibold">Active filters:</span>
+                  {stageFilter !== "All" && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#e7deff] text-[#1e0060] text-xs font-semibold">
+                      <span>Stage: {stageFilter}</span>
+                      <button
+                        onClick={() => setStageFilter("All")}
+                        className="hover:bg-[#cbbeff] rounded-full p-0.5 inline-flex items-center justify-center transition-colors cursor-pointer"
+                        type="button"
+                        title="Remove stage filter"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                  {minExpFilter !== "All" && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#e7deff] text-[#1e0060] text-xs font-semibold">
+                      <span>Exp: {minExpFilter}</span>
+                      <button
+                        onClick={() => setMinExpFilter("All")}
+                        className="hover:bg-[#cbbeff] rounded-full p-0.5 inline-flex items-center justify-center transition-colors cursor-pointer"
+                        type="button"
+                        title="Remove experience filter"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                  {sourceFilter !== "All" && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#e7deff] text-[#1e0060] text-xs font-semibold">
+                      <span>Source: {sourceFilter}</span>
+                      <button
+                        onClick={() => setSourceFilter("All")}
+                        className="hover:bg-[#cbbeff] rounded-full p-0.5 inline-flex items-center justify-center transition-colors cursor-pointer"
+                        type="button"
+                        title="Remove source filter"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                  {ownerFilter !== "All" && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#e7deff] text-[#1e0060] text-xs font-semibold">
+                      <span>Owner: {ownerFilter}</span>
+                      <button
+                        onClick={() => setOwnerFilter("All")}
+                        className="hover:bg-[#cbbeff] rounded-full p-0.5 inline-flex items-center justify-center transition-colors cursor-pointer"
+                        type="button"
+                        title="Remove owner filter"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                  {skillFilter !== "All" && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#e7deff] text-[#1e0060] text-xs font-semibold">
+                      <span>Skill: {skillFilter}</span>
+                      <button
+                        onClick={() => setSkillFilter("All")}
+                        className="hover:bg-[#cbbeff] rounded-full p-0.5 inline-flex items-center justify-center transition-colors cursor-pointer"
+                        type="button"
+                        title="Remove skill filter"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                  {searchQuery.trim().length > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#eaeefb] text-[#171c25] text-xs font-medium">
+                      <span>Search: &ldquo;{searchQuery}&rdquo;</span>
+                      <button
+                        onClick={() => setSearchQuery("")}
+                        className="hover:bg-[#dee2ef] rounded-full p-0.5 inline-flex items-center justify-center transition-colors cursor-pointer"
+                        type="button"
+                        title="Clear search query"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Main Candidate Roster Table Card */}
@@ -538,239 +950,269 @@ export default function CandidateDirectoryPage() {
                           <td colSpan={9} className="py-12 text-center text-[#75777c]">
                             <div className="flex flex-col items-center justify-center gap-2">
                               <Users className="w-8 h-8 text-[#9ea3ae]" />
-                              <p className="font-semibold text-sm text-[#171c25]">No candidates found</p>
-                              <p className="text-xs text-[#75777c]">Upload resumes in the Ingestion Pipeline to add candidates to your directory.</p>
-                              <Link href="/upload" className="mt-2 px-3.5 py-1.5 rounded-lg bg-[#6137e0] text-white text-xs font-semibold hover:bg-[#7a55fa] transition-colors">
-                                Upload Resumes
-                              </Link>
+                              <p className="font-semibold text-sm text-[#171c25]">
+                                {candidates.length === 0 ? "No candidates found" : "No candidates match the current filters"}
+                              </p>
+                              <p className="text-xs text-[#75777c]">
+                                {candidates.length === 0
+                                  ? "Upload resumes in the Ingestion Pipeline to add candidates to your directory."
+                                  : "Try adjusting or resetting your search and filter criteria."}
+                              </p>
+                              {candidates.length > 0 ? (
+                                <button
+                                  onClick={handleResetFilters}
+                                  className="mt-2 px-3.5 py-1.5 rounded-lg bg-[#6137e0] text-white text-xs font-semibold hover:bg-[#7a55fa] transition-colors cursor-pointer"
+                                  type="button"
+                                >
+                                  Reset Filters
+                                </button>
+                              ) : (
+                                <Link
+                                  href="/upload"
+                                  className="mt-2 px-3.5 py-1.5 rounded-lg bg-[#6137e0] text-white text-xs font-semibold hover:bg-[#7a55fa] transition-colors"
+                                >
+                                  Upload Resumes
+                                </Link>
+                              )}
                             </div>
                           </td>
                         </tr>
                       ) : (
                         filteredCandidates.map((cand) => {
-                        const isChecked = Boolean(selectedIds[cand.id]);
+                          const isChecked = Boolean(selectedIds[cand.id]);
 
-                        return (
-                          <tr
-                            key={cand.id}
-                            className={`transition-colors group ${
-                              isChecked
-                                ? "bg-[#e7deff]/20 hover:bg-[#e7deff]/30"
-                                : "hover:bg-[#f0f3ff]"
-                            }`}
-                          >
-                            {/* Checkbox */}
-                            <td className="py-4 px-4 text-center">
-                              <input
-                                checked={isChecked}
-                                onChange={() => toggleSelectCandidate(cand.id)}
-                                className="w-4 h-4 rounded text-[#6137e0] accent-[#6137e0] cursor-pointer"
-                                type="checkbox"
-                              />
-                            </td>
+                          return (
+                            <tr
+                              key={cand.id}
+                              className={`transition-colors group ${
+                                isChecked
+                                  ? "bg-[#e7deff]/20 hover:bg-[#e7deff]/30"
+                                  : "hover:bg-[#f0f3ff]"
+                              }`}
+                            >
+                              {/* Checkbox */}
+                              <td className="py-4 px-4 text-center">
+                                <input
+                                  checked={isChecked}
+                                  onChange={() => toggleSelectCandidate(cand.id)}
+                                  className="w-4 h-4 rounded text-[#6137e0] accent-[#6137e0] cursor-pointer"
+                                  type="checkbox"
+                                />
+                              </td>
 
-                            {/* Candidate & Current Title */}
-                            <td className="py-4 px-4">
-                              <div className="flex items-center gap-3 min-w-[240px]">
-                                <div className="relative shrink-0">
-                                  <div className="w-10 h-10 rounded-full bg-[#f4f3ff] text-[#6137e0] flex items-center justify-center ring-1 ring-[#dee2ef]">
-                                    <User className="w-5 h-5 text-[#6137e0]" />
-                                  </div>
-                                  {cand.isStarred && (
-                                    <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[#6137e0] flex items-center justify-center text-white text-[8px] font-bold">
-                                      ★
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-1.5">
-                                    <Link
-                                      href={`/candidates/${cand.id}`}
-                                      className="font-bold text-[#171c25] hover:text-[#6137e0] hover:underline truncate text-sm transition-colors"
-                                    >
-                                      {cand.name}
-                                    </Link>
-                                    {cand.companyTag && (
-                                      <span className="px-1.5 py-0.2 rounded bg-[#dee2ef] text-[#45474c] text-[10px] font-semibold">
-                                        {cand.companyTag}
+                              {/* Candidate & Current Title */}
+                              <td className="py-4 px-4">
+                                <div className="flex items-center gap-3 min-w-[240px]">
+                                  <div className="relative shrink-0">
+                                    <div className="w-10 h-10 rounded-full bg-[#f4f3ff] text-[#6137e0] flex items-center justify-center ring-1 ring-[#dee2ef]">
+                                      <User className="w-5 h-5 text-[#6137e0]" />
+                                    </div>
+                                    {cand.isStarred && (
+                                      <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[#6137e0] flex items-center justify-center text-white text-[8px] font-bold">
+                                        ★
                                       </span>
                                     )}
                                   </div>
-                                  <div className="text-xs text-[#45474c] truncate">{cand.title}</div>
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <Link
+                                        href={`/candidates/${cand.id}`}
+                                        className="font-bold text-[#171c25] hover:text-[#6137e0] hover:underline truncate text-sm transition-colors"
+                                      >
+                                        {cand.name}
+                                      </Link>
+                                      {cand.companyTag && (
+                                        <span className="px-1.5 py-0.2 rounded bg-[#dee2ef] text-[#45474c] text-[10px] font-semibold">
+                                          {cand.companyTag}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-xs text-[#45474c] truncate">{cand.title}</div>
+                                  </div>
                                 </div>
-                              </div>
-                            </td>
+                              </td>
 
-                            {/* Target Job & Agent Match */}
-                            <td className="py-4 px-4">
-                              <div className="flex flex-col gap-1 min-w-[200px]">
-                                <span className="text-xs text-[#171c25] font-semibold truncate">
-                                  {cand.targetJob}
+                              {/* Target Job & Agent Match */}
+                              <td className="py-4 px-4">
+                                <div className="flex flex-col gap-1 min-w-[200px]">
+                                  <span className="text-xs text-[#171c25] font-semibold truncate">
+                                    {cand.targetJob}
+                                  </span>
+
+                                  {cand.isProcessing ? (
+                                    <div className="inline-flex items-center gap-1.5 bg-amber-100 text-amber-900 text-[10px] px-2 py-0.5 rounded-full font-bold w-fit">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                                      <span>Resume Parsing in Progress</span>
+                                    </div>
+                                  ) : cand.multiApplications ? (
+                                    <div className="flex flex-col gap-0.5">
+                                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#e4e8f5] text-[#45474c] text-[10px] font-bold w-fit">
+                                        <SymbolIcon name="layers" className="text-[13px] text-[#6137e0]" style={{ fontSize: "13px" }} />
+                                        <span>2 Active Applications</span>
+                                      </div>
+                                      <div className="text-[11px] text-[#171c25] flex items-center justify-between">
+                                        <span>Sr Platform Eng:</span>
+                                        <span className="font-mono text-[#45474c]">78/100</span>
+                                      </div>
+                                      <div className="text-[11px] text-[#171c25] flex items-center justify-between font-semibold">
+                                        <span>Site Reliability Lead:</span>
+                                        <span className="font-mono text-[#6137e0]">91/100</span>
+                                      </div>
+                                    </div>
+                                  ) : cand.matchScore ? (
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="inline-flex items-center gap-1 bg-[#e7deff] text-[#1e0060] text-[10px] px-2 py-0.5 rounded-full font-bold">
+                                        <SymbolIcon name="auto_awesome" className="text-[13px] text-[#6137e0]" style={{ fontSize: "13px" }} />
+                                        <span>Job Match: {cand.matchScore}/100</span>
+                                      </div>
+                                      <span className="font-mono text-[10px] text-[#75777c]">
+                                        {cand.matchScoreLabel}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <div className="font-mono text-[11px] text-[#75777c] flex items-center gap-1">
+                                      <SymbolIcon name="help_outline" className="text-[13px]" style={{ fontSize: "13px" }} />
+                                      <span>Select a job to view match</span>
+                                      <a href="#" className="text-[#6137e0] hover:underline font-semibold ml-1">
+                                        Assign
+                                      </a>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Stage */}
+                              <td className="py-4 px-4">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#dee2ef] text-[#171c25] text-xs font-semibold">
+                                  <span className={`w-1.5 h-1.5 rounded-full ${cand.stageColor}`}></span>
+                                  <span>{cand.stage}</span>
                                 </span>
+                              </td>
 
-                                {cand.isProcessing ? (
-                                  <div className="inline-flex items-center gap-1.5 bg-amber-100 text-amber-900 text-[10px] px-2 py-0.5 rounded-full font-bold w-fit">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                                    <span>Resume Parsing in Progress</span>
-                                  </div>
-                                ) : cand.multiApplications ? (
-                                  <div className="flex flex-col gap-0.5">
-                                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#e4e8f5] text-[#45474c] text-[10px] font-bold w-fit">
-                                      <SymbolIcon name="layers" className="text-[13px] text-[#6137e0]" style={{ fontSize: "13px" }} />
-                                      <span>2 Active Applications</span>
-                                    </div>
-                                    <div className="text-[11px] text-[#171c25] flex items-center justify-between">
-                                      <span>Sr Platform Eng:</span>
-                                      <span className="font-mono text-[#45474c]">78/100</span>
-                                    </div>
-                                    <div className="text-[11px] text-[#171c25] flex items-center justify-between font-semibold">
-                                      <span>Site Reliability Lead:</span>
-                                      <span className="font-mono text-[#6137e0]">91/100</span>
-                                    </div>
-                                  </div>
-                                ) : cand.matchScore ? (
-                                  <div className="flex items-center gap-1.5">
-                                    <div className="inline-flex items-center gap-1 bg-[#e7deff] text-[#1e0060] text-[10px] px-2 py-0.5 rounded-full font-bold">
-                                      <SymbolIcon name="auto_awesome" className="text-[13px] text-[#6137e0]" style={{ fontSize: "13px" }} />
-                                      <span>Job Match: {cand.matchScore}/100</span>
-                                    </div>
-                                    <span className="font-mono text-[10px] text-[#75777c]">
-                                      {cand.matchScoreLabel}
+                              {/* Top Validated Skills */}
+                              <td className="py-4 px-4">
+                                <div className="flex flex-wrap gap-1 max-w-[220px]">
+                                  {cand.skills.map((skill) => (
+                                    <span
+                                      key={skill}
+                                      onClick={() => setSkillFilter(skill)}
+                                      className="px-2 py-0.5 rounded bg-[#eaeefb] hover:bg-[#dee2ef] text-[#171c25] font-mono text-[11px] font-medium cursor-pointer transition-colors"
+                                      title={`Filter by skill: ${skill}`}
+                                    >
+                                      {skill}
                                     </span>
-                                  </div>
-                                ) : (
-                                  <div className="font-mono text-[11px] text-[#75777c] flex items-center gap-1">
-                                    <SymbolIcon name="help_outline" className="text-[13px]" style={{ fontSize: "13px" }} />
-                                    <span>Select a job to view match</span>
-                                    <a href="#" className="text-[#6137e0] hover:underline font-semibold ml-1">
-                                      Assign
-                                    </a>
-                                  </div>
-                                )}
-                              </div>
-                            </td>
+                                  ))}
+                                  {cand.extractingSkillsCount && (
+                                    <span className="px-2 py-0.5 rounded bg-[#e4e8f5] text-[#75777c] font-mono text-[11px] italic">
+                                      Extracting ({cand.extractingSkillsCount})...
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
 
-                            {/* Stage */}
-                            <td className="py-4 px-4">
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#dee2ef] text-[#171c25] text-xs font-semibold">
-                                <span className={`w-1.5 h-1.5 rounded-full ${cand.stageColor}`}></span>
-                                <span>{cand.stage}</span>
-                              </span>
-                            </td>
+                              {/* Experience & Location */}
+                              <td className="py-4 px-4">
+                                <div className="flex flex-col">
+                                  <span className="font-semibold text-[#171c25] text-xs">
+                                    {cand.experienceYears} yrs total
+                                  </span>
+                                  <span className="text-xs text-[#45474c] flex items-center gap-1">
+                                    <SymbolIcon name="location_on" className="text-[14px] text-[#75777c]" style={{ fontSize: "14px" }} />
+                                    <span>
+                                      {cand.location} ({cand.locationType})
+                                    </span>
+                                  </span>
+                                </div>
+                              </td>
 
-                            {/* Top Validated Skills */}
-                            <td className="py-4 px-4">
-                              <div className="flex flex-wrap gap-1 max-w-[220px]">
-                                {cand.skills.map((skill) => (
-                                  <span
-                                    key={skill}
-                                    className="px-2 py-0.5 rounded bg-[#eaeefb] text-[#171c25] font-mono text-[11px] font-medium"
+                              {/* Sourced Via */}
+                              <td className="py-4 px-4">
+                                <div className="flex flex-col">
+                                  <span className="text-xs text-[#171c25] font-semibold">{cand.source}</span>
+                                  <span className="font-mono text-[10px] text-[#6137e0] font-medium truncate max-w-[140px]">
+                                    {cand.sourceDetail}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* Owner */}
+                              <td className="py-4 px-4">
+                                <div className="flex items-center gap-1.5">
+                                  {cand.ownerAvatar ? (
+                                    <Image
+                                      alt={cand.owner}
+                                      className="w-6 h-6 rounded-full object-cover"
+                                      src={cand.ownerAvatar}
+                                      width={24}
+                                      height={24}
+                                      unoptimized
+                                    />
+                                  ) : (
+                                    <div className="w-6 h-6 rounded-full bg-[#131c29] text-white flex items-center justify-center font-bold text-[9px]">
+                                      {cand.owner
+                                        .split(" ")
+                                        .map((n) => n[0])
+                                        .join("")
+                                        .slice(0, 2)
+                                        .toUpperCase()}
+                                    </div>
+                                  )}
+                                  <span className="text-xs text-[#171c25] font-medium truncate">{cand.owner}</span>
+                                </div>
+                              </td>
+
+                              {/* Quick Action Button */}
+                              <td className="py-4 px-4 text-right">
+                                {cand.actionType === "Review Evidence" ? (
+                                  <Link
+                                    href={`/candidates/${cand.id}`}
+                                    className="px-3 py-1.5 rounded-lg bg-[#6137e0] text-white hover:bg-[#7a55fa] transition-colors text-xs font-semibold shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
                                   >
-                                    {skill}
-                                  </span>
-                                ))}
-                                {cand.extractingSkillsCount && (
-                                  <span className="px-2 py-0.5 rounded bg-[#e4e8f5] text-[#75777c] font-mono text-[11px] italic">
-                                    Extracting ({cand.extractingSkillsCount})...
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-
-                            {/* Experience & Location */}
-                            <td className="py-4 px-4">
-                              <div className="flex flex-col">
-                                <span className="font-semibold text-[#171c25] text-xs">
-                                  {cand.experienceYears} yrs total
-                                </span>
-                                <span className="text-xs text-[#45474c] flex items-center gap-1">
-                                  <SymbolIcon name="location_on" className="text-[14px] text-[#75777c]" style={{ fontSize: "14px" }} />
-                                  <span>
-                                    {cand.location} ({cand.locationType})
-                                  </span>
-                                </span>
-                              </div>
-                            </td>
-
-                            {/* Sourced Via */}
-                            <td className="py-4 px-4">
-                              <div className="flex flex-col">
-                                <span className="text-xs text-[#171c25] font-semibold">{cand.source}</span>
-                                <span className="font-mono text-[10px] text-[#6137e0] font-medium">
-                                  {cand.sourceDetail}
-                                </span>
-                              </div>
-                            </td>
-
-                            {/* Owner */}
-                            <td className="py-4 px-4">
-                              <div className="flex items-center gap-1.5">
-                                {cand.ownerAvatar ? (
-                                  <img
-                                    alt={cand.owner}
-                                    className="w-6 h-6 rounded-full object-cover"
-                                    src={cand.ownerAvatar}
-                                  />
+                                    <SymbolIcon name="fact_check" className="text-[16px]" style={{ fontSize: "16px" }} />
+                                    <span>Review Evidence</span>
+                                  </Link>
+                                ) : cand.actionType === "View Scorecard" ? (
+                                  <button
+                                    onClick={() => handleQuickAction(cand)}
+                                    className="px-3 py-1.5 rounded-lg bg-[#eaeefb] hover:bg-[#dee2ef] transition-colors text-xs text-[#171c25] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                                    type="button"
+                                  >
+                                    <SymbolIcon name="query_stats" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
+                                    <span>View Scorecard</span>
+                                  </button>
+                                ) : cand.actionType === "View Status" ? (
+                                  <button
+                                    onClick={() => handleQuickAction(cand)}
+                                    className="px-3 py-1.5 rounded-lg bg-[#eaeefb] hover:bg-[#dee2ef] transition-colors text-xs text-[#171c25] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                                    type="button"
+                                  >
+                                    <SymbolIcon name="schedule" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
+                                    <span>View Status</span>
+                                  </button>
+                                ) : cand.actionType === "Select App" ? (
+                                  <button
+                                    onClick={() => handleQuickAction(cand)}
+                                    className="px-3 py-1.5 rounded-lg bg-[#eaeefb] hover:bg-[#dee2ef] transition-colors text-xs text-[#171c25] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                                    type="button"
+                                  >
+                                    <SymbolIcon name="call_split" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
+                                    <span>Select App</span>
+                                  </button>
                                 ) : (
-                                  <div className="w-6 h-6 rounded-full bg-[#131c29] text-white flex items-center justify-center font-bold text-[9px]">
-                                    TN
-                                  </div>
+                                  <button
+                                    onClick={() => handleQuickAction(cand)}
+                                    className="px-3 py-1.5 rounded-lg bg-[#eaeefb] hover:bg-[#dee2ef] transition-colors text-xs text-[#171c25] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                                    type="button"
+                                  >
+                                    <SymbolIcon name="add_link" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
+                                    <span>Match to Job</span>
+                                  </button>
                                 )}
-                                <span className="text-xs text-[#171c25] font-medium truncate">{cand.owner}</span>
-                              </div>
-                            </td>
-
-                            {/* Quick Action Button */}
-                            <td className="py-4 px-4 text-right">
-                              {cand.actionType === "Review Evidence" ? (
-                                <Link
-                                  href={`/candidates/${cand.id}`}
-                                  className="px-3 py-1.5 rounded-lg bg-[#6137e0] text-white hover:bg-[#7a55fa] transition-colors text-xs font-semibold shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
-                                >
-                                  <SymbolIcon name="fact_check" className="text-[16px]" style={{ fontSize: "16px" }} />
-                                  <span>Review Evidence</span>
-                                </Link>
-                              ) : cand.actionType === "View Scorecard" ? (
-                                <button
-                                  onClick={() => handleQuickAction(cand)}
-                                  className="px-3 py-1.5 rounded-lg bg-[#eaeefb] hover:bg-[#dee2ef] transition-colors text-xs text-[#171c25] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
-                                  type="button"
-                                >
-                                  <SymbolIcon name="assignment" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
-                                  <span>View Scorecard</span>
-                                </button>
-                              ) : cand.actionType === "View Status" ? (
-                                <button
-                                  onClick={() => handleQuickAction(cand)}
-                                  className="px-3 py-1.5 rounded-lg bg-[#eaeefb] hover:bg-[#dee2ef] transition-colors text-xs text-[#171c25] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
-                                  type="button"
-                                >
-                                  <SymbolIcon name="hourglass_empty" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
-                                  <span>View Status</span>
-                                </button>
-                              ) : cand.actionType === "Select App" ? (
-                                <button
-                                  onClick={() => handleQuickAction(cand)}
-                                  className="px-3 py-1.5 rounded-lg bg-[#eaeefb] hover:bg-[#dee2ef] transition-colors text-xs text-[#171c25] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
-                                  type="button"
-                                >
-                                  <SymbolIcon name="call_split" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
-                                  <span>Select App</span>
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleQuickAction(cand)}
-                                  className="px-3 py-1.5 rounded-lg bg-[#eaeefb] hover:bg-[#dee2ef] transition-colors text-xs text-[#171c25] font-semibold inline-flex items-center gap-1.5 cursor-pointer"
-                                  type="button"
-                                >
-                                  <SymbolIcon name="add_link" className="text-[16px] text-[#75777c]" style={{ fontSize: "16px" }} />
-                                  <span>Match to Job</span>
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      }))}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -782,32 +1224,92 @@ export default function CandidateDirectoryPage() {
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-[#6137e0]"></span>
                       <span className="text-xs font-bold text-[#171c25]">
-                        {selectedCount} of 412 selected
+                        {selectedCount} of {filteredCandidates.length} selected
                       </span>
                     </div>
                     <span className="text-[#c5c6cc] font-mono text-xs">·</span>
                     <div className="flex items-center gap-1.5">
+                      {/* Bulk Assign Owner Dropdown */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            disabled={selectedCount === 0}
+                            className={`px-3 py-1 rounded-md text-xs font-semibold shadow-xs border transition-colors cursor-pointer flex items-center gap-1 ${
+                              selectedCount > 0
+                                ? "bg-white hover:bg-[#eaeefb] text-[#171c25] border-[#dee2ef]"
+                                : "bg-white/50 text-[#75777c] border-[#dee2ef]/40 cursor-not-allowed opacity-60"
+                            }`}
+                            type="button"
+                          >
+                            <span>Assign Owner</span>
+                            <ChevronDown className="w-3 h-3" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="w-48 bg-white border border-[#dee2ef] shadow-lg rounded-xl p-1 z-50">
+                          <DropdownMenuLabel className="text-[11px] font-semibold text-[#75777c] px-2 py-1">Assign Owner</DropdownMenuLabel>
+                          <DropdownMenuSeparator className="bg-[#dee2ef]/60 my-1" />
+                          {availableOwners.filter((o) => o !== "All").map((owner) => (
+                            <DropdownMenuItem
+                              key={owner}
+                              onClick={() => handleBulkAssignOwner(owner)}
+                              className="text-xs py-1.5 px-2 rounded-lg cursor-pointer hover:bg-[#f0f3ff]"
+                            >
+                              {owner}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+
+                      {/* Bulk Move Stage Dropdown */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            disabled={selectedCount === 0}
+                            className={`px-3 py-1 rounded-md text-xs font-semibold shadow-xs border transition-colors cursor-pointer flex items-center gap-1 ${
+                              selectedCount > 0
+                                ? "bg-white hover:bg-[#eaeefb] text-[#171c25] border-[#dee2ef]"
+                                : "bg-white/50 text-[#75777c] border-[#dee2ef]/40 cursor-not-allowed opacity-60"
+                            }`}
+                            type="button"
+                          >
+                            <span>Move Stage</span>
+                            <ChevronDown className="w-3 h-3" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="w-48 bg-white border border-[#dee2ef] shadow-lg rounded-xl p-1 z-50">
+                          <DropdownMenuLabel className="text-[11px] font-semibold text-[#75777c] px-2 py-1">Move to Stage</DropdownMenuLabel>
+                          <DropdownMenuSeparator className="bg-[#dee2ef]/60 my-1" />
+                          {availableStages.filter((s) => s !== "All").map((stage) => (
+                            <DropdownMenuItem
+                              key={stage}
+                              onClick={() => handleBulkMoveStage(stage)}
+                              className="text-xs py-1.5 px-2 rounded-lg cursor-pointer hover:bg-[#f0f3ff]"
+                            >
+                              {stage}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+
                       <button
-                        onClick={() => showToast(`Owner assigned for ${selectedCount} selected candidates`)}
-                        className="px-3 py-1 rounded-md bg-white hover:bg-[#eaeefb] text-[#171c25] text-xs font-semibold shadow-xs border border-[#dee2ef] transition-colors cursor-pointer"
+                        onClick={() => {
+                          if (selectedCount === 0) {
+                            showToast("Select candidates first to send email");
+                            return;
+                          }
+                          showToast(`✓ Email sequence queued for ${selectedCount} candidates`);
+                        }}
+                        className={`px-3 py-1 rounded-md text-xs font-semibold shadow-xs border transition-colors cursor-pointer ${
+                          selectedCount > 0
+                            ? "bg-white hover:bg-[#eaeefb] text-[#171c25] border-[#dee2ef]"
+                            : "bg-white/50 text-[#75777c] border-[#dee2ef]/40 cursor-not-allowed opacity-60"
+                        }`}
                         type="button"
-                      >
-                        Assign Owner
-                      </button>
-                      <button
-                        onClick={() => showToast(`Stage updated for ${selectedCount} selected candidates`)}
-                        className="px-3 py-1 rounded-md bg-white hover:bg-[#eaeefb] text-[#171c25] text-xs font-semibold shadow-xs border border-[#dee2ef] transition-colors cursor-pointer"
-                        type="button"
-                      >
-                        Move Stage
-                      </button>
-                      <button
-                        onClick={() => showToast(`Email sequence queued for ${selectedCount} candidates`)}
-                        className="px-3 py-1 rounded-md bg-white hover:bg-[#eaeefb] text-[#171c25] text-xs font-semibold shadow-xs border border-[#dee2ef] transition-colors cursor-pointer"
-                        type="button"
+                        disabled={selectedCount === 0}
                       >
                         Send Email
                       </button>
+
                       <button
                         onClick={handleExportCSV}
                         className="px-3 py-1 rounded-md bg-white hover:bg-[#eaeefb] text-[#171c25] text-xs font-semibold shadow-xs border border-[#dee2ef] transition-colors cursor-pointer"
@@ -820,45 +1322,15 @@ export default function CandidateDirectoryPage() {
 
                   {/* Pagination Numbers & Status */}
                   <div className="flex items-center gap-4">
-                    <span className="text-xs text-[#45474c]">Showing 1-25 of 412 candidates</span>
+                    <span className="text-xs text-[#45474c]">
+                      Showing {filteredCandidates.length > 0 ? 1 : 0}-{filteredCandidates.length} of {candidates.length} candidates
+                    </span>
                     <div className="flex items-center gap-1">
-                      <button
-                        className="w-8 h-8 rounded-lg bg-[#eaeefb] text-[#75777c] flex items-center justify-center cursor-not-allowed"
-                        disabled
-                        type="button"
-                      >
-                        <SymbolIcon name="chevron_left" className="text-[16px]" style={{ fontSize: "16px" }} />
-                      </button>
                       <button
                         className="w-8 h-8 rounded-lg bg-black text-white text-xs font-bold flex items-center justify-center shadow-xs cursor-pointer"
                         type="button"
                       >
                         1
-                      </button>
-                      <button
-                        className="w-8 h-8 rounded-lg bg-white hover:bg-[#eaeefb] text-[#171c25] text-xs font-semibold flex items-center justify-center border border-[#dee2ef] transition-colors cursor-pointer"
-                        type="button"
-                      >
-                        2
-                      </button>
-                      <button
-                        className="w-8 h-8 rounded-lg bg-white hover:bg-[#eaeefb] text-[#171c25] text-xs font-semibold flex items-center justify-center border border-[#dee2ef] transition-colors cursor-pointer"
-                        type="button"
-                      >
-                        3
-                      </button>
-                      <span className="px-1 text-[#45474c] font-mono text-xs">...</span>
-                      <button
-                        className="w-8 h-8 rounded-lg bg-white hover:bg-[#eaeefb] text-[#171c25] text-xs font-semibold flex items-center justify-center border border-[#dee2ef] transition-colors cursor-pointer"
-                        type="button"
-                      >
-                        17
-                      </button>
-                      <button
-                        className="w-8 h-8 rounded-lg bg-white hover:bg-[#eaeefb] text-[#171c25] flex items-center justify-center border border-[#dee2ef] shadow-xs transition-colors cursor-pointer"
-                        type="button"
-                      >
-                        <SymbolIcon name="chevron_right" className="text-[16px]" style={{ fontSize: "16px" }} />
                       </button>
                     </div>
                   </div>
@@ -870,11 +1342,30 @@ export default function CandidateDirectoryPage() {
                 <div className="py-12 text-center text-[#75777c] bg-white rounded-xl border border-[#dee2ef]/70">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <Users className="w-8 h-8 text-[#9ea3ae]" />
-                    <p className="font-semibold text-sm text-[#171c25]">No candidates found</p>
-                    <p className="text-xs text-[#75777c]">Upload resumes in the Ingestion Pipeline to add candidates to your directory.</p>
-                    <Link href="/upload" className="mt-2 px-3.5 py-1.5 rounded-lg bg-[#6137e0] text-white text-xs font-semibold hover:bg-[#7a55fa] transition-colors">
-                      Upload Resumes
-                    </Link>
+                    <p className="font-semibold text-sm text-[#171c25]">
+                      {candidates.length === 0 ? "No candidates found" : "No candidates match the current filters"}
+                    </p>
+                    <p className="text-xs text-[#75777c]">
+                      {candidates.length === 0
+                        ? "Upload resumes in the Ingestion Pipeline to add candidates to your directory."
+                        : "Try adjusting or resetting your search and filter criteria."}
+                    </p>
+                    {candidates.length > 0 ? (
+                      <button
+                        onClick={handleResetFilters}
+                        className="mt-2 px-3.5 py-1.5 rounded-lg bg-[#6137e0] text-white text-xs font-semibold hover:bg-[#7a55fa] transition-colors cursor-pointer"
+                        type="button"
+                      >
+                        Reset Filters
+                      </button>
+                    ) : (
+                      <Link
+                        href="/upload"
+                        className="mt-2 px-3.5 py-1.5 rounded-lg bg-[#6137e0] text-white text-xs font-semibold hover:bg-[#7a55fa] transition-colors"
+                      >
+                        Upload Resumes
+                      </Link>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -885,80 +1376,83 @@ export default function CandidateDirectoryPage() {
                   className="grid max-h-[min(60dvh,36rem)] grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto overscroll-contain rounded-xl focus-visible:outline-2 focus-visible:outline-[#6137e0] focus-visible:-outline-offset-2"
                 >
                   {filteredCandidates.map((cand) => (
-                  <div
-                    key={cand.id}
-                    className="bg-white rounded-xl p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-[#dee2ef]/70 flex flex-col justify-between gap-4"
-                  >
-                    <div>
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-full bg-[#f4f3ff] text-[#6137e0] flex items-center justify-center ring-1 ring-[#dee2ef]">
-                            <User className="w-6 h-6 text-[#6137e0]" />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <Link
-                                href={`/candidates/${cand.id}`}
-                                className="font-bold text-sm text-[#171c25] hover:text-[#6137e0] hover:underline transition-colors"
-                              >
-                                {cand.name}
-                              </Link>
-                              {cand.companyTag && (
-                                <span className="px-1.5 py-0.2 rounded bg-[#dee2ef] text-[#45474c] text-[10px] font-semibold">
-                                  {cand.companyTag}
-                                </span>
-                              )}
+                    <div
+                      key={cand.id}
+                      className="bg-white rounded-xl p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-[#dee2ef]/70 flex flex-col justify-between gap-4"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-full bg-[#f4f3ff] text-[#6137e0] flex items-center justify-center ring-1 ring-[#dee2ef]">
+                              <User className="w-6 h-6 text-[#6137e0]" />
                             </div>
-                            <p className="text-xs text-[#45474c]">{cand.title}</p>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <Link
+                                  href={`/candidates/${cand.id}`}
+                                  className="font-bold text-sm text-[#171c25] hover:text-[#6137e0] hover:underline transition-colors"
+                                >
+                                  {cand.name}
+                                </Link>
+                                {cand.companyTag && (
+                                  <span className="px-1.5 py-0.2 rounded bg-[#dee2ef] text-[#45474c] text-[10px] font-semibold">
+                                    {cand.companyTag}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-[#45474c]">{cand.title}</p>
+                            </div>
                           </div>
+
+                          {cand.matchScore && (
+                            <div className="px-2 py-0.5 rounded-full bg-[#e7deff] text-[#1e0060] font-mono text-[11px] font-bold flex items-center gap-1">
+                              <Sparkles className="w-3 h-3 text-[#6137e0]" />
+                              <span>{cand.matchScore}/100</span>
+                            </div>
+                          )}
                         </div>
 
-                        {cand.matchScore && (
-                          <div className="px-2 py-0.5 rounded-full bg-[#e7deff] text-[#1e0060] font-mono text-[11px] font-bold flex items-center gap-1">
-                            <Sparkles className="w-3 h-3 text-[#6137e0]" />
-                            <span>{cand.matchScore}/100</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2 mt-3 text-xs text-[#75777c]">
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-3.5 h-3.5" />
-                          {cand.location}
-                        </span>
-                        <span>·</span>
-                        <span>{cand.experienceYears}y exp</span>
-                        <span>·</span>
-                        <span className="font-semibold text-[#171c25]">{cand.stage}</span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-1 mt-3">
-                        {cand.skills.map((s) => (
-                          <span
-                            key={s}
-                            className="px-2 py-0.5 rounded bg-[#f0f3ff] text-[#45474c] font-mono text-[10px]"
-                          >
-                            {s}
+                        <div className="flex items-center gap-2 mt-3 text-xs text-[#75777c]">
+                          <span className="flex items-center gap-1">
+                            <MapPin className="w-3.5 h-3.5" />
+                            {cand.location}
                           </span>
-                        ))}
+                          <span>·</span>
+                          <span>{cand.experienceYears}y exp</span>
+                          <span>·</span>
+                          <span className="font-semibold text-[#171c25]">{cand.stage}</span>
+                        </div>
+
+                        <div className="flex flex-wrap gap-1 mt-3">
+                          {cand.skills.map((s) => (
+                            <span
+                              key={s}
+                              onClick={() => setSkillFilter(s)}
+                              className="px-2 py-0.5 rounded bg-[#f0f3ff] hover:bg-[#dee2ef] text-[#45474c] font-mono text-[10px] cursor-pointer transition-colors"
+                              title={`Filter by ${s}`}
+                            >
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-[#dee2ef]/60 flex items-center justify-between">
+                        <span className="text-[11px] text-[#75777c]">Owner: {cand.owner}</span>
+                        <button
+                          onClick={() => handleQuickAction(cand)}
+                          className="px-3 py-1.5 rounded-lg bg-[#6137e0] text-white text-xs font-semibold hover:bg-[#7a55fa] transition-colors cursor-pointer"
+                        >
+                          {cand.actionType}
+                        </button>
                       </div>
                     </div>
+                  ))}
+                </div>
+              )
+            )}
 
-                    <div className="pt-3 border-t border-[#dee2ef]/60 flex items-center justify-between">
-                      <span className="text-[11px] text-[#75777c]">Owner: {cand.owner}</span>
-                      <button
-                        onClick={() => handleQuickAction(cand)}
-                        className="px-3 py-1.5 rounded-lg bg-[#6137e0] text-white text-xs font-semibold hover:bg-[#7a55fa] transition-colors cursor-pointer"
-                      >
-                        {cand.actionType}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ))}
-
-            {/* Agent Summary Insight Panel (Cockpit Style Architecture) */}
+            {/* Agent Summary Insight Panel */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Dark AI Command Briefing Tile */}
               <div className="bg-[#131c29] text-white p-6 rounded-xl shadow-md flex flex-col justify-between relative overflow-hidden border border-black">
@@ -995,48 +1489,63 @@ export default function CandidateDirectoryPage() {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="text-sm font-bold text-[#171c25]">Skill Match Spectrum</h4>
-                    <span className="text-xs text-[#45474c] font-semibold">Target: Sr Platform</span>
+                    <span className="text-xs text-[#45474c] font-semibold">Target: Evaluated Pool</span>
                   </div>
                   <p className="text-xs text-[#45474c]">
-                    412 candidates distributed against required rubric competencies
+                    {candidates.length} candidates distributed against required rubric competencies
                   </p>
 
-                  {/* Inline Metric Bars */}
+                  {/* Inline Metric Bars with Live Calculated Proportions */}
                   <div className="mt-4 flex flex-col gap-3">
                     <div>
                       <div className="flex justify-between text-xs mb-1">
                         <span className="text-[#171c25] font-medium">High Match (&gt;85%)</span>
-                        <span className="text-[#6137e0] font-bold">42 candidates (10.2%)</span>
+                        <span className="text-[#6137e0] font-bold">
+                          {highMatch} candidates ({highPct}%)
+                        </span>
                       </div>
                       <div className="w-full h-2 rounded-full bg-[#eaeefb] overflow-hidden">
-                        <div className="h-full bg-[#6137e0] rounded-full" style={{ width: "10.2%" }}></div>
+                        <div
+                          className="h-full bg-[#6137e0] rounded-full transition-all duration-500"
+                          style={{ width: `${Math.max(highPct, highMatch > 0 ? 4 : 0)}%` }}
+                        ></div>
                       </div>
                     </div>
                     <div>
                       <div className="flex justify-between text-xs mb-1">
                         <span className="text-[#171c25] font-medium">Medium Match (65-84%)</span>
-                        <span className="text-[#45474c] font-semibold">188 candidates (45.6%)</span>
+                        <span className="text-[#45474c] font-semibold">
+                          {medMatch} candidates ({medPct}%)
+                        </span>
                       </div>
                       <div className="w-full h-2 rounded-full bg-[#eaeefb] overflow-hidden">
-                        <div className="h-full bg-[#497cff] rounded-full" style={{ width: "45.6%" }}></div>
+                        <div
+                          className="h-full bg-[#497cff] rounded-full transition-all duration-500"
+                          style={{ width: `${Math.max(medPct, medMatch > 0 ? 4 : 0)}%` }}
+                        ></div>
                       </div>
                     </div>
                     <div>
                       <div className="flex justify-between text-xs mb-1">
-                        <span className="text-[#171c25] font-medium">Low / Review Needed (&lt;65%)</span>
-                        <span className="text-[#45474c] font-semibold">182 candidates (44.2%)</span>
+                        <span className="text-[#171c25] font-medium">Low / Review Needed (&lt;65% or Unscored)</span>
+                        <span className="text-[#45474c] font-semibold">
+                          {lowMatch} candidates ({lowPct}%)
+                        </span>
                       </div>
                       <div className="w-full h-2 rounded-full bg-[#eaeefb] overflow-hidden">
-                        <div className="h-full bg-[#c5c6cc] rounded-full" style={{ width: "44.2%" }}></div>
+                        <div
+                          className="h-full bg-[#c5c6cc] rounded-full transition-all duration-500"
+                          style={{ width: `${Math.max(lowPct, lowMatch > 0 ? 4 : 0)}%` }}
+                        ></div>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-4 pt-3 flex items-center justify-between text-xs text-[#45474c] border-t border-[#dee2ef]/50">
-                  <span>Average role ramp rate: 3.2 wks</span>
+                  <span>Requisitions evaluated: {jobs.length}</span>
                   <button
-                    onClick={() => showToast("Weights config: Architecture (35%), Coding (35%), System Design (30%)")}
+                    onClick={() => showToast("Rubric weights: Architecture (35%), Coding (35%), System Design (30%)")}
                     className="text-[#6137e0] hover:underline font-semibold cursor-pointer"
                   >
                     Configure weights →
@@ -1072,7 +1581,7 @@ export default function CandidateDirectoryPage() {
                 </div>
 
                 <div className="mt-4 pt-3 flex items-center justify-between text-xs border-t border-[#dee2ef]/50">
-                  <span className="text-[#45474c]">Next automated scrape: 12:00</span>
+                  <span className="text-[#45474c]">Ingest status: Connected ({syncTime})</span>
                   <button
                     onClick={handleTriggerInstantSync}
                     disabled={isSyncing}
