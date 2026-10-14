@@ -504,12 +504,11 @@ pub async fn job_candidate_stage(
     move_stage(&mut tx, &user, job, candidate, &stage).await?;
     let values = ranked(&mut tx, &user, job).await?;
     tx.commit().await?;
-    Ok(Json(
-        values
-            .into_iter()
-            .find(|v| v["id"] == json!(candidate))
-            .ok_or_else(missing)?,
-    ))
+    if let Some(candidate_val) = values.into_iter().find(|v| v["id"] == json!(candidate)) {
+        Ok(Json(candidate_val))
+    } else {
+        Ok(Json(json!({"id": candidate, "jobId": job, "stage": stage})))
+    }
 }
 pub async fn ranked(
     tx: &mut Transaction<'_, Postgres>,
@@ -525,7 +524,7 @@ pub async fn ranked(
     if !exists {
         return Err(missing());
     }
-    let rows=sqlx::query("SELECT c.*,a.id application_id,a.stage application_stage,a.current_score FROM ats_v2.applications a JOIN ats_v2.candidates c ON c.id=a.candidate_id AND c.tenant_id=a.tenant_id WHERE a.job_id=$1 AND a.tenant_id=$2 AND c.deleted_at IS NULL ORDER BY a.current_score DESC NULLS LAST,a.created_at").bind(job).bind(user.tenant_id).fetch_all(&mut **tx).await?;
+    let rows = sqlx::query("SELECT c.*,a.id application_id,a.stage application_stage,a.current_score FROM ats_v2.applications a JOIN ats_v2.candidates c ON c.id=a.candidate_id AND c.tenant_id=a.tenant_id WHERE a.job_id=$1 AND a.tenant_id=$2 AND c.deleted_at IS NULL AND a.stage != 'Withdrawn' ORDER BY a.current_score DESC NULLS LAST,a.created_at").bind(job).bind(user.tenant_id).fetch_all(&mut **tx).await?;
     Ok(rows.iter().enumerate().map(|(i,r)| {let mut p:Value=r.get("profile");redact_profile(&mut p,&r.get::<Value,_>("contact"));let id:Uuid=r.get("id");json!({"id":id,"application_id":r.get::<Uuid,_>("application_id"),"jobId":job,"rank":i+1,"name":format!("Candidate #{}",&id.simple().to_string()[..8]),"headline":p.get("target_headline").unwrap_or(&json!("Pending extraction")),"avatar":"CD","isImageAvatar":false,"matchScore":r.get::<Option<f64>,_>("current_score"),"matchLabel":"Job-specific evaluation","skills":p.get("core_skills").unwrap_or(&json!([])),"stage":r.get::<String,_>("application_stage"),"sourceResumeLink":format!("/candidates/{id}"),"quote":"","suggestedQuestions":[]})}).collect())
 }
 pub async fn job_candidates(

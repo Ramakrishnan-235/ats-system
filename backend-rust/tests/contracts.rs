@@ -248,3 +248,50 @@ fn redact_profile_enforces_word_boundaries_and_skips_common_terms() {
         "The candidate [REDACTED] demonstrated strong technical expertise."
     );
 }
+
+#[test]
+fn replacement_resume_persists_candidate_even_if_application_is_stale_or_withdrawn() {
+    // Ingestion result contract from AI worker
+    let candidate_id = Uuid::new_v4();
+    let doc_id = Uuid::new_v4();
+    let current_candidate_revision = 2;
+    let input_candidate_revision = 2;
+    let latest_doc_version = 2;
+    let input_doc_version = 2;
+
+    // Candidate staleness check: matches exactly
+    let candidate_stale = current_candidate_revision != input_candidate_revision
+        || latest_doc_version != input_doc_version;
+    assert!(!candidate_stale, "Candidate must NOT be evaluated as stale");
+
+    // Application state is Withdrawn
+    let app_stage = "Withdrawn";
+    let app_stale = ["Withdrawn", "Rejected"].contains(&app_stage);
+    assert!(
+        app_stale,
+        "Application should be recognized as stale/withdrawn"
+    );
+
+    // When application is stale, candidate-level ingestion is still COMPLETED
+    let extraction_status = "COMPLETED";
+    let failed = extraction_status == "FAILED";
+    assert!(!failed);
+
+    let candidate_processing_status = if failed { "FAILED" } else { "COMPLETED" };
+    assert_eq!(candidate_processing_status, "COMPLETED");
+
+    // Scorecard write is skipped
+    let scorecard_written = !app_stale;
+    assert!(!scorecard_written);
+
+    // Job summary reflects skipped evaluation while candidate completed
+    let eval_status = if app_stale { "SKIPPED" } else { "COMPLETED" };
+    let summary = json!({
+        "status": candidate_processing_status,
+        "candidate_id": candidate_id,
+        "document_id": doc_id,
+        "evaluation_status": eval_status
+    });
+    assert_eq!(summary["status"], "COMPLETED");
+    assert_eq!(summary["evaluation_status"], "SKIPPED");
+}

@@ -500,17 +500,26 @@ pub async fn result(
     .bind(tenant)
     .fetch_one(&mut *tx)
     .await?;
-    let mut stale = current.get::<i32, _>("revision") != input.input_revision
+    let candidate_stale = current.get::<i32, _>("revision") != input.input_revision
         || current
             .get::<Option<chrono::DateTime<chrono::Utc>>, _>("deleted_at")
             .is_some()
         || latest != input.document_version;
-    if let Some(app) = application {
-        let job=sqlx::query("SELECT j.revision,a.stage FROM ats_v2.jobs j JOIN ats_v2.applications a ON a.job_id=j.id AND a.tenant_id=j.tenant_id WHERE a.id=$1 AND a.tenant_id=$2 FOR UPDATE OF j,a").bind(app).bind(tenant).fetch_one(&mut *tx).await?;
-        stale |= Some(job.get::<i32, _>("revision")) != input.job_revision
-            || ["Withdrawn", "Rejected"].contains(&job.get::<String, _>("stage").as_str());
+    if candidate_stale {
+        sqlx::query("UPDATE ats_v2.processing_jobs SET state='STALE',error_code='STALE_INPUT',updated_at=now(),lease_until=NULL WHERE id=$1").bind(id).execute(&mut *tx).await?;
+        tx.commit().await?;
+        return Ok(Json(json!({"status":"stale"})));
     }
-    if stale {
+    let mut app_stale = false;
+    if let Some(app) = application {
+        if let Some(job) = sqlx::query("SELECT j.revision,a.stage FROM ats_v2.jobs j JOIN ats_v2.applications a ON a.job_id=j.id AND a.tenant_id=j.tenant_id WHERE a.id=$1 AND a.tenant_id=$2 FOR UPDATE OF j,a").bind(app).bind(tenant).fetch_optional(&mut *tx).await? {
+            app_stale = Some(job.get::<i32, _>("revision")) != input.job_revision
+                || ["Withdrawn", "Rejected"].contains(&job.get::<String, _>("stage").as_str());
+        } else {
+            app_stale = true;
+        }
+    }
+    if operation == "evaluate" && app_stale {
         sqlx::query("UPDATE ats_v2.processing_jobs SET state='STALE',error_code='STALE_INPUT',updated_at=now(),lease_until=NULL WHERE id=$1").bind(id).execute(&mut *tx).await?;
         tx.commit().await?;
         return Ok(Json(json!({"status":"stale"})));
@@ -547,7 +556,9 @@ pub async fn result(
             &current.get::<Value, _>("contact"),
         );
         sqlx::query("UPDATE ats_v2.candidates SET profile=$3,contact=$4,sanitized_text=$5,processing_status='COMPLETED',updated_at=now() WHERE id=$1 AND tenant_id=$2").bind(candidate).bind(tenant).bind(profile).bind(contact).bind(&input.sanitized_text).execute(&mut *tx).await?;
-        if let Some(app) = application {
+        if let Some(app) = application
+            && !app_stale
+        {
             sqlx::query("UPDATE ats_v2.applications SET stage='Recruiter Review' WHERE id=$1 AND tenant_id=$2 AND stage='Screening'").bind(app).bind(tenant).execute(&mut *tx).await?;
         }
     } else if failed && operation == "ingest" {
@@ -572,6 +583,7 @@ pub async fn result(
     let mut score = None;
     if let (Some(app), Some(card)) = (application, input.scorecard.as_ref())
         && input.evaluation_status == "COMPLETED"
+        && !app_stale
     {
         score = card.get("overall_match_score").and_then(Value::as_f64);
         sqlx::query("INSERT INTO ats_v2.evaluations(id,tenant_id,application_id,processing_job_id,document_id,job_revision,rubric_version,model_version,scorecard) VALUES($1,$2,$3,$4,$5,$6,'technical-v1',$7,$8)").bind(Uuid::new_v4()).bind(tenant).bind(app).bind(id).bind(input.document_id).bind(input.job_revision.unwrap_or(1)).bind(crate::text(card,"model_version")).bind(card).execute(&mut *tx).await?;
@@ -582,7 +594,12 @@ pub async fn result(
             .execute(&mut *tx)
             .await?;
     }
-    let summary = json!({"status":if failed{"FAILED"}else{"COMPLETED"},"candidate_id":candidate,"evaluation_status":input.evaluation_status,"match_score":score,"warnings":input.warnings});
+    let eval_status = if app_stale {
+        "SKIPPED"
+    } else {
+        &input.evaluation_status
+    };
+    let summary = json!({"status":if failed{"FAILED"}else{"COMPLETED"},"candidate_id":candidate,"evaluation_status":eval_status,"match_score":score,"warnings":input.warnings});
     sqlx::query("UPDATE ats_v2.processing_jobs SET state=$2,result_hash=$3,result=$4,error_code=$5,progress=100,step='Completed',lease_until=NULL,updated_at=now() WHERE id=$1").bind(id).bind(if failed{"FAILED"}else{"SUCCEEDED"}).bind(fingerprint).bind(summary).bind(input.error_code).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO ats_v2.audit_events(id,tenant_id,actor_role,action,resource_type,resource_id) VALUES($1,$2,'service','APPLY_AI_RESULT','processing_job',$3)").bind(Uuid::new_v4()).bind(tenant).bind(id.to_string()).execute(&mut *tx).await?;
     tx.commit().await?;
