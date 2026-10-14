@@ -43,6 +43,9 @@ def api(monkeypatch, tmp_path):
 
 @pytest.fixture
 def fake_processing(monkeypatch):
+    monkeypatch.setattr(match, "get_retriever", MagicMock(return_value=SimpleNamespace(
+        dense_embeddings={}, candidate_corpus={}, index_candidates=MagicMock(),
+    )))
     profile = {
         "name": "Jane Doe", "email": "jane@example.com", "phone": "555-1234", "location": "London",
         "anonymized_name": "Candidate #123", "avatar": "JD", "target_headline": "Engineer",
@@ -62,6 +65,30 @@ def fake_processing(monkeypatch):
 
 def upload(api, name="resume.pdf", content=b"%PDF-1.4 test", mime="application/pdf", data=None):
     return api.post("/api/v1/candidates/upload-async", files={"file": (name, io.BytesIO(content), mime)}, data=data)
+
+
+@pytest.mark.parametrize("data", [None, {"job_id": "job-open"}])
+def test_uploaded_candidate_is_indexed_in_shared_retriever(api, fake_processing, monkeypatch, data):
+    monkeypatch.setitem(sys.modules, "ats_core.db.store_sync", SimpleNamespace(
+        sync_candidate_to_db=lambda candidate: None,
+        sync_application_to_db=lambda job_id, candidate: None,
+        sync_job_to_db=lambda job: None,
+    ))
+    monkeypatch.setitem(sys.modules, "ats_core.workers.tasks", SimpleNamespace(
+        get_session_factory=MagicMock(side_effect=RuntimeError("offline database")),
+    ))
+
+    response = upload(api, data=data)
+
+    assert response.status_code == 202
+    result = response.json()
+    assert result["status"] == "ACCEPTED"
+    match.get_retriever.assert_called_once_with()
+    retriever = match.get_retriever.return_value
+    retriever.index_candidates.assert_called_once()
+    records = retriever.index_candidates.call_args.args[0]
+    assert [record["id"] for record in records] == [result["candidate_id"]]
+    assert "Engineer" in records[0]["text"]
 
 
 def test_auth_requires_explicit_development_opt_out(monkeypatch):
@@ -848,3 +875,94 @@ def test_upload_does_not_replace_dropped_citation_with_assessment(api, fake_proc
     assert scorecard["categories"][0]["quote"] == ""
     assert scorecard["categories"][0]["source_ref"] == ""
     assert scorecard["categories"][0]["assessment"] == "Model assessment"
+
+
+def test_match_and_evaluate_pii_masking_and_cons_mapping(api, monkeypatch):
+    from ats_core.search.hybrid_retriever import HybridCandidateRetriever
+
+    class FakeEmbedder:
+        def embed_documents(self, documents):
+            return [[1.0, 0.0] for _ in documents]
+
+        def embed_query(self, query):
+            return [1.0, 0.0]
+
+    test_retriever = HybridCandidateRetriever(dense_embedder=FakeEmbedder())
+    monkeypatch.setattr(match, "_retriever", test_retriever)
+    monkeypatch.setattr(match, "get_retriever", lambda: test_retriever)
+
+    mock_reranker = MagicMock()
+    mock_reranker.rerank.side_effect = lambda *args, **kwargs: [{**c, "score": 0.95} for c in (kwargs.get("candidates") or (args[1] if len(args) > 1 else []))]
+    monkeypatch.setattr(match, "_reranker", mock_reranker)
+    monkeypatch.setattr(match, "get_reranker", lambda: mock_reranker)
+
+    cand_id = "cand-secret-name"
+    real_name = "Alexander Secretname"
+    candidates.CANDIDATES_STORE[cand_id] = {
+        "id": cand_id,
+        "name": real_name,
+        "anonymized_name": "Candidate #cand-sec",
+        "target_headline": "Senior Staff Engineer",
+        "role": "Staff Engineer",
+        "core_skills": ["Rust", "Python"],
+        "raw_text": f"{real_name} is a senior staff engineer located in Boston.",
+        "scorecard": {"overall_match_score": None, "evaluation_status": "PENDING"},
+        "stage": "Screening",
+    }
+
+    evaluated_summaries = []
+
+    def fake_evaluate(candidate_summary, job_description):
+        evaluated_summaries.append(candidate_summary)
+        return SimpleNamespace(
+            overall_match_score=88.0,
+            qualification_tier="Strong Fit",
+            criteria_breakdown=[],
+            pros=["Excellent systems design experience"],
+            cons=["Needs more cloud deployment experience"],
+            cons_or_risks=["Needs more cloud deployment experience"],
+            recommended_interview_questions=["How do you handle zero-downtime migrations?"],
+        )
+
+    monkeypatch.setitem(sys.modules, "ats_core.evaluator.llm_evaluator", SimpleNamespace(
+        evaluate_candidate=fake_evaluate,
+        EvaluationReport=object,
+    ))
+
+    # 1. Without include_pii: verify candidate name is masked in MatchResponse
+    res_masked = api.post("/api/v1/match/evaluate-job", json={
+        "job_id": "job-p2",
+        "job_title": "Staff Engineer",
+        "job_description": "Rust and Python staff engineer",
+    })
+    assert res_masked.status_code == 200, res_masked.text
+    data_masked = res_masked.json()
+    assert len(data_masked["candidates"]) >= 1
+    assert data_masked["candidates"][0]["name"] == "Candidate #cand-sec"
+    assert real_name not in data_masked["candidates"][0]["name"]
+
+    # 2. Verify evaluator did NOT receive the candidate's real name (PII scrubbed)
+    assert len(evaluated_summaries) >= 1
+    for summary in evaluated_summaries:
+        assert real_name not in summary
+        assert "Secretname" not in summary
+
+    # 3. Verify suggested_improvements contains cons, NOT pros
+    cand_scorecard = candidates.CANDIDATES_STORE[cand_id]["scorecard"]
+    assert "Needs more cloud deployment experience" in cand_scorecard["suggested_improvements"]
+    assert "Excellent systems design experience" not in cand_scorecard["suggested_improvements"]
+
+    # 4. With include_pii=True and recruiter role: candidate real name is returned
+    res_unmasked = api.post(
+        "/api/v1/match/evaluate-job?include_pii=true",
+        headers={"x-user-role": "recruiter", "x-user-id": "recruiter-1"},
+        json={
+            "job_id": "job-p2",
+            "job_title": "Staff Engineer",
+            "job_description": "Rust and Python staff engineer",
+        }
+    )
+    assert res_unmasked.status_code == 200, res_unmasked.text
+    data_unmasked = res_unmasked.json()
+    assert data_unmasked["candidates"][0]["name"] == real_name
+

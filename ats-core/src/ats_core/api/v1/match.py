@@ -2,13 +2,17 @@ import asyncio
 import inspect
 import logging
 import os
+import re
 import threading
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, model_validator
 from starlette.concurrency import run_in_threadpool
+
+from ats_core.api.audit import check_and_audit_pii_access
+from ats_core.api.auth import get_current_user
 
 logger = logging.getLogger("ats.api.match")
 
@@ -111,11 +115,10 @@ def sync_candidates_to_retriever(retriever, job_id: str | None = None) -> int:
         skills = cand.get("core_skills") or cand.get("skills") or []
         education = cand.get("highest_education", "")
         years_exp = cand.get("years_of_experience", 0.0)
-        raw_text = cand.get("raw_text") or cand.get("raw_anonymized_text") or ""
+        raw_text = cand.get("raw_anonymized_text") or cand.get("raw_text") or ""
         experience = cand.get("experience") or []
 
-        if name and name != "Candidate":
-            text_parts.append(f"Candidate: {name}")
+        # Omit candidate's personal name from doc_text to prevent PII leakage to LLMs and search corpus
         if headline:
             text_parts.append(f"Title/Role: {headline}")
         if skills:
@@ -138,6 +141,9 @@ def sync_candidates_to_retriever(retriever, job_id: str | None = None) -> int:
                 text_parts.append("\n".join(exp_strs))
 
         doc_text = "\n".join(text_parts).strip() or headline or "Candidate Profile"
+
+        if name and name.strip() and name.strip().lower() not in {"candidate", "unknown", "n/a"}:
+            doc_text = re.sub(rf"\b{re.escape(name.strip())}\b", "[REDACTED]", doc_text, flags=re.IGNORECASE)
 
         records_to_index.append({
             "id": cid,
@@ -166,6 +172,7 @@ class MatchRequest(BaseModel):
     job_description: str = Field(min_length=1, max_length=50000)
     stage1_retrieve_limit: int = Field(default=100, ge=1, le=500, description="Number of candidates from hybrid search")
     stage2_rerank_limit: int = Field(default=20, ge=1, le=50, description="Candidates sent to deep LLM evaluation")
+    include_pii: bool = Field(default=False, description="Set to true only when authorized to view unmasked PII")
 
     @model_validator(mode="after")
     def validate_stage_limits(self):
@@ -190,7 +197,20 @@ class MatchResponse(BaseModel):
 
 
 @router.post("/evaluate-job", response_model=MatchResponse)
-async def match_and_evaluate_candidates(request: MatchRequest):
+async def match_and_evaluate_candidates(
+    request: MatchRequest,
+    http_request: Request = None,
+    include_pii: bool = Query(False, description="Set to true only when authorized to view unmasked PII"),
+):
+    allow_pii = False
+    requested_pii = include_pii or getattr(request, "include_pii", False)
+    if requested_pii:
+        if http_request is not None:
+            user = get_current_user(http_request)
+            check_and_audit_pii_access(
+                http_request, user, "VIEW_MATCH_CANDIDATES_PII", "match_candidates", request.job_id or "job"
+            )
+            allow_pii = True
     query_text = f"Title: {request.job_title}\nRequirements: {request.job_description}"
     reranker_fallback = False
 
@@ -278,6 +298,17 @@ async def match_and_evaluate_candidates(request: MatchRequest):
     async def _evaluate_single_candidate(rank: int, cand: dict[str, Any]):
         cand_id = cand.get("candidate_id", "unknown")
         cand_text = cand.get("text", cand.get("summary_text", ""))
+        try:
+            try:
+                from ats_core.parsers.anonymizer import get_shared_anonymizer
+                anonymizer = get_shared_anonymizer()
+            except (ImportError, AttributeError):
+                from ats_core.parsers.anonymizer import ResumeAnonymizer
+                anonymizer = ResumeAnonymizer(min_score_threshold=0.55)
+            cand_name = cand.get("metadata", {}).get("name")
+            cand_text = anonymizer.anonymize(cand_text, known_name=cand_name)
+        except Exception as anon_err:
+            logger.debug("Failed anonymizing cand_text for evaluation: %s", anon_err)
         async with eval_semaphore:
             try:
                 if inspect.iscoroutinefunction(evaluate_candidate):
@@ -396,7 +427,7 @@ async def match_and_evaluate_candidates(request: MatchRequest):
             if cats:
                 scorecard["categories"] = cats
             scorecard["risk_flags"] = eval_data.get("cons_or_risks", [])
-            scorecard["suggested_improvements"] = eval_data.get("pros", [])
+            scorecard["suggested_improvements"] = eval_data.get("cons", []) or eval_data.get("cons_or_risks", []) or eval_data.get("suggested_improvements", [])
             scorecard["suggested_questions"] = eval_data.get("recommended_interview_questions", [])
 
         # Build JobCandidate item
@@ -456,6 +487,26 @@ async def match_and_evaluate_candidates(request: MatchRequest):
             }
         updated_job_candidates = merged_list
 
+    response_evaluations = []
+    for item in final_results:
+        item_copy = dict(item)
+        if not allow_pii and "metadata" in item_copy:
+            meta_copy = dict(item_copy["metadata"])
+            cid_str = str(item_copy.get("candidate_id", ""))
+            meta_copy["name"] = CANDIDATES_STORE.get(cid_str, {}).get("anonymized_name") or f"Candidate #{cid_str[:8]}"
+            item_copy["metadata"] = meta_copy
+        response_evaluations.append(item_copy)
+
+    response_candidates = []
+    for c in updated_job_candidates:
+        c_copy = dict(c)
+        if not allow_pii:
+            cand_rec = CANDIDATES_STORE.get(c_copy["id"], {})
+            c_copy["name"] = cand_rec.get("anonymized_name") or f"Candidate #{str(c_copy['id'])[:8]}"
+            c_copy["avatar"] = "CD"
+            c_copy["isImageAvatar"] = False
+        response_candidates.append(c_copy)
+
     return MatchResponse(
         job_id=target_job_id,
         job_title=request.job_title,
@@ -464,8 +515,8 @@ async def match_and_evaluate_candidates(request: MatchRequest):
         stage1_candidates_retrieved=len(stage1_candidates),
         stage2_candidates_reranked=len(stage2_candidates),
         stage3_final_ranked=len(final_results),
-        final_evaluations=final_results,
-        candidates=updated_job_candidates,
+        final_evaluations=response_evaluations,
+        candidates=response_candidates,
         failed_candidate_ids=failed_candidate_ids,
         reranker_fallback=reranker_fallback,
         message=f"Successfully evaluated and matched {len(final_results)} candidates."
