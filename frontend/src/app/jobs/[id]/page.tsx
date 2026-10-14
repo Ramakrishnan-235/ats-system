@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { CoreHeader } from "@/components/layout/core-header";
@@ -52,6 +52,7 @@ import {
   addJobCandidate,
   removeJobCandidate,
   updateJobCandidateStage,
+  evaluateCandidateForJob,
 } from "@/lib/api";
 import { JobRequisition, RankedCandidate } from "@/types/ats";
 
@@ -86,6 +87,12 @@ function JobDetail({ rawId }: { rawId: string }) {
 
   // Add Candidate Modal State
   const [isAddCandidateOpen, setIsAddCandidateOpen] = useState(false);
+  const [scoring, setScoring] = useState<Record<string, string>>({});
+  const scoreControllers = useRef(new Map<string, AbortController>());
+  useEffect(() => {
+    const controllers = scoreControllers.current;
+    return () => { controllers.forEach(controller => controller.abort()); controllers.clear(); };
+  }, []);
 
   // Edit Modal State
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -161,7 +168,7 @@ function JobDetail({ rawId }: { rawId: string }) {
       const updatedList = await addJobCandidate(rawId, payload);
       setCandidates(updatedList);
 
-      const matched = updatedList.find((c) => c.name === payload.name) || updatedList[0];
+      const matched = updatedList.find((c) => c.id === payload.id);
 
       if (matched) {
         setExpandedCand(matched.id);
@@ -169,14 +176,42 @@ function JobDetail({ rawId }: { rawId: string }) {
 
       setJob(prev => prev ? { ...prev, candidates_count: updatedList.length } : null);
 
-      const myRank = matched ? matched.rank : 1;
-      setReRunMessage(
-        `✓ Candidate "${payload.name}" added! Pipeline dynamically re-ranked — Ranked #${myRank} of ${updatedList.length} candidates.`
-      );
+      setActiveTab("AI Ranked List");
+      setReRunMessage(`Candidate added to this job. ${matched?.matchScore == null ? "Use Calculate AI score to evaluate their resume." : "A saved score is available for this job."}`);
       setTimeout(() => setReRunMessage(null), 6000);
     } catch (err) {
       setError(getErrorMessage(err));
       throw err;
+    }
+  };
+
+  const refreshJobCandidates = async (candidateId: string) => {
+    const saved = await fetchJobCandidates(rawId);
+    setCandidates(saved);
+    setExpandedCand(candidateId);
+    setActiveTab("AI Ranked List");
+    setJob(prev => prev ? { ...prev, candidates_count: saved.length } : null);
+  };
+
+  const calculateCandidateScore = async (candidateId: string) => {
+    if (scoreControllers.current.has(candidateId)) return;
+    const controller = new AbortController();
+    scoreControllers.current.set(candidateId, controller);
+    setError(null);
+    setScoring(prev => ({ ...prev, [candidateId]: "Queuing evaluation…" }));
+    try {
+      const saved = await evaluateCandidateForJob(rawId, candidateId, {
+        signal: controller.signal,
+        onProgress: task => setScoring(prev => ({ ...prev, [candidateId]: task.step || task.state })),
+      });
+      if (controller.signal.aborted) return;
+      setCandidates(saved);
+      setReRunMessage("AI score saved for this candidate against this job.");
+    } catch (reason) {
+      if (!controller.signal.aborted) setError(getErrorMessage(reason));
+    } finally {
+      scoreControllers.current.delete(candidateId);
+      if (!controller.signal.aborted) setScoring(prev => { const next = { ...prev }; delete next[candidateId]; return next; });
     }
   };
 
@@ -501,6 +536,10 @@ function JobDetail({ rawId }: { rawId: string }) {
                               }}
                             />
                           </div>
+                          {cand.matchScore == null && <Button type="button" size="sm" variant="outline" className="mt-2 text-xs" disabled={!!scoring[cand.id] || isReRunning} onClick={event => { event.stopPropagation(); void calculateCandidateScore(cand.id); }}>
+                            {scoring[cand.id] ? "Calculating…" : "Calculate AI score"}
+                          </Button>}
+                          {scoring[cand.id] && <p role="status" className="mt-1 text-xs text-[#6137e0]">{scoring[cand.id]}</p>}
                         </div>
 
                         {/* Key Skills Extraction */}
@@ -800,6 +839,7 @@ function JobDetail({ rawId }: { rawId: string }) {
                               </span>
                             ))}
                           </div>
+                          {cand.matchScore == null && <div className="space-y-1"><Button type="button" size="sm" variant="outline" disabled={!!scoring[cand.id] || isReRunning} onClick={() => void calculateCandidateScore(cand.id)}>{scoring[cand.id] ? "Calculating…" : "Calculate AI score"}</Button>{scoring[cand.id] && <p role="status" className="text-xs text-[#6137e0]">{scoring[cand.id]}</p>}</div>}
 
                           <div className="flex items-center justify-between pt-2 border-t border-zinc-100 text-[11px]">
                             <Link
@@ -1045,6 +1085,7 @@ function JobDetail({ rawId }: { rawId: string }) {
         requiredSkills={job.required_skills}
         existingCandidateIds={candidates.map((c) => c.id)}
         onAddCandidate={handleAddCandidate}
+        onCandidatesChanged={refreshJobCandidates}
       />
     </div>
   );

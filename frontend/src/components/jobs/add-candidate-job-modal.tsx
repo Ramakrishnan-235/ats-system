@@ -1,131 +1,161 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RequestError } from "@/components/layout/request-error";
-import { fetchCandidates, fetchCandidate, uploadAndWait, getErrorMessage } from "@/lib/api";
+import { fetchCandidates, uploadAndWait, getErrorMessage, type UploadResponse, type UploadTask } from "@/lib/api";
+import { completedProfile, monitorIngestion, resumeHash } from "@/lib/ingestion";
 import type { CandidateDetail, NewCandidatePayload } from "@/types/ats";
 export type { NewCandidatePayload };
 
 interface AddCandidateJobModalProps {
   open: boolean; onOpenChange: (open: boolean) => void; jobTitle: string;
-  jobId?: string; requiredSkills: string[]; existingCandidateIds?: string[];
+  jobId: string; requiredSkills: string[]; existingCandidateIds?: string[];
   onAddCandidate: (candidate: NewCandidatePayload) => Promise<void>;
+  onCandidatesChanged: (candidateId: string) => Promise<void>;
 }
 
-export function AddCandidateJobModal({ open, onOpenChange, jobTitle, jobId, existingCandidateIds = [], onAddCandidate }: AddCandidateJobModalProps) {
+export function AddCandidateJobModal(props: AddCandidateJobModalProps) {
+  return <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+    <DialogContent className="max-h-[90vh] overflow-auto sm:max-w-2xl bg-white p-6">
+      <DialogHeader>
+        <DialogTitle>Add candidate to {props.jobTitle}</DialogTitle>
+        <DialogDescription>Select from Candidates or upload a new resume for this job.</DialogDescription>
+      </DialogHeader>
+      {props.open && <CandidatePicker {...props} />}
+    </DialogContent>
+  </Dialog>;
+}
+
+function CandidatePicker({ jobId, jobTitle, existingCandidateIds = [], onAddCandidate, onCandidatesChanged, onOpenChange }: AddCandidateJobModalProps) {
   const [pool, setPool] = useState<CandidateDetail[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [poolError, setPoolError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<"existing" | "new">("existing");
+  const [search, setSearch] = useState("");
   const [name, setName] = useState("");
   const [headline, setHeadline] = useState("");
-  const [skills, setSkills] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [accepted, setAccepted] = useState<UploadResponse | null>(null);
+  const [progress, setProgress] = useState("Uploading resume…");
+  const [taskFailed, setTaskFailed] = useState(false);
   const controller = useRef<AbortController | null>(null);
-  useEffect(() => { return () => controller.current?.abort(); }, []);
+  const requestKey = useRef(crypto.randomUUID());
+
   useEffect(() => {
-    if (!open) return;
-    let disposed = false;
-    fetchCandidates({ include_pii: true })
-      .then(data => { if (!disposed) setPool(data); })
-      .catch(() => {
-        fetchCandidates()
-          .then(data => { if (!disposed) setPool(data); })
-          .catch(reason => { if (!disposed) setError(getErrorMessage(reason)); });
-      });
-    return () => { disposed = true; };
-  }, [open]);
-  const assign = async (candidate: CandidateDetail) => {
-    let candidateToAssign = candidate;
-    if (candidate.is_pii_masked && candidate.id) {
-      try {
-        const unmasked = await fetchCandidate(candidate.id, true);
-        if (unmasked && !unmasked.is_pii_masked) {
-          candidateToAssign = unmasked;
-        }
-      } catch {
-        // Fallback to current candidate if unmasking request fails
-      }
-    }
+    let active = true;
+    fetchCandidates({ include_pii: true }).catch(() => fetchCandidates()).then(data => {
+      if (active) setPool(data);
+    }).catch(reason => { if (active) setPoolError(getErrorMessage(reason)); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; controller.current?.abort(); };
+  }, []);
 
-    const matchesJob = Boolean(
-      jobId && (
-        candidateToAssign.applied_for_job_id === jobId ||
-        (jobTitle && candidateToAssign.applied_for_job && candidateToAssign.applied_for_job.toLowerCase().includes(jobTitle.toLowerCase()))
-      )
-    );
-    const score = matchesJob ? (candidateToAssign.scorecard?.overall_match_score ?? null) : null;
-    const label = matchesJob
-      ? (candidateToAssign.scorecard?.match_tier || (score !== null ? "Evaluated" : "Not Evaluated"))
-      : "Not Evaluated";
+  const available = pool.filter(candidate => !existingCandidateIds.includes(candidate.id));
+  const visible = available.filter(candidate => [candidate.name, candidate.target_headline, candidate.role, ...(candidate.core_skills || [])].join(" ").toLowerCase().includes(search.trim().toLowerCase()));
 
-    await onAddCandidate({
-      id: candidateToAssign.id,
-      name: candidateToAssign.name,
-      headline: candidateToAssign.target_headline || candidateToAssign.role,
-      avatar: candidateToAssign.avatar,
-      skills: candidateToAssign.core_skills,
-      stage: "Screening",
-      // Match scores belong to the job they were evaluated against.
-      matchScore: score,
-      matchLabel: label,
-      sourceResumeLink: `/candidates/${candidateToAssign.id}`,
-    });
-  };
   const select = async (candidate: CandidateDetail) => {
     setBusy(true); setError(null);
-    try { await assign(candidate); onOpenChange(false); }
-    catch (reason) { setError(getErrorMessage(reason)); }
-    finally { setBusy(false); }
-  };
-  const upload = async (file: File) => {
-    const pending = new AbortController();
-    controller.current = pending;
-    setBusy(true); setError(null);
     try {
-      const result = await uploadAndWait(file, jobId, pending.signal);
-      if (pending.signal.aborted) return;
-      const candidate = await fetchCandidate(result.candidate_id, true);
-      if (pending.signal.aborted) return;
-      if (jobId && !candidate.applied_for_job_id) {
-        candidate.applied_for_job_id = jobId;
-      }
-      if (result.match_score !== null && result.match_score !== undefined && candidate.scorecard) {
-        if (candidate.scorecard.overall_match_score === null || candidate.scorecard.overall_match_score === undefined) {
-          candidate.scorecard.overall_match_score = result.match_score;
-        }
-      }
-      await assign(candidate);
+      // The backend links the canonical candidate and owns this job's score.
+      await onAddCandidate({ id: candidate.id, name: candidate.name, headline: candidate.target_headline || candidate.role, stage: "Screening", matchScore: null });
       onOpenChange(false);
-    } catch (reason) { if (!pending.signal.aborted) setError(getErrorMessage(reason)); }
-    finally { if (controller.current === pending) { controller.current = null; setBusy(false); } }
-  };
-  const manual = async (event: FormEvent) => {
-    event.preventDefault(); setBusy(true); setError(null);
-    try {
-      await onAddCandidate({ name: name.trim(), headline: headline.trim(), skills: skills.split(",").map(skill => skill.trim()).filter(Boolean), stage: "Screening", matchScore: null });
-      setName(""); setHeadline(""); setSkills(""); onOpenChange(false);
     } catch (reason) { setError(getErrorMessage(reason)); }
     finally { setBusy(false); }
   };
-  const close = (nextOpen: boolean) => {
-    if (!nextOpen) { controller.current?.abort(); controller.current = null; setBusy(false); }
-    onOpenChange(nextOpen);
+
+  const finished = async (task: UploadTask, signal: AbortSignal) => {
+    if (task.state === "FAILURE") {
+      setTaskFailed(true);
+      throw new Error(task.error || "Resume processing failed. The candidate may still appear in the job for review.");
+    }
+    if (task.state !== "SUCCESS") return;
+    const candidate = await completedProfile(task);
+    if (signal.aborted) return;
+    await onCandidatesChanged(candidate.id);
+    if (signal.aborted) return;
+    if (task.result?.evaluation_status !== "COMPLETED" || typeof task.result.match_score !== "number") {
+      setError("Resume processed and candidate added. AI scoring did not complete. Use Calculate AI score on the candidate to try again.");
+      return;
+    }
+    onOpenChange(false);
   };
-  return <Dialog open={open} onOpenChange={close}><DialogContent className="max-h-[90vh] overflow-auto sm:max-w-xl bg-white p-6">
-    <DialogHeader><DialogTitle>Add candidate to {jobTitle}</DialogTitle><DialogDescription>Select an existing candidate or upload a PDF. New candidates remain unevaluated until job matching completes.</DialogDescription></DialogHeader>
+
+  const upload = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!file || !name.trim() || !headline.trim() || busy) return;
+    const pending = new AbortController(); controller.current = pending;
+    setBusy(true); setError(null); setTaskFailed(false); setProgress("Validating PDF…");
+    try {
+      await resumeHash(file);
+      if (pending.signal.aborted) return;
+      setProgress("Uploading resume…");
+      const result = await uploadAndWait(file, jobId, {
+        signal: pending.signal, pollIntervalMs: 1500,
+        upload: { name: name.trim(), headline: headline.trim(), idempotencyKey: requestKey.current },
+        onAccepted: async response => {
+          if (pending.signal.aborted) return;
+          setAccepted(response);
+          setProgress("Resume received. Waiting for backend processing…");
+          await onCandidatesChanged(response.candidate_id);
+        },
+        onProgress: task => { if (!pending.signal.aborted) setProgress((task.step || task.state) + (typeof task.progress === "number" ? " · " + task.progress + "%" : "")); },
+      });
+      if (!pending.signal.aborted) await finished({ state: "SUCCESS", task_id: result.task_id, result }, pending.signal);
+    } catch (reason) { if (!pending.signal.aborted) setError(getErrorMessage(reason)); }
+    finally { if (controller.current === pending) { controller.current = null; setBusy(false); } }
+  };
+
+  const checkStatus = async () => {
+    if (!accepted?.task_id || busy) return;
+    const pending = new AbortController(); controller.current = pending;
+    setBusy(true); setError(null);
+    try {
+      await monitorIngestion(accepted.task_id, pending.signal, async task => {
+        if (pending.signal.aborted) return;
+        setProgress(task.step || task.state);
+        await finished(task, pending.signal);
+      });
+    } catch (reason) { if (!pending.signal.aborted) setError(getErrorMessage(reason)); }
+    finally { if (controller.current === pending) { controller.current = null; setBusy(false); } }
+  };
+
+  return <div className="space-y-4">
+    <div className="flex gap-2 border-b pb-3">
+      <Button type="button" variant={tab === "existing" ? "default" : "outline"} disabled={busy} onClick={() => setTab("existing")}>From Candidates</Button>
+      <Button type="button" variant={tab === "new" ? "default" : "outline"} disabled={busy} onClick={() => setTab("new")}>New candidate & resume</Button>
+    </div>
     <RequestError message={error} />
-    <section className="space-y-2"><h3 className="font-semibold text-sm">Candidate repository</h3>
-      {pool.filter(candidate => !existingCandidateIds.includes(candidate.id)).map(candidate => <div key={candidate.id} className="flex items-center justify-between border rounded-lg p-3 text-sm"><span>{candidate.name}</span><Button disabled={busy} onClick={() => void select(candidate)} size="sm">Add</Button></div>)}
-      {pool.length === 0 && <p className="text-xs text-zinc-500">No candidates loaded.</p>}
-    </section>
-    <section className="space-y-2"><label htmlFor="candidate-resume" className="block text-sm font-semibold">Upload PDF resume</label><input id="candidate-resume" type="file" accept=".pdf,application/pdf" disabled={busy} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void upload(file); }} />{busy && <p role="status" className="text-xs">Waiting for backend processing…</p>}</section>
-    <form onSubmit={manual} className="space-y-3 border-t pt-4"><h3 className="text-sm font-semibold">Enter candidate details</h3>
-      <Input aria-label="Candidate name" required value={name} onChange={event => setName(event.target.value)} placeholder="Name" />
-      <Input aria-label="Candidate headline" required value={headline} onChange={event => setHeadline(event.target.value)} placeholder="Role or headline" />
-      <Input aria-label="Candidate skills" value={skills} onChange={event => setSkills(event.target.value)} placeholder="Skills, separated by commas" />
-      <Button type="submit" disabled={busy}>Save candidate</Button>
-    </form>
-  </DialogContent></Dialog>;
+    {tab === "existing" ? <section className="space-y-3">
+      <Input aria-label="Search candidate repository" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search by name, role, or skills…" />
+      <RequestError message={poolError} />
+      {loading ? <p role="status" className="text-sm text-zinc-500">Loading candidates…</p> : <>
+        <p className="text-xs text-zinc-500">{visible.length} available candidates. Existing resumes and profile details are reused.</p>
+        <div className="max-h-72 overflow-y-auto overscroll-contain space-y-2">
+          {visible.map(candidate => <div key={candidate.id} className="flex items-start justify-between gap-3 border rounded-xl p-3 text-sm">
+            <div className="min-w-0 space-y-1">
+              <Link href={`/candidates/${candidate.id}`} className="font-semibold hover:underline">{candidate.name}</Link>
+              <p className="text-xs text-zinc-600">{candidate.target_headline || candidate.role || "Role not specified"}</p>
+              <p className="text-xs text-zinc-500">{candidate.core_skills?.slice(0, 5).join(" · ") || "No extracted skills yet"}</p>
+              <p className="text-[11px] text-zinc-500">Resume processing: {candidate.processing_status || "Not reported"}</p>
+            </div>
+            <Button type="button" disabled={busy} onClick={() => void select(candidate)} size="sm">Add to job</Button>
+          </div>)}
+          {!visible.length && <p className="text-sm text-zinc-500 py-4">{pool.length && !available.length ? "All candidates are already linked to this job." : "No matching candidates found."}</p>}
+        </div>
+        <p className="text-xs text-zinc-500">After adding an unscored candidate, use Calculate AI score to evaluate their resume against {jobTitle}.</p>
+      </>}
+    </section> : <form onSubmit={upload} className="space-y-4">
+      <div className="space-y-1"><label htmlFor="new-candidate-name" className="text-sm font-semibold">Candidate name</label><Input id="new-candidate-name" required maxLength={200} disabled={busy || !!accepted} value={name} onChange={event => { setName(event.target.value); requestKey.current = crypto.randomUUID(); }} placeholder="Full name" /></div>
+      <div className="space-y-1"><label htmlFor="new-candidate-role" className="text-sm font-semibold">Candidate role / headline</label><Input id="new-candidate-role" required maxLength={200} disabled={busy || !!accepted} value={headline} onChange={event => { setHeadline(event.target.value); requestKey.current = crypto.randomUUID(); }} placeholder="e.g. Backend Engineer" /></div>
+      <div className="space-y-1"><label htmlFor="new-candidate-resume" className="block text-sm font-semibold">PDF resume</label><input id="new-candidate-resume" type="file" required accept=".pdf,application/pdf" disabled={busy || !!accepted} onChange={event => { setFile(event.target.files?.[0] || null); requestKey.current = crypto.randomUUID(); }} /><p className="text-xs text-zinc-500">Up to 10 MB. This resume is processed and scored against {jobTitle}.</p></div>
+      {busy && <p role="status" className="text-sm text-[#6137e0]">{progress}</p>}
+      {accepted ? <div className="space-y-2"><p className="text-xs text-zinc-500">The resume was received by the server. Closing this dialog does not cancel backend processing.</p><Button type="button" disabled={busy || taskFailed} onClick={() => void checkStatus()}>Check processing status</Button><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Return to job</Button></div> : <Button type="submit" disabled={busy || !file}>Upload resume & calculate score</Button>}
+    </form>}
+  </div>;
 }
