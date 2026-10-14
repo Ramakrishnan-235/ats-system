@@ -65,31 +65,6 @@ services:
       retries: 10
       start_period: 120s
 
-  ats-core-go:
-    build:
-      context: ./ats-core-go
-      dockerfile: Dockerfile
-    container_name: ats-core-go
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-    environment:
-      - PORT=8000
-      - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://ats_user:ats_password@postgres:5432/ats_db
-      - ATS_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
-      - ATS_AUTH_ENABLED=false
-      - ATS_LLM_ENABLED=true
-      - OLLAMA_BASE_URL=http://ollama:11434/v1
-      - OLLAMA_MODEL=gemma4:e2b
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      ollama:
-        condition: service_healthy
-
 volumes:
   postgres_data:
   ollama_data:
