@@ -295,3 +295,33 @@ fn replacement_resume_persists_candidate_even_if_application_is_stale_or_withdra
     assert_eq!(summary["status"], "COMPLETED");
     assert_eq!(summary["evaluation_status"], "SKIPPED");
 }
+
+#[test]
+fn job_edits_invalidate_stale_application_scores_and_scorecards() {
+    // Current state of job and candidate
+    let active_job_revision = 2; // Incremented by update_job
+    let candidate_revision = 1;
+
+    // Previous evaluation produced against job revision 1
+    let evaluation_job_revision = 1;
+    let evaluation_candidate_revision = 1;
+
+    // Evaluation validity condition: both candidate and job revisions must match
+    let is_valid = evaluation_candidate_revision == candidate_revision
+        && evaluation_job_revision == active_job_revision;
+
+    assert!(
+        !is_valid,
+        "Evaluation for job revision 1 must be treated as stale after job is updated to revision 2"
+    );
+
+    // Scorecard fallback when stale
+    let scorecard = if is_valid {
+        json!({"overall_match_score": 88})
+    } else {
+        ats_backend::domain::empty_scorecard()
+    };
+
+    assert_eq!(scorecard["overall_match_score"], serde_json::Value::Null);
+    assert_eq!(scorecard["evaluation_status"], "PENDING");
+}

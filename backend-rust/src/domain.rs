@@ -104,6 +104,13 @@ pub async fn update_job(
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
     let row=sqlx::query("UPDATE ats_v2.jobs SET title=$3,department=$4,location=$5,job_description=$6,required_skills=$7,min_years_experience=$8,revision=revision+1,updated_at=now() WHERE id=$1 AND tenant_id=$2 RETURNING *")
         .bind(id).bind(user.tenant_id).bind(input.title.trim()).bind(input.department).bind(input.location).bind(input.job_description).bind(json!(input.required_skills)).bind(input.min_years_experience).fetch_optional(&mut *tx).await?.ok_or_else(missing)?;
+    sqlx::query(
+        "UPDATE ats_v2.applications SET current_score=NULL WHERE job_id=$1 AND tenant_id=$2",
+    )
+    .bind(id)
+    .bind(user.tenant_id)
+    .execute(&mut *tx)
+    .await?;
     audit(&mut tx, &user, "UPDATE_JOB", "job", id).await?;
     tx.commit().await?;
     Ok(Json(job_json(&row)))
@@ -173,7 +180,7 @@ pub async fn candidate_json(
     );
     p["applied_for_job_id"] = json!(apps.first().map(|a| a.get::<Uuid, _>("job_id")));
     let selected_application = apps.first().map(|a| a.get::<Uuid, _>("id"));
-    let score:Option<Value>=sqlx::query_scalar("SELECT e.scorecard FROM ats_v2.evaluations e JOIN ats_v2.processing_jobs p ON p.id=e.processing_job_id WHERE e.application_id=$1 AND e.tenant_id=$2 AND p.input_revision=$3 ORDER BY e.created_at DESC LIMIT 1").bind(selected_application).bind(user.tenant_id).bind(row.get::<i32,_>("revision")).fetch_optional(&mut **tx).await?;
+    let score: Option<Value> = sqlx::query_scalar("SELECT e.scorecard FROM ats_v2.evaluations e JOIN ats_v2.applications a ON a.id=e.application_id AND a.tenant_id=e.tenant_id JOIN ats_v2.jobs j ON j.id=a.job_id AND j.tenant_id=a.tenant_id JOIN ats_v2.processing_jobs p ON p.id=e.processing_job_id WHERE e.application_id=$1 AND e.tenant_id=$2 AND p.input_revision=$3 AND e.job_revision=j.revision ORDER BY e.created_at DESC LIMIT 1").bind(selected_application).bind(user.tenant_id).bind(row.get::<i32,_>("revision")).fetch_optional(&mut **tx).await?;
     p["scorecard"] = score.unwrap_or_else(empty_scorecard);
     let notes=sqlx::query("SELECT n.*,u.name FROM ats_v2.notes n JOIN ats_v2.users u ON u.id=n.actor_id WHERE n.candidate_id=$1 AND n.tenant_id=$2 ORDER BY n.created_at").bind(id).bind(user.tenant_id).fetch_all(&mut **tx).await?;
     p["scorecard"]["team_notes"] = json!(notes.iter().map(note_json).collect::<Vec<_>>());
@@ -404,7 +411,7 @@ pub async fn get_scorecard(
     .fetch_optional(&mut *tx)
     .await?
     .ok_or_else(missing)?;
-    let score:Option<Value>=sqlx::query_scalar("SELECT e.scorecard FROM ats_v2.evaluations e JOIN ats_v2.applications a ON a.id=e.application_id AND a.tenant_id=e.tenant_id JOIN ats_v2.candidates c ON c.id=a.candidate_id AND c.tenant_id=a.tenant_id JOIN ats_v2.processing_jobs p ON p.id=e.processing_job_id WHERE a.candidate_id=$1 AND e.tenant_id=$2 AND p.input_revision=c.revision AND ($3::uuid IS NULL OR a.job_id=$3) ORDER BY e.created_at DESC LIMIT 1").bind(id).bind(user.tenant_id).bind(f.job_id).fetch_optional(&mut *tx).await?;
+    let score: Option<Value> = sqlx::query_scalar("SELECT e.scorecard FROM ats_v2.evaluations e JOIN ats_v2.applications a ON a.id=e.application_id AND a.tenant_id=e.tenant_id JOIN ats_v2.jobs j ON j.id=a.job_id AND j.tenant_id=a.tenant_id JOIN ats_v2.candidates c ON c.id=a.candidate_id AND c.tenant_id=a.tenant_id JOIN ats_v2.processing_jobs p ON p.id=e.processing_job_id WHERE a.candidate_id=$1 AND e.tenant_id=$2 AND p.input_revision=c.revision AND e.job_revision=j.revision AND ($3::uuid IS NULL OR a.job_id=$3) ORDER BY e.created_at DESC LIMIT 1").bind(id).bind(user.tenant_id).bind(f.job_id).fetch_optional(&mut *tx).await?;
     let mut score = score.unwrap_or_else(empty_scorecard);
     redact_profile(&mut score, &contact);
     Ok(Json(score))
