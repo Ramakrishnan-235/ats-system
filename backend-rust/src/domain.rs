@@ -413,6 +413,8 @@ pub async fn get_scorecard(
     .ok_or_else(missing)?;
     let score: Option<Value> = sqlx::query_scalar("SELECT e.scorecard FROM ats_v2.evaluations e JOIN ats_v2.applications a ON a.id=e.application_id AND a.tenant_id=e.tenant_id JOIN ats_v2.jobs j ON j.id=a.job_id AND j.tenant_id=a.tenant_id JOIN ats_v2.candidates c ON c.id=a.candidate_id AND c.tenant_id=a.tenant_id JOIN ats_v2.processing_jobs p ON p.id=e.processing_job_id WHERE a.candidate_id=$1 AND e.tenant_id=$2 AND p.input_revision=c.revision AND e.job_revision=j.revision AND ($3::uuid IS NULL OR a.job_id=$3) ORDER BY e.created_at DESC LIMIT 1").bind(id).bind(user.tenant_id).bind(f.job_id).fetch_optional(&mut *tx).await?;
     let mut score = score.unwrap_or_else(empty_scorecard);
+    let notes = sqlx::query("SELECT n.*,u.name FROM ats_v2.notes n JOIN ats_v2.users u ON u.id=n.actor_id WHERE n.candidate_id=$1 AND n.tenant_id=$2 ORDER BY n.created_at").bind(id).bind(user.tenant_id).fetch_all(&mut *tx).await?;
+    score["team_notes"] = json!(notes.iter().map(note_json).collect::<Vec<_>>());
     redact_profile(&mut score, &contact);
     Ok(Json(score))
 }

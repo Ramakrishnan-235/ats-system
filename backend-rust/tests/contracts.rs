@@ -325,3 +325,53 @@ fn job_edits_invalidate_stale_application_scores_and_scorecards() {
     assert_eq!(scorecard["overall_match_score"], serde_json::Value::Null);
     assert_eq!(scorecard["evaluation_status"], "PENDING");
 }
+
+#[test]
+fn scorecard_preserves_and_redacts_recruiter_team_notes() {
+    let mut scorecard = ats_backend::domain::empty_scorecard();
+    assert_eq!(scorecard["team_notes"], json!([]));
+
+    // Attaching candidate-level team notes
+    let notes = vec![
+        json!({
+            "id": Uuid::new_v4(),
+            "author": "Recruiter Alice",
+            "initials": "RA",
+            "role": "Recruiter",
+            "timestamp": "2026-10-14T20:00:00Z",
+            "content": "Met candidate Dan at Goa office. Highly recommended."
+        }),
+        json!({
+            "id": Uuid::new_v4(),
+            "author": "Hiring Manager Bob",
+            "initials": "HB",
+            "role": "Hiring Manager",
+            "timestamp": "2026-10-14T20:30:00Z",
+            "content": "Strong technical skills in Python and distributed systems."
+        }),
+    ];
+    scorecard["team_notes"] = json!(notes);
+
+    // Apply redaction with candidate contact info
+    let contact = json!({
+        "name": "Dan",
+        "location": "Goa",
+        "email": "dan@example.test"
+    });
+    ats_backend::domain::redact_profile(&mut scorecard, &contact);
+
+    // Team notes array remains present with 2 notes
+    let team_notes = scorecard["team_notes"].as_array().unwrap();
+    assert_eq!(team_notes.len(), 2);
+    assert_eq!(team_notes[0]["author"], "Recruiter Alice");
+
+    // Contact PII inside note is redacted with word boundaries preserved
+    assert_eq!(
+        team_notes[0]["content"],
+        "Met candidate [REDACTED] at [REDACTED] office. Highly recommended."
+    );
+    assert_eq!(
+        team_notes[1]["content"],
+        "Strong technical skills in Python and distributed systems."
+    );
+}
