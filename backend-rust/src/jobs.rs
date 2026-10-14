@@ -567,7 +567,7 @@ pub async fn result(
                 .collect::<Vec<_>>()
                 .join(",")
         );
-        sqlx::query("INSERT INTO ats_v2.embeddings(tenant_id,document_id,model,preprocessing_version,embedding) VALUES($1,$2,$3,$4,$5::vector) ON CONFLICT DO NOTHING").bind(tenant).bind(input.document_id).bind(input.embedding_model).bind(input.preprocessing_version).bind(encoded).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO ats_v2.embeddings(tenant_id,document_id,model,preprocessing_version,embedding) VALUES($1,$2,$3,$4,$5::vector) ON CONFLICT (tenant_id,document_id,model,preprocessing_version) DO UPDATE SET embedding=EXCLUDED.embedding").bind(tenant).bind(input.document_id).bind(input.embedding_model).bind(input.preprocessing_version).bind(encoded).execute(&mut *tx).await?;
     }
     let mut score = None;
     if let (Some(app), Some(card)) = (application, input.scorecard.as_ref())

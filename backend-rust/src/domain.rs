@@ -497,28 +497,50 @@ pub async fn edit_candidate(
         }
     }
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
-    let old=sqlx::query("SELECT profile,contact FROM ats_v2.candidates WHERE id=$1 AND tenant_id=$2 AND revision=$3 AND deleted_at IS NULL FOR UPDATE").bind(id).bind(user.tenant_id).bind(input.revision).fetch_optional(&mut *tx).await?.ok_or(ApiError(StatusCode::CONFLICT,"Profile changed. Refresh before saving."))?;
+    let old = sqlx::query("SELECT profile,contact,sanitized_text FROM ats_v2.candidates WHERE id=$1 AND tenant_id=$2 AND revision=$3 AND deleted_at IS NULL FOR UPDATE")
+        .bind(id)
+        .bind(user.tenant_id)
+        .bind(input.revision)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(ApiError(StatusCode::CONFLICT, "Profile changed. Refresh before saving."))?;
     let mut merged: Value = old.get("profile");
-    merged
-        .as_object_mut()
-        .unwrap()
-        .extend(safe.as_object().unwrap().clone());
-    redact_profile(&mut merged, &old.get::<Value, _>("contact"));
+    if let Some(obj) = merged.as_object_mut()
+        && let Some(safe_obj) = safe.as_object()
+    {
+        obj.extend(safe_obj.clone());
+    }
     let mut merged_contact: Value = old.get("contact");
-    merged_contact
-        .as_object_mut()
-        .unwrap()
-        .extend(contact.as_object().unwrap().clone());
-    redact_profile(&mut merged, &merged_contact);
-    let sanitized = merged.to_string();
-    let updated=sqlx::query("UPDATE ats_v2.candidates SET profile=$4,contact=$5,sanitized_text=$6,revision=revision+1,updated_at=now() WHERE id=$1 AND tenant_id=$2 AND revision=$3 AND deleted_at IS NULL").bind(id).bind(user.tenant_id).bind(input.revision).bind(merged).bind(merged_contact).bind(sanitized).execute(&mut *tx).await?;
+    if let Some(obj) = merged_contact.as_object_mut()
+        && let Some(contact_obj) = contact.as_object()
+    {
+        obj.extend(contact_obj.clone());
+    }
+    let existing_sanitized: String = old.get("sanitized_text");
+    let sanitized = if existing_sanitized.trim().is_empty() {
+        merged.to_string()
+    } else {
+        existing_sanitized
+    };
+    let new_revision = input.revision + 1;
+    let updated = sqlx::query(
+        "UPDATE ats_v2.candidates SET profile=$4,contact=$5,sanitized_text=$6,revision=$7,updated_at=now() WHERE id=$1 AND tenant_id=$2 AND revision=$3 AND deleted_at IS NULL"
+    )
+    .bind(id)
+    .bind(user.tenant_id)
+    .bind(input.revision)
+    .bind(&merged)
+    .bind(&merged_contact)
+    .bind(&sanitized)
+    .bind(new_revision)
+    .execute(&mut *tx)
+    .await?;
     if updated.rows_affected() != 1 {
         return Err(ApiError(
             StatusCode::CONFLICT,
             "Profile changed. Refresh before saving.",
         ));
     }
-    sqlx::query("DELETE FROM ats_v2.embeddings WHERE tenant_id=$1 AND document_id IN (SELECT id FROM ats_v2.documents WHERE tenant_id=$1 AND candidate_id=$2)").bind(user.tenant_id).bind(id).execute(&mut *tx).await?;
     sqlx::query(
         "UPDATE ats_v2.applications SET current_score=NULL WHERE tenant_id=$1 AND candidate_id=$2",
     )
@@ -526,9 +548,73 @@ pub async fn edit_candidate(
     .bind(id)
     .execute(&mut *tx)
     .await?;
+
+    let latest_doc = sqlx::query(
+        "SELECT id, version FROM ats_v2.documents WHERE tenant_id=$1 AND candidate_id=$2 ORDER BY version DESC LIMIT 1"
+    )
+    .bind(user.tenant_id)
+    .bind(id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    if let Some(doc) = latest_doc {
+        let doc_id: Uuid = doc.get("id");
+        let doc_version: i32 = doc.get("version");
+
+        let apps = sqlx::query(
+            "SELECT a.id as application_id, j.revision as job_revision FROM ats_v2.applications a JOIN ats_v2.jobs j ON j.id=a.job_id AND j.tenant_id=a.tenant_id WHERE a.candidate_id=$1 AND a.tenant_id=$2 AND a.stage NOT IN ('Withdrawn', 'Rejected')"
+        )
+        .bind(id)
+        .bind(user.tenant_id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        if !apps.is_empty() {
+            for app in apps {
+                let app_id: Uuid = app.get("application_id");
+                let job_rev: i32 = app.get("job_revision");
+                let job_id = Uuid::new_v4();
+                sqlx::query(
+                    "INSERT INTO ats_v2.processing_jobs(id,tenant_id,candidate_id,document_id,application_id,operation,input_revision,job_revision,document_version) VALUES($1,$2,$3,$4,$5,'evaluate',$6,$7,$8)"
+                )
+                .bind(job_id)
+                .bind(user.tenant_id)
+                .bind(id)
+                .bind(doc_id)
+                .bind(app_id)
+                .bind(new_revision)
+                .bind(job_rev)
+                .bind(doc_version)
+                .execute(&mut *tx)
+                .await?;
+
+                sqlx::query("INSERT INTO ats_v2.outbox(job_id) VALUES($1)")
+                    .bind(job_id)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        } else {
+            let job_id = Uuid::new_v4();
+            sqlx::query(
+                "INSERT INTO ats_v2.processing_jobs(id,tenant_id,candidate_id,document_id,application_id,operation,input_revision,job_revision,document_version) VALUES($1,$2,$3,$4,NULL,'evaluate',$5,NULL,$6)"
+            )
+            .bind(job_id)
+            .bind(user.tenant_id)
+            .bind(id)
+            .bind(doc_id)
+            .bind(new_revision)
+            .bind(doc_version)
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query("INSERT INTO ats_v2.outbox(job_id) VALUES($1)")
+                .bind(job_id)
+                .execute(&mut *tx)
+                .await?;
+        }
+    }
+
     audit(&mut tx, &user, "EDIT_CANDIDATE", "candidate", id).await?;
     tx.commit().await?;
-    Ok(Json(
-        json!({"status":"updated","revision":input.revision+1}),
-    ))
+    Ok(Json(json!({"status":"updated","revision":new_revision})))
 }

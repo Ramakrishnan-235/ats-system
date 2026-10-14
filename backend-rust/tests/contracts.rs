@@ -144,3 +144,44 @@ fn submitted_identity_and_role_are_preserved_without_creating_resume_evidence() 
     assert!(profile.get("_submitted_headline").is_none());
     assert!(profile.get("experience").is_none());
 }
+
+#[test]
+fn candidate_profile_edits_retain_unredacted_storage_and_resume_text() {
+    let old_profile = json!({
+        "role": "Software Engineer",
+        "core_skills": ["Rust", "Python"],
+        "experience": [{"title": "Senior Dev", "notes": "Contact Jane Doe at jane@example.test"}]
+    });
+    let safe_edits = json!({
+        "role": "Staff Engineer",
+        "core_skills": ["Rust", "Python"],
+        "experience": [{"title": "Lead Dev", "notes": "Contact Jane Doe at jane@example.test"}]
+    });
+    let mut merged = old_profile;
+    merged
+        .as_object_mut()
+        .unwrap()
+        .extend(safe_edits.as_object().unwrap().clone());
+
+    // The stored profile must not be destructively redacted in database
+    assert!(merged.to_string().contains("jane@example.test"));
+    assert_eq!(merged["role"], "Staff Engineer");
+
+    // Redaction is applied on-demand at serialization time when PII is masked
+    let mut view = merged.clone();
+    ats_backend::domain::redact_profile(
+        &mut view,
+        &json!({"name": "Jane Doe", "email": "jane@example.test"}),
+    );
+    assert!(!view.to_string().contains("jane@example.test"));
+    assert!(view.to_string().contains("[REDACTED]"));
+
+    // Extracted resume text must be preserved rather than overwritten by summary JSON
+    let existing_sanitized = "Full resume text with deep project details and verbatim citations.";
+    let sanitized_to_store = if existing_sanitized.trim().is_empty() {
+        merged.to_string()
+    } else {
+        existing_sanitized.to_string()
+    };
+    assert_eq!(sanitized_to_store, existing_sanitized);
+}
