@@ -8,8 +8,8 @@ const cspHeader = `
   font-src 'self' data: https://fonts.gstatic.com https:;
   connect-src 'self' http://localhost:8000 http://127.0.0.1:8000 http://localhost:8001 http://127.0.0.1:8001 http://localhost:11434 https: ws: wss:;
   frame-ancestors 'none';
-  frame-src 'none';
-  object-src 'none';
+  frame-src 'self' blob:;
+  object-src 'self' blob:;
   base-uri 'self';
   form-action 'self';
   upgrade-insecure-requests;
