@@ -191,21 +191,143 @@ pub async fn candidate_json(
     Ok(p)
 }
 
+const REDACTION_STOPWORDS: &[&str] = &[
+    "remote",
+    "hybrid",
+    "onsite",
+    "on-site",
+    "in-office",
+    "office",
+    "home",
+    "unknown",
+    "n/a",
+    "na",
+    "none",
+    "null",
+    "undefined",
+    "not specified",
+    "tbd",
+    "location",
+    "city",
+    "state",
+    "country",
+    "flexible",
+    "relocation",
+    "anywhere",
+    "worldwide",
+    "global",
+    "candidate",
+    "applicant",
+    "resume",
+    "profile",
+    "summary",
+    "contact",
+    "engineer",
+    "developer",
+    "manager",
+    "lead",
+    "senior",
+    "junior",
+    "staff",
+    "principal",
+    "architect",
+    "analyst",
+    "specialist",
+    "intern",
+    "director",
+    "consultant",
+    "software",
+    "email",
+    "phone",
+    "mobile",
+    "tel",
+    "cell",
+    "telephone",
+    "and",
+    "the",
+    "for",
+    "with",
+    "from",
+    "http",
+    "https",
+    "www",
+    "com",
+    "org",
+    "net",
+    "linkedin",
+    "github",
+];
+
+fn is_redaction_stopword(s: &str) -> bool {
+    let lower = s.trim().to_lowercase();
+    lower.is_empty() || REDACTION_STOPWORDS.contains(&lower.as_str())
+}
+
 /// Apply the same privacy policy to recruiter edits, notes and AI-produced fields.
 pub fn redact_profile(value: &mut Value, contact: &Value) {
     let mut patterns = vec![
-        r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}".to_owned(),
-        r"\+?\d[\d ()-]{8,}\d".to_owned(),
+        r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b".to_owned(),
+        r##"\b(?:https?://|www\.)[^\s<>'"]+|\b(?:[a-z0-9_-]+\.)*(?:linkedin\.com|github\.com|gitlab\.com|twitter\.com|x\.com)/[^\s<>'"]+"##.to_owned(),
+        r"(?:\+\d{1,4}[-.\s]*\(?\d{2,5}\)?[-.\s]*\d{3,5}[-.\s]*\d{3,5}\b)".to_owned(),
+        r"(?:\(\d{3}\)|\b\d{3})[-.\s]*\d{3}[-.\s]*\d{4}\b".to_owned(),
     ];
     if let Some(fields) = contact.as_object() {
-        for item in fields
-            .values()
-            .filter_map(Value::as_str)
-            .filter(|s| s.trim().len() >= 3 && *s != "N/A")
-        {
-            patterns.push(regex::escape(item.trim()));
+        if let Some(email) = fields.get("email").and_then(Value::as_str) {
+            let email = email.trim();
+            if email.len() >= 3 && !is_redaction_stopword(email) && email.contains('@') {
+                patterns.push(format!(r"\b{}\b", regex::escape(email)));
+            }
+        }
+        if let Some(phone) = fields.get("phone").and_then(Value::as_str) {
+            let phone = phone.trim();
+            if phone.len() >= 6 && !is_redaction_stopword(phone) {
+                let phone_no_plus = phone.trim_start_matches('+').trim();
+                if !phone_no_plus.is_empty() {
+                    patterns.push(format!(r"(?:\+)?\b{}\b", regex::escape(phone_no_plus)));
+                }
+            }
+        }
+        if let Some(url) = fields.get("linkedin").and_then(Value::as_str) {
+            let url = url.trim();
+            if url.len() >= 5 && !is_redaction_stopword(url) {
+                let clean_url = url
+                    .trim_start_matches("https://")
+                    .trim_start_matches("http://");
+                patterns.push(format!(r"(?:https?://)?\b{}\b", regex::escape(clean_url)));
+            }
+        }
+        for key in ["name", "_submitted_name"] {
+            if let Some(name) = fields.get(key).and_then(Value::as_str) {
+                let name = name.trim();
+                if name.len() >= 3 && !is_redaction_stopword(name) {
+                    patterns.push(format!(r"\b{}\b", regex::escape(name)));
+                    for token in name.split(|c: char| !c.is_alphanumeric() && c != '\'') {
+                        let t = token.trim();
+                        if t.len() >= 3 && !is_redaction_stopword(t) {
+                            patterns.push(format!(r"\b{}\b", regex::escape(t)));
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(loc) = fields.get("location").and_then(Value::as_str) {
+            let loc = loc.trim();
+            if loc.len() >= 3 && !is_redaction_stopword(loc) {
+                for segment in loc.split([',', '/', ';']) {
+                    let seg = segment
+                        .trim()
+                        .trim_start_matches('-')
+                        .trim_end_matches('-')
+                        .trim();
+                    if seg.len() >= 3 && !is_redaction_stopword(seg) {
+                        patterns.push(format!(r"\b{}\b", regex::escape(seg)));
+                    }
+                }
+            }
         }
     }
+    patterns.sort();
+    patterns.dedup();
     let re = regex::RegexBuilder::new(&patterns.join("|"))
         .case_insensitive(true)
         .build()

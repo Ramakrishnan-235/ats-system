@@ -185,3 +185,66 @@ fn candidate_profile_edits_retain_unredacted_storage_and_resume_text() {
     };
     assert_eq!(sanitized_to_store, existing_sanitized);
 }
+
+#[test]
+fn redact_profile_enforces_word_boundaries_and_skips_common_terms() {
+    let mut profile = json!({
+        "headline": "Senior Engineer working in a remote department with robust standard testing for maximum goals",
+        "notes": ["Candidate Dan met with Art and Rob in Goa."],
+        "experience": [{"description": "Led remote teams at Acme Corp. Followed standard engineering practices."}]
+    });
+    let contact = json!({
+        "name": "Dan Art Rob",
+        "location": "Remote, Goa",
+        "email": "dan@example.test",
+        "phone": "+1 415 892 0149"
+    });
+
+    ats_backend::domain::redact_profile(&mut profile, &contact);
+
+    let serialized = profile.to_string();
+
+    // Verify common words containing the short names as substrings are NOT corrupted:
+    assert!(
+        serialized.contains("standard"),
+        "Expected 'standard' not to be corrupted to st[REDACTED]ard"
+    );
+    assert!(
+        serialized.contains("department"),
+        "Expected 'department' not to be corrupted to dep[REDACTED]ment"
+    );
+    assert!(
+        serialized.contains("robust"),
+        "Expected 'robust' not to be corrupted to [REDACTED]ust"
+    );
+    assert!(
+        serialized.contains("goals"),
+        "Expected 'goals' not to be corrupted to [REDACTED]ls"
+    );
+    assert!(
+        serialized.contains("remote"),
+        "Expected 'remote' not to be redacted"
+    );
+
+    // Verify standalone name/location words ARE properly redacted:
+    let notes = profile["notes"][0].as_str().unwrap();
+    assert_eq!(
+        notes,
+        "Candidate [REDACTED] met with [REDACTED] and [REDACTED] in [REDACTED]."
+    );
+
+    // Multi-word name with common term (e.g. "Candidate")
+    let mut profile2 = json!({
+        "summary": "The candidate Jane demonstrated strong technical expertise."
+    });
+    let contact2 = json!({
+        "name": "Jane Candidate",
+        "location": "Unknown"
+    });
+    ats_backend::domain::redact_profile(&mut profile2, &contact2);
+    let summary = profile2["summary"].as_str().unwrap();
+    assert_eq!(
+        summary,
+        "The candidate [REDACTED] demonstrated strong technical expertise."
+    );
+}
