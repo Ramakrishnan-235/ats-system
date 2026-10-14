@@ -1,0 +1,29 @@
+{
+  "avatars": [],
+  "candidates_count": 0,
+  "created_at": "2026-10-13T15:25:17.841696Z",
+  "department": "Development Verification",
+  "icon_type": "code",
+  "id": "c5c3b72d-9a02-49bf-a2c8-0f8f4939108d",
+  "job_description": "Synthetic development test job. Python backend engineer building REST APIs using FastAPI, SQL and PostgreSQL. Required skills: Python, FastAPI, SQL, PostgreSQL, Docker and Git. Resume evidence of production API work is preferred.",
+  "location": "Remote",
+  "min_years_experience": 0.0,
+  "posted_date": "13 Oct 2026",
+  "required_skills": [
+    "Python",
+    "FastAPI",
+    "SQL",
+    "PostgreSQL",
+    "Docker",
+    "Git"
+  ],
+  "revision": 1,
+  "status": "OPEN",
+  "title": "Synthetic Candidate Flow - Python Backend Engineer",
+  "top_match": {
+    "label": "Job-specific evaluation",
+    "last_run": "",
+    "score": null,
+    "status": "PENDING"
+  }
+}

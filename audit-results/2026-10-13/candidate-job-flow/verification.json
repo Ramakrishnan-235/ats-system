@@ -1,0 +1,36 @@
+{
+  "job_id": "c5c3b72d-9a02-49bf-a2c8-0f8f4939108d",
+  "candidates": [
+    {
+      "id": "70cb2485-54fb-466b-abcc-41aaf30cf8ce",
+      "jobId": "c5c3b72d-9a02-49bf-a2c8-0f8f4939108d",
+      "matchScore": 65,
+      "stage": "Screening"
+    },
+    {
+      "id": "82f6f979-b8de-434f-9b49-64b78135febd",
+      "jobId": "c5c3b72d-9a02-49bf-a2c8-0f8f4939108d",
+      "matchScore": 55,
+      "stage": "Screening"
+    },
+    {
+      "id": "ea10408a-7409-4662-be5f-142478d4d589",
+      "jobId": "c5c3b72d-9a02-49bf-a2c8-0f8f4939108d",
+      "matchScore": 45,
+      "stage": "Recruiter Review"
+    }
+  ],
+  "new_candidate_name": "Synthetic New Applicant",
+  "new_candidate_role": "Python Backend Engineer",
+  "extracted_skills": [
+    "Docker",
+    "FastAPI",
+    "Git",
+    "PostgreSQL",
+    "Python",
+    "REST APIs",
+    "SQL"
+  ],
+  "processing_status": "COMPLETED",
+  "original_pdf_retrieved": true
+}

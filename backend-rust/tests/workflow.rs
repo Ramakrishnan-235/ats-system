@@ -155,7 +155,7 @@ async fn durable_tenant_workflow() {
     let boundary = "ats-test-boundary";
     let source = b"%PDF-1.4\nTest Python resume\n%%EOF";
     let multipart = format!(
-        "--{boundary}\r\nContent-Disposition: form-data; name=\"job_id\"\r\n\r\n{jobid}\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"resume.pdf\"\r\nContent-Type: application/pdf\r\n\r\n{}\r\n--{boundary}--\r\n",
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nSubmitted Synthetic Applicant\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"headline\"\r\n\r\nSubmitted Backend Engineer\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"job_id\"\r\n\r\n{jobid}\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"resume.pdf\"\r\nContent-Type: application/pdf\r\n\r\n{}\r\n--{boundary}--\r\n",
         String::from_utf8_lossy(source)
     );
     let mut accepted = None;
@@ -328,9 +328,76 @@ async fn durable_tenant_workflow() {
     assert_eq!(multiple["applications"].as_array().unwrap().len(), 2);
     assert_eq!(multiple["applications"][0]["stage"], "Screening");
     assert_eq!(multiple["applications"][1]["stage"], "Interview");
+    let (_, supplied, _) = request(
+        &app,
+        "GET",
+        &format!("/api/v1/candidates/{candidate}?include_pii=true"),
+        Some(&sessions[0]),
+        json!({}),
+    )
+    .await;
+    assert_eq!(supplied["name"], "Submitted Synthetic Applicant");
+    assert_eq!(supplied["role"], "Submitted Backend Engineer");
+    assert!(supplied.get("_submitted_headline").is_none());
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            &format!("/api/v1/jobs/{jobid}/candidates/{candidate}/evaluate"),
+            Some(&sessions[1]),
+            json!({})
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    let (_, manual, _) = request(
+        &app,
+        "POST",
+        &format!("/api/v1/jobs/{second_id}/candidates"),
+        Some(&sessions[0]),
+        json!({"name":"Manual applicant without resume"}),
+    )
+    .await;
+    let manual_id = manual
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["id"].as_str() != Some(candidate))
+        .unwrap()["id"]
+        .as_str()
+        .unwrap();
+    assert_eq!(
+        request(
+            &app,
+            "POST",
+            &format!("/api/v1/jobs/{second_id}/candidates/{manual_id}/evaluate"),
+            Some(&sessions[0]),
+            json!({})
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
     // A recruiter edit made while a model runs wins over the older result.
-    let pending = Uuid::new_v4();
-    sqlx::query("INSERT INTO ats_v2.processing_jobs(id,tenant_id,candidate_id,document_id,application_id,operation,input_revision,job_revision,document_version) SELECT $1,tenant_id,candidate_id,document_id,application_id,'evaluate',input_revision,job_revision,document_version FROM ats_v2.processing_jobs WHERE id=$2").bind(pending).bind(Uuid::parse_str(task).unwrap()).execute(&admin).await.unwrap();
+    let path = format!("/api/v1/jobs/{jobid}/candidates/{candidate}/evaluate");
+    let (status, queued, _) = request(&app, "POST", &path, Some(&sessions[0]), json!({})).await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    assert_eq!(queued["task_ids"].as_array().unwrap().len(), 1);
+    let repeated = request(&app, "POST", &path, Some(&sessions[0]), json!({})).await;
+    assert_eq!(repeated.1["task_ids"], queued["task_ids"]);
+    let pending = Uuid::parse_str(queued["task_ids"][0].as_str().unwrap()).unwrap();
+    let task_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM ats_v2.processing_jobs WHERE tenant_id=$1 AND operation='evaluate'",
+    )
+    .bind(tenant)
+    .fetch_one(&admin)
+    .await
+    .unwrap();
+    assert_eq!(
+        task_count, 1,
+        "Scoring one candidate must not enqueue other candidates or jobs"
+    );
     let (_, stale_lease) =
         internal(&app, &format!("/internal/jobs/{pending}/lease"), json!({})).await;
     assert_eq!(request(&app,"PATCH",&format!("/api/v1/candidates/{candidate}"),Some(&sessions[0]),json!({"revision":1,"profile":{"target_headline":"Edited synthetic@example.test"},"contact":{}})).await.0,StatusCode::OK);

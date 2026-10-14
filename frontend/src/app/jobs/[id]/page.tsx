@@ -187,6 +187,7 @@ function JobDetail({ rawId }: { rawId: string }) {
 
   const refreshJobCandidates = async (candidateId: string) => {
     const saved = await fetchJobCandidates(rawId);
+    setError(null);
     setCandidates(saved);
     setExpandedCand(candidateId);
     setActiveTab("AI Ranked List");

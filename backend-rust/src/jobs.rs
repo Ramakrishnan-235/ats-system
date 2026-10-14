@@ -955,8 +955,10 @@ async fn enqueue_ranked(
     });
     rows.truncate(input.stage1_retrieve_limit as usize);
     let retrieved = rows.len();
-    let mut reranker_fallback = true;
-    if !rows.is_empty() {
+    // A specifically selected candidate needs no reranking. Queue it before
+    // inference so the browser receives the durable task without a proxy timeout.
+    let mut reranker_fallback = input.stage1_retrieve_limit > 1;
+    if !rows.is_empty() && input.stage1_retrieve_limit > 1 {
         let permitted=rows.iter().map(|r|json!({"candidate_id":r.get::<Uuid,_>("id"),"text":r.get::<String,_>("sanitized_text")})).collect::<Vec<_>>();
         if let Ok(response) = state
             .http

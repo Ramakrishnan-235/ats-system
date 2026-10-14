@@ -265,19 +265,29 @@ export interface MatchResponse {
 export const queueCandidateEvaluation = (jobId: string, candidateId: string, signal?: AbortSignal) =>
   json<{ job_id: string; task_ids: string[] }>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}/evaluate`, { method: "POST", signal });
 
+async function retryProcessingRead<T>(read: () => Promise<T>, options: UploadWaitOptions): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try { return await read(); }
+    catch (error) {
+      if (options.signal?.aborted || attempt >= 4 || !(error instanceof ApiError) || (error.status !== undefined && error.status < 500)) throw error;
+      await sleepWithSignal(options.pollIntervalMs ?? 1500, options.signal);
+    }
+  }
+}
+
 export async function evaluateCandidateForJob(jobId: string, candidateId: string, options: UploadWaitOptions = {}) {
   const queued = await queueCandidateEvaluation(jobId, candidateId, options.signal);
   if (queued.job_id !== jobId || queued.task_ids?.length !== 1) throw new ApiError("The backend did not confirm a candidate evaluation task.");
   const started = Date.now();
   while (true) {
-    const task = await fetchUploadTask(queued.task_ids[0], options.signal);
+    const task = await retryProcessingRead(() => fetchUploadTask(queued.task_ids[0], options.signal), options);
     options.onProgress?.(task);
     if (task.state === "FAILURE") throw new ApiError(task.error || "AI evaluation failed. The candidate remains available for review.");
     if (task.state === "SUCCESS") {
       if (task.result?.candidate_id !== candidateId || task.result?.evaluation_status !== "COMPLETED" || typeof task.result.match_score !== "number") {
         throw new ApiError("The backend did not return a completed AI score for this candidate.");
       }
-      const candidates = await fetchJobCandidates(jobId);
+      const candidates = await retryProcessingRead(() => fetchJobCandidates(jobId), options);
       const saved = candidates.find(candidate => candidate.id === candidateId);
       if (!saved || typeof saved.matchScore !== "number" || saved.jobId !== jobId) throw new ApiError("The job-specific score has not been saved. Refresh this job to check it.");
       return candidates;

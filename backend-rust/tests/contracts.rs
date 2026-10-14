@@ -111,6 +111,7 @@ fn public_contract_exposes_business_routes_and_cookie_identity() {
     );
     for path in [
         "/api/v1/jobs",
+        "/api/v1/jobs/{job}/candidates/{candidate}/evaluate",
         "/api/v1/candidates/upload-async",
         "/api/v1/migration/import",
         "/api/v1/analytics",
@@ -123,4 +124,23 @@ fn public_contract_exposes_business_routes_and_cookie_identity() {
             .get("/internal/jobs/{id}/result")
             .is_none()
     );
+}
+
+#[test]
+fn submitted_identity_and_role_are_preserved_without_creating_resume_evidence() {
+    let mut profile = json!({"core_skills":["Python"],"role":"Extracted role"});
+    let mut contact = json!({"name":"Extracted name","email":"synthetic@example.test"});
+    ats_backend::jobs::apply_submitted_details(
+        &mut profile,
+        &mut contact,
+        &json!({"_submitted_headline":"Backend Engineer"}),
+        &json!({"_submitted_name":"Synthetic Applicant"}),
+    );
+    assert_eq!(contact["name"], "Synthetic Applicant");
+    assert_eq!(contact["email"], "synthetic@example.test");
+    assert_eq!(profile["role"], "Backend Engineer");
+    assert_eq!(profile["target_headline"], "Backend Engineer");
+    assert_eq!(profile["core_skills"], json!(["Python"]));
+    assert!(profile.get("_submitted_headline").is_none());
+    assert!(profile.get("experience").is_none());
 }

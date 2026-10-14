@@ -657,8 +657,16 @@
                     "format": "binary",
                     "type": "string"
                   },
+                  "headline": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
                   "job_id": {
                     "format": "uuid",
+                    "type": "string"
+                  },
+                  "name": {
+                    "maxLength": 200,
                     "type": "string"
                   }
                 },
@@ -1533,6 +1541,60 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Session required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "404": {
+            "description": "Resource not found in this workspace"
+          },
+          "409": {
+            "description": "Stale revision or conflicting request"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ]
+      }
+    },
+    "/api/v1/jobs/{job}/candidates/{candidate}/evaluate": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "candidate",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {}

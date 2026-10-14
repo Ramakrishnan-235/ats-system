@@ -99,3 +99,7 @@ audit-results/2026-10-13/upload-fix/invalid-resume.pdf
 audit-results/2026-10-13/upload-fix/synthetic-upload-check.pdf
 audit-results/2026-10-13/job-pages/job-applicants.jpg
 audit-results/2026-10-13/job-pages/jobs-list.jpg
+frontend/src/app/jobs/\[id]/page.tsx
+audit-results/2026-10-13/candidate-job-flow/new-candidate-form.jpg
+audit-results/2026-10-13/candidate-job-flow/scored-applicants.jpg
+audit-results/2026-10-13/candidate-job-flow/existing-picker.jpg
