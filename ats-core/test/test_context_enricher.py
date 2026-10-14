@@ -128,6 +128,7 @@ AWS Certified Solutions Architect — Associate
     pg_entity = by_name["PostgreSQL"]
     assert pg_entity["highest_mention_tier"] == "demonstrated_impact"
     assert pg_entity["max_evidence_weight"] == 1.8
+    assert pg_entity["category"] == "database"
 
     # 2. Redis should inherit active role from TechCorp (is_actively_used = True)
     assert "Redis" in by_name
@@ -139,3 +140,69 @@ AWS Certified Solutions Architect — Associate
     assert "AWS" in by_name
     aws_entity = by_name["AWS"]
     assert aws_entity["is_certified"] is True
+
+    # 4. Check category preservation across types (language, framework, database)
+    assert by_name["Python"]["category"] == "language"
+    assert by_name["FastAPI"]["category"] == "framework"
+
+
+def test_enrich_candidate_skills_category_preservation_and_max_date():
+    """
+    P-5 Regression Test:
+    Verify that context enricher preserves skill category from rich_matches
+    (e.g., 'language', 'framework', 'database' instead of defaulting to 'tool')
+    and picks the latest date max(dates) for last_used_date across multiple past roles.
+    """
+    resume_text = """
+Jane Developer
+jane@example.com
+
+EXPERIENCE
+Senior Backend Developer — Alpha Corp
+Jan 2018 — Dec 2019
+• Built microservices using Go and PostgreSQL.
+
+Lead Systems Architect — Beta Systems
+Jan 2020 — Jun 2022
+• Scaled distributed high-throughput pipelines using Go and Redis.
+"""
+
+    experience_items = [
+        {
+            "role": "Senior Backend Developer",
+            "company": "Alpha Corp",
+            "period": "Jan 2018 — Dec 2019",
+            "start_date": "2018-01",
+            "end_date": "2019-12",
+            "is_current_role": False,
+        },
+        {
+            "role": "Lead Systems Architect",
+            "company": "Beta Systems",
+            "period": "Jan 2020 — Jun 2022",
+            "start_date": "2020-01",
+            "end_date": "2022-06",
+            "is_current_role": False,
+        },
+    ]
+
+    enriched = enrich_candidate_skills(
+        raw_text=resume_text,
+        experience_items=experience_items,
+    )
+
+    by_name = {e["canonical_name"]: e for e in enriched}
+
+    # Verify category preservation from rich_matches / taxonomy
+    assert "Go" in by_name
+    go_entity = by_name["Go"]
+    assert go_entity["category"] == "language", f"Expected 'language', got {go_entity['category']}"
+
+    assert "PostgreSQL" in by_name
+    pg_entity = by_name["PostgreSQL"]
+    assert pg_entity["category"] == "database", f"Expected 'database', got {pg_entity['category']}"
+
+    # Verify last_used_date uses max(dates) = "2022-06", NOT the first date "2019-12"
+    assert go_entity["is_actively_used"] is False
+    assert go_entity["last_used_date"] == "2022-06", f"Expected latest date '2022-06', got {go_entity['last_used_date']}"
+

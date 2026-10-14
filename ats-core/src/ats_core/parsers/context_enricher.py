@@ -132,9 +132,13 @@ def enrich_candidate_skills(
 
     # Group mentions by canonical skill name
     mentions_by_skill: dict[str, list[dict[str, Any]]] = {}
+    categories_by_skill: dict[str, str] = {}
 
     for m in rich_matches:
         cname = m["canonical_name"]
+        cat = m.get("category")
+        if cat and cname not in categories_by_skill:
+            categories_by_skill[cname] = cat
         c_start = m["char_start"]
         
         enclosing = next(
@@ -182,6 +186,7 @@ def enrich_candidate_skills(
 
         mention_record = {
             "surface": m["surface"],
+            "category": cat or "tool",
             "section": sec,
             "entry_index": entry_idx,
             "line_number": line_no,
@@ -206,9 +211,17 @@ def enrich_candidate_skills(
     if candidate_skills:
         for s in candidate_skills:
             if s not in mentions_by_skill:
+                cat = categories_by_skill.get(s)
+                if not cat:
+                    cat = next(
+                        (row.get("category") for row in matcher.row_by_id.values() if row.get("canonical_name", "").strip().lower() == s.strip().lower()),
+                        "tool"
+                    )
+                categories_by_skill[s] = cat
                 # Add base entry from skills section
                 mentions_by_skill[s] = [{
                     "surface": s,
+                    "category": cat,
                     "section": "skills",
                     "entry_index": None,
                     "line_number": 1,
@@ -250,12 +263,22 @@ def enrich_candidate_skills(
         
         if not is_active:
             # Find latest end_date
-            dates = [m["end_date"] for m in mentions if m.get("end_date") and m["end_date"] != "Unknown"]
-            last_date = dates[0] if dates else "Recent"
+            dates = [m["end_date"] for m in mentions if m.get("end_date") and m["end_date"] not in ("Unknown", "N/A")]
+            last_date = max(dates) if dates else "Recent"
+
+        # Preserve category from rich_matches / mentions or lookup
+        category = categories_by_skill.get(cname)
+        if not category:
+            category = next((m.get("category") for m in mentions if m.get("category")), None)
+        if not category or category == "tool":
+            category = next(
+                (row.get("category") for row in matcher.row_by_id.values() if row.get("canonical_name", "").strip().lower() == cname.strip().lower()),
+                category or "tool"
+            )
 
         enriched_entities.append({
             "canonical_name": cname,
-            "category": matcher.row_by_id.get(f"skill-{cname.lower()}", {}).get("category", "tool"),
+            "category": category,
             "highest_mention_tier": highest_tier,
             "max_evidence_weight": max_weight,
             "is_certified": has_certification,
