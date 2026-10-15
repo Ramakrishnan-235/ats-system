@@ -3,12 +3,10 @@
 import { SymbolIcon } from "@/components/ui/symbol-icon";
 import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CoreHeader } from "@/components/layout/core-header";
 import { CoreFooter } from "@/components/layout/core-footer";
-import { CandidateReviewModal } from "@/components/dashboard/candidate-review-modal";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { AddCandidateModal } from "@/components/candidate/add-candidate-modal";
 import Image from "next/image";
 import {
   DropdownMenu,
@@ -20,7 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
-import { fetchCandidates, fetchJobs } from "@/lib/api";
+import { fetchCandidates, fetchJobs, getErrorMessage, updateCandidateStage } from "@/lib/api";
 import { CandidateDetail, JobRequisition } from "@/types/ats";
 import {
   Sparkles,
@@ -41,6 +39,7 @@ interface CandidateRosterItem {
   avatar?: string;
   isStarred?: boolean;
   targetJob: string;
+  jobId?: string;
   matchScore?: number | null;
   matchScoreLabel?: string;
   isProcessing?: boolean;
@@ -95,6 +94,9 @@ type CandidateWithMeta = CandidateDetail & {
 };
 
 export default function CandidateDirectoryPage() {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [isMovingStage, setIsMovingStage] = useState(false);
   const [candidates, setCandidates] = useState<CandidateRosterItem[]>([]);
   const [jobs, setJobs] = useState<JobRequisition[]>([]);
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
@@ -109,23 +111,7 @@ export default function CandidateDirectoryPage() {
   const [skillFilter, setSkillFilter] = useState("All");
 
   // Modals
-  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
-  const [reviewCandidate, setReviewCandidate] = useState<{
-    name: string;
-    role: string;
-    req: string;
-  }>({
-    name: "Candidate",
-    role: "Candidate Profile",
-    req: "Active Role",
-  });
-
   const [isAddCandidateOpen, setIsAddCandidateOpen] = useState(false);
-  const [newCandName, setNewCandName] = useState("");
-  const [newCandTitle, setNewCandTitle] = useState("");
-  const [newCandSkills, setNewCandSkills] = useState("");
-  const [newCandExp, setNewCandExp] = useState(6);
-  const [newCandLocation, setNewCandLocation] = useState("London, UK");
 
   // Toast state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -140,10 +126,7 @@ export default function CandidateDirectoryPage() {
             setJobs(liveJobs);
           }
           if (liveCandidates) {
-            const defaultOwners = ["Elena Varga", "Tomas Novak", "Marcus Vance", "Sarah Chen"];
-            const defaultSources = ["Direct Upload", "Job Application", "LinkedIn Sourced", "Referral & Sourced"];
-
-            const mapped: CandidateRosterItem[] = liveCandidates.map((c, idx) => {
+            const mapped: CandidateRosterItem[] = liveCandidates.map((c) => {
               const actualStage = c.stage || "Applied";
               const stageColors = getStageBadgeColor(actualStage);
               const candObj = c as CandidateWithMeta;
@@ -153,7 +136,7 @@ export default function CandidateDirectoryPage() {
                   ? "Job Application"
                   : c.linkedin
                   ? "LinkedIn Sourced"
-                  : defaultSources[idx % defaultSources.length]);
+                  : "Not recorded");
               const sourceDetail =
                 candObj.sourceDetail ||
                 (source === "Job Application"
@@ -161,7 +144,7 @@ export default function CandidateDirectoryPage() {
                   : source === "LinkedIn Sourced"
                   ? "Inbound profile"
                   : "Direct upload");
-              const owner = candObj.owner || defaultOwners[idx % defaultOwners.length];
+              const owner = candObj.owner || "Unassigned";
 
               return {
                 id: c.id,
@@ -169,6 +152,7 @@ export default function CandidateDirectoryPage() {
                 title: c.target_headline || c.role || "Candidate Profile",
                 avatar: c.avatar || undefined,
                 targetJob: c.applied_for_job || "Talent Pool",
+                jobId: c.applied_for_job_id,
                 matchScore: c.scorecard?.overall_match_score ?? null,
                 matchScoreLabel: c.scorecard ? "(Rubric evaluated)" : "(Pending)",
                 stage: actualStage,
@@ -192,7 +176,7 @@ export default function CandidateDirectoryPage() {
         }
       })
       .catch((err) => {
-        console.warn("Could not load candidates/jobs from backend:", err);
+        if (!cancelled) setError(getErrorMessage(err));
       });
 
     return () => {
@@ -342,84 +326,34 @@ export default function CandidateDirectoryPage() {
 
 
 
-  // Quick Action Handler
   const handleQuickAction = (cand: CandidateRosterItem) => {
-    if (cand.actionType === "Review Evidence") {
-      setReviewCandidate({
-        name: cand.name,
-        role: cand.targetJob || "Senior Platform Engineer",
-        req: "Req-204",
+    router.push(`/candidates/${encodeURIComponent(cand.id)}`);
+  };
+
+  const handleBulkMoveStage = async (newStage: string) => {
+    const selected = candidates.filter(candidate => selectedIds[candidate.id]);
+    if (!selected.length || isMovingStage) return;
+    setIsMovingStage(true);
+    setError(null);
+    try {
+      const results = await Promise.allSettled(selected.map(candidate =>
+        updateCandidateStage(candidate.id, newStage, candidate.jobId)));
+      const saved = new Map<string, string>();
+      const failures: string[] = [];
+      results.forEach((result, index) => {
+        if (result.status === "fulfilled") saved.set(selected[index].id, result.value.stage);
+        else failures.push(`${selected[index].name}: ${getErrorMessage(result.reason)}`);
       });
-      setIsReviewModalOpen(true);
-    } else if (cand.actionType === "View Scorecard") {
-      showToast(`Scorecard: ${cand.name} scored ${cand.matchScore}/100 across 4 rubric dimensions`);
-    } else if (cand.actionType === "View Status") {
-      showToast(`Extraction status for ${cand.name}: Resume Parsing in Progress (84% complete)`);
-    } else if (cand.actionType === "Select App") {
-      showToast(`Active applications for ${cand.name}: Sr Platform Eng (78/100), SRE Lead (91/100)`);
-    } else {
-      showToast(`Matching ${cand.name} to Target Job: Senior Platform Engineer...`);
+      setCandidates(previous => previous.map(candidate => {
+        const stage = saved.get(candidate.id);
+        return stage ? { ...candidate, stage, stageColor: getStageBadgeColor(stage).dot } : candidate;
+      }));
+      setSelectedIds(previous => Object.fromEntries(Object.entries(previous).filter(([id]) => !saved.has(id))));
+      if (failures.length) setError(`${saved.size} of ${selected.length} updated. ${failures.join("; ")}`);
+      else showToast(`Moved ${saved.size} candidates to ${newStage}.`);
+    } finally {
+      setIsMovingStage(false);
     }
-  };
-
-  // Bulk actions
-  const handleBulkAssignOwner = (ownerName: string) => {
-    if (selectedCount === 0) {
-      showToast("Select candidates first to assign an owner");
-      return;
-    }
-    setCandidates((prev) =>
-      prev.map((c) => (selectedIds[c.id] ? { ...c, owner: ownerName } : c))
-    );
-    showToast(`✓ Assigned ${ownerName} as owner for ${selectedCount} candidates`);
-  };
-
-  const handleBulkMoveStage = (newStage: string) => {
-    if (selectedCount === 0) {
-      showToast("Select candidates first to move stage");
-      return;
-    }
-    const stageColor = getStageBadgeColor(newStage).dot;
-    setCandidates((prev) =>
-      prev.map((c) =>
-        selectedIds[c.id]
-          ? { ...c, stage: newStage, stageColor }
-          : c
-      )
-    );
-    showToast(`✓ Moved ${selectedCount} candidates to stage: ${newStage}`);
-  };
-
-  // Add Candidate Handler
-  const handleAddCandidate = () => {
-    if (!newCandName.trim()) return;
-    const stageColor = getStageBadgeColor("Applied").dot;
-    const newCand: CandidateRosterItem = {
-      id: `cand-${Date.now()}`,
-      name: newCandName,
-      title: newCandTitle || "Senior Software Engineer",
-      targetJob: "Talent Pool",
-      matchScore: 88,
-      matchScoreLabel: "(Rubric evaluated)",
-      stage: "Applied",
-      stageColor,
-      skills: newCandSkills
-        ? newCandSkills.split(",").map((s) => s.trim())
-        : ["TypeScript", "Distributed Systems"],
-      experienceYears: Number(newCandExp) || 5,
-      location: newCandLocation,
-      locationType: "Hybrid",
-      source: "Manual Ingestion",
-      sourceDetail: "Added by Recruiter",
-      owner: "Elena Varga",
-      actionType: "Review Evidence",
-    };
-    setCandidates((prev) => [newCand, ...prev]);
-    setIsAddCandidateOpen(false);
-    setNewCandName("");
-    setNewCandTitle("");
-    setNewCandSkills("");
-    showToast(`✓ Candidate ${newCand.name} added to roster!`);
   };
 
   // Export CSV
@@ -450,6 +384,7 @@ export default function CandidateDirectoryPage() {
       <main className="w-full pt-16 bg-[#f9f9ff] min-h-[calc(100vh-4rem)]">
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex flex-col w-full gap-6">
+            {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>}
             {/* Toast Notification */}
             {toastMessage && (
               <div className="fixed bottom-6 right-6 z-50 bg-[#131c29] text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-[#6137e0]/40 animate-in fade-in slide-in-from-bottom-3 duration-300">
@@ -1187,42 +1122,14 @@ export default function CandidateDirectoryPage() {
                     </div>
                     <span className="text-[#c5c6cc] font-mono text-xs">·</span>
                     <div className="flex items-center gap-1.5">
-                      {/* Bulk Assign Owner Dropdown */}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            disabled={selectedCount === 0}
-                            className={`px-3 py-1 rounded-md text-xs font-semibold shadow-xs border transition-colors cursor-pointer flex items-center gap-1 ${
-                              selectedCount > 0
-                                ? "bg-white hover:bg-[#eaeefb] text-[#171c25] border-[#dee2ef]"
-                                : "bg-white/50 text-[#75777c] border-[#dee2ef]/40 cursor-not-allowed opacity-60"
-                            }`}
-                            type="button"
-                          >
-                            <span>Assign Owner</span>
-                            <ChevronDown className="w-3 h-3" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="w-48 bg-white border border-[#dee2ef] shadow-lg rounded-xl p-1 z-50">
-                          <DropdownMenuLabel className="text-[11px] font-semibold text-[#75777c] px-2 py-1">Assign Owner</DropdownMenuLabel>
-                          <DropdownMenuSeparator className="bg-[#dee2ef]/60 my-1" />
-                          {availableOwners.filter((o) => o !== "All").map((owner) => (
-                            <DropdownMenuItem
-                              key={owner}
-                              onClick={() => handleBulkAssignOwner(owner)}
-                              className="text-xs py-1.5 px-2 rounded-lg cursor-pointer hover:bg-[#f0f3ff]"
-                            >
-                              {owner}
-                            </DropdownMenuItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-
+                      <button type="button" disabled title="Owner assignment is not supported by the connected backend." className="px-3 py-1 rounded-md text-xs text-zinc-500 border opacity-60 cursor-not-allowed">
+                        Assign Owner (unavailable)
+                      </button>
                       {/* Bulk Move Stage Dropdown */}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button
-                            disabled={selectedCount === 0}
+                            disabled={selectedCount === 0 || isMovingStage}
                             className={`px-3 py-1 rounded-md text-xs font-semibold shadow-xs border transition-colors cursor-pointer flex items-center gap-1 ${
                               selectedCount > 0
                                 ? "bg-white hover:bg-[#eaeefb] text-[#171c25] border-[#dee2ef]"
@@ -1237,10 +1144,11 @@ export default function CandidateDirectoryPage() {
                         <DropdownMenuContent align="start" className="w-48 bg-white border border-[#dee2ef] shadow-lg rounded-xl p-1 z-50">
                           <DropdownMenuLabel className="text-[11px] font-semibold text-[#75777c] px-2 py-1">Move to Stage</DropdownMenuLabel>
                           <DropdownMenuSeparator className="bg-[#dee2ef]/60 my-1" />
-                          {availableStages.filter((s) => s !== "All").map((stage) => (
+                          {["Screening", "Recruiter Review", "Interview", "Offer", "Hired", "Rejected"].map((stage) => (
                             <DropdownMenuItem
                               key={stage}
                               onClick={() => handleBulkMoveStage(stage)}
+                              disabled={isMovingStage}
                               className="text-xs py-1.5 px-2 rounded-lg cursor-pointer hover:bg-[#f0f3ff]"
                             >
                               {stage}
@@ -1249,23 +1157,8 @@ export default function CandidateDirectoryPage() {
                         </DropdownMenuContent>
                       </DropdownMenu>
 
-                      <button
-                        onClick={() => {
-                          if (selectedCount === 0) {
-                            showToast("Select candidates first to send email");
-                            return;
-                          }
-                          showToast(`✓ Email sequence queued for ${selectedCount} candidates`);
-                        }}
-                        className={`px-3 py-1 rounded-md text-xs font-semibold shadow-xs border transition-colors cursor-pointer ${
-                          selectedCount > 0
-                            ? "bg-white hover:bg-[#eaeefb] text-[#171c25] border-[#dee2ef]"
-                            : "bg-white/50 text-[#75777c] border-[#dee2ef]/40 cursor-not-allowed opacity-60"
-                        }`}
-                        type="button"
-                        disabled={selectedCount === 0}
-                      >
-                        Send Email
+                      <button type="button" disabled title="Bulk email is not supported by the connected backend." className="px-3 py-1 rounded-md text-xs text-zinc-500 border opacity-60 cursor-not-allowed">
+                        Send Email (unavailable)
                       </button>
 
                       <button
@@ -1417,93 +1310,7 @@ export default function CandidateDirectoryPage() {
 
       <CoreFooter />
 
-      {/* Candidate Review Modal */}
-      <CandidateReviewModal
-        open={isReviewModalOpen}
-        onOpenChange={setIsReviewModalOpen}
-        candidateName={reviewCandidate.name}
-        roleTitle={reviewCandidate.role}
-        reqCode={reviewCandidate.req}
-      />
-
-      {/* Add Candidate Dialog */}
-      <Dialog open={isAddCandidateOpen} onOpenChange={setIsAddCandidateOpen}>
-        <DialogContent className="max-w-md bg-white rounded-2xl p-6 border border-[#dee2ef]">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold text-[#171c25]">
-              Add Candidate to Talent Roster
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4 my-2 text-xs">
-            <div>
-              <label className="font-bold text-[#171c25] block mb-1">Full Name</label>
-              <Input
-                value={newCandName}
-                onChange={(e) => setNewCandName(e.target.value)}
-                placeholder="e.g. Alex Rivera"
-                className="bg-[#f0f3ff] border-none text-xs"
-              />
-            </div>
-
-            <div>
-              <label className="font-bold text-[#171c25] block mb-1">Current Title & Headline</label>
-              <Input
-                value={newCandTitle}
-                onChange={(e) => setNewCandTitle(e.target.value)}
-                placeholder="e.g. Lead SRE · Cloud Infrastructure"
-                className="bg-[#f0f3ff] border-none text-xs"
-              />
-            </div>
-
-            <div>
-              <label className="font-bold text-[#171c25] block mb-1">Key Skills (comma separated)</label>
-              <Input
-                value={newCandSkills}
-                onChange={(e) => setNewCandSkills(e.target.value)}
-                placeholder="e.g. Go, Kubernetes, Terraform, AWS"
-                className="bg-[#f0f3ff] border-none text-xs"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="font-bold text-[#171c25] block mb-1">Years of Exp</label>
-                <Input
-                  type="number"
-                  value={newCandExp}
-                  onChange={(e) => setNewCandExp(Number(e.target.value))}
-                  className="bg-[#f0f3ff] border-none text-xs"
-                />
-              </div>
-              <div>
-                <label className="font-bold text-[#171c25] block mb-1">Location</label>
-                <Input
-                  value={newCandLocation}
-                  onChange={(e) => setNewCandLocation(e.target.value)}
-                  className="bg-[#f0f3ff] border-none text-xs"
-                />
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter className="mt-4">
-            <Button
-              variant="outline"
-              onClick={() => setIsAddCandidateOpen(false)}
-              className="text-xs"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleAddCandidate}
-              className="bg-[#6137e0] text-white hover:bg-[#7a55fa] text-xs font-semibold"
-            >
-              Add Candidate
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <AddCandidateModal open={isAddCandidateOpen} onOpenChange={setIsAddCandidateOpen} />
     </>
   );
 }
