@@ -22,7 +22,7 @@ PRESENT_TOKENS: set[str] = {
 YEAR_ONLY_REGEX = re.compile(r"^(?:19|20)\d{2}$")
 
 # Regex to detect date range strings (e.g., "May 2021 - Present", "2020 — 2023", "01/2021 to 05/2022")
-DATE_RANGE_SPLIT_REGEX = re.compile(r"\s*(?:[-–—/]|(?:\s+to\s+)|\s+until\s+)\s*", re.IGNORECASE)
+DATE_RANGE_SPLIT_REGEX = re.compile(r"\s*(?:[-–—]|(?:\s+to\s+)|\s+until\s+)\s*", re.IGNORECASE)
 
 
 def normalize_date(raw: str | None, is_current: bool = False) -> str | None:
@@ -78,7 +78,7 @@ def normalize_date(raw: str | None, is_current: bool = False) -> str | None:
 
 def normalize_date_range(raw_range: str) -> tuple[str | None, str | None, bool]:
     """
-    Parses a composite date range string (e.g., 'May 2021 – Present', '2019 - 2022', 'Dec 2024-Jan 2025').
+    Parses a composite date range string (e.g., 'May 2021 – Present', '2019 - 2022', 'Dec 2024-Jan 2025', 'May - Aug 2022').
     Returns: (start_date, end_date, is_current_role)
     """
     if not raw_range:
@@ -86,14 +86,40 @@ def normalize_date_range(raw_range: str) -> tuple[str | None, str | None, bool]:
 
     clean_text = raw_range.strip()
     parts = DATE_RANGE_SPLIT_REGEX.split(clean_text)
+    if len(parts) < 2 and "/" in clean_text:
+        slash_parts = [p.strip() for p in clean_text.split("/") if p.strip()]
+        if len(slash_parts) == 2 and all(YEAR_ONLY_REGEX.fullmatch(p) for p in slash_parts):
+            parts = slash_parts
 
     if len(parts) >= 2:
         start_raw = parts[0].strip()
         end_raw = parts[1].strip()
 
         is_current = any(tok in end_raw.lower() for tok in PRESENT_TOKENS)
-        start_norm = normalize_date(start_raw, is_current=False)
         end_norm = normalize_date(end_raw, is_current=is_current)
+
+        # When start_raw has no 4-digit year and end_date has a parsed year, inherit the year from end_date
+        has_start_year = bool(re.search(r"\b(?:19|20)\d{2}\b", start_raw))
+        end_year = None
+        if end_norm and re.match(r"^(?:19|20)\d{2}", end_norm):
+            end_year = end_norm[:4]
+        elif not is_current:
+            m = re.search(r"\b((?:19|20)\d{2})\b", end_raw)
+            if m:
+                end_year = m.group(1)
+
+        if not has_start_year and end_year:
+            start_norm = normalize_date(f"{start_raw} {end_year}", is_current=False)
+            if start_norm is None:
+                start_norm = normalize_date(start_raw, is_current=False)
+            elif end_norm and start_norm > end_norm:
+                # Handle year-boundary transitions (e.g. "Nov - Feb 2023" -> Nov 2022 to Feb 2023)
+                prev_year = str(int(end_year) - 1)
+                cand_start = normalize_date(f"{start_raw} {prev_year}", is_current=False)
+                if cand_start and cand_start <= end_norm:
+                    start_norm = cand_start
+        else:
+            start_norm = normalize_date(start_raw, is_current=False)
 
         return start_norm, end_norm, is_current
     elif len(parts) == 1:

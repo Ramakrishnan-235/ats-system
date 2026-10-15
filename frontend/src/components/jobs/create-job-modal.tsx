@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -23,7 +23,7 @@ import {
   X,
   ChevronDown,
 } from "lucide-react";
-import { createJobRequisition, getErrorMessage } from "@/lib/api";
+import { createJobRequisition, evaluateJobMatching, getErrorMessage } from "@/lib/api";
 import { JOB_ROLE_DOMAINS, JOB_ROLE_PRESETS, JobRolePreset } from "@/lib/job-role-presets";
 import { DEPARTMENTS } from "@/components/jobs/job-filters";
 import { JobRequisition } from "@/types/ats";
@@ -52,6 +52,24 @@ export function CreateJobModal({
   const [runAiMatch, setRunAiMatch] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [createdJob, setCreatedJob] = useState<JobRequisition | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    // Reset the editable draft when its externally selected preset or dialog session changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSelectedPreset(preset?.title || "");
+    setTitle(preset?.title || "");
+    setDepartment(preset?.department || "Software Engineering");
+    setDescription(preset?.description || "");
+    setSkills(preset ? [...preset.skills] : []);
+    setLocation("Remote");
+    setNewSkillInput("");
+    setIsAddingSkill(false);
+    setRunAiMatch(true);
+    setError(null);
+    setCreatedJob(null);
+  }, [open, preset]);
 
   const applyPreset = (presetTitle: string) => {
     const role = JOB_ROLE_PRESETS.find(role => role.title === presetTitle);
@@ -81,19 +99,27 @@ export function CreateJobModal({
     e.preventDefault();
     setIsSubmitting(true);
     setError(null);
+    let saved = createdJob;
     try {
-      const created = await createJobRequisition({
-        title,
-        department,
-        location,
-        job_description: description,
-        required_skills: skills,
-        run_ai_match: runAiMatch,
-      });
-      if (onJobCreated) onJobCreated(created);
+      if (!saved) {
+        saved = await createJobRequisition({
+          title,
+          department,
+          location,
+          job_description: description,
+          required_skills: skills,
+        });
+        setCreatedJob(saved);
+        onJobCreated?.(saved);
+      }
+      if (runAiMatch) {
+        await evaluateJobMatching({ job_id: saved.id, job_title: saved.title, job_description: saved.job_description });
+      }
       onOpenChange(false);
     } catch (reason) {
-      setError(getErrorMessage(reason));
+      setError(saved
+        ? `Job created, but matching failed: ${getErrorMessage(reason)} Retry matching, or turn off AI Match and finish.`
+        : getErrorMessage(reason));
     } finally {
       setIsSubmitting(false);
     }
@@ -111,6 +137,7 @@ export function CreateJobModal({
 
         <form onSubmit={handleSubmit} className="space-y-5 mt-2">
           {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+          <fieldset disabled={isSubmitting || !!createdJob} className="space-y-5 disabled:opacity-60">
           <div className="space-y-1.5">
             <label htmlFor="job-role-preset" className="text-xs font-semibold text-zinc-600">Role preset</label>
             <select id="job-role-preset" value={selectedPreset} onChange={e => applyPreset(e.target.value)} disabled={isSubmitting}
@@ -308,6 +335,8 @@ export function CreateJobModal({
             </div>
           </div>
 
+          </fieldset>
+
           {/* AI Match Toggle Card */}
           <div className="bg-[#f7f6f2] border border-[#e8e6df] rounded-xl p-3.5 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -315,6 +344,7 @@ export function CreateJobModal({
                 checked={runAiMatch}
                 onCheckedChange={setRunAiMatch}
                 id="ai-match-toggle"
+                disabled={isSubmitting}
               />
               <div>
                 <label
@@ -324,8 +354,7 @@ export function CreateJobModal({
                   Run AI Match on save
                 </label>
                 <p className="text-[11px] text-zinc-500 mt-0.5">
-                  Screens all candidates through the 3-stage pipeline. ~60s · Top
-                  20 evaluated by LLM
+                  Matches workspace candidates against this job and saves their scores.
                 </p>
               </div>
             </div>
@@ -337,6 +366,7 @@ export function CreateJobModal({
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
+              disabled={isSubmitting}
               className="h-9 px-4 text-xs font-medium rounded-xl"
             >
               Cancel
@@ -347,7 +377,7 @@ export function CreateJobModal({
               className="h-9 px-5 text-xs font-semibold rounded-xl bg-gradient-to-r from-[#5046e5] to-[#7c3aed] text-white hover:opacity-95 shadow-md flex items-center gap-1.5"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>{isSubmitting ? "Creating..." : runAiMatch ? "Create & Match" : "Create Job"}</span>
+              <span>{isSubmitting ? createdJob ? "Matching..." : "Creating..." : createdJob ? runAiMatch ? "Retry AI Match" : "Done" : runAiMatch ? "Create & Match" : "Create Job"}</span>
             </Button>
           </div>
         </form>

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CoreHeader } from "@/components/layout/core-header";
 import { CoreFooter } from "@/components/layout/core-footer";
-import { createJobRequisition } from "@/lib/api";
+import { createJobRequisition, getErrorMessage } from "@/lib/api";
 import {
   ChevronRight,
   Sparkles,
@@ -73,6 +73,7 @@ export default function RequisitionStudioPage() {
   // Toast / Publishing State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -122,23 +123,22 @@ export default function RequisitionStudioPage() {
   // Publish requisition handler
   const handlePublish = async () => {
     setIsPublishing(true);
+    setPublishError(null);
+    setToastMessage(null);
     try {
       await createJobRequisition({
         title: jobTitle,
         department,
         location: locationPolicy,
         job_description: missionNarrative,
-        required_skills: ["Go / Golang", "Distributed Systems / gRPC", "Kubernetes", "Kafka Streams"],
+        required_skills: preferredSkills,
       });
       showToast(`✓ Requisition Published: ${jobTitle} (${reqCode})`);
       setTimeout(() => {
         router.push("/jobs");
       }, 1200);
-    } catch {
-      showToast(`✓ Requisition Published: ${jobTitle} (${reqCode})`);
-      setTimeout(() => {
-        router.push("/jobs");
-      }, 1200);
+    } catch (reason) {
+      setPublishError(getErrorMessage(reason));
     } finally {
       setIsPublishing(false);
     }
@@ -151,6 +151,7 @@ export default function RequisitionStudioPage() {
       <main className="w-full pt-16 bg-[#f8f9ff] min-h-[calc(100vh-4rem)]">
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex flex-col w-full pb-16">
+            {publishError && <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{publishError}</p>}
             {/* Toast Notification */}
             {toastMessage && (
               <div className="fixed bottom-6 right-6 z-50 bg-[#131c29] text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-[#6137e0]/40 animate-in fade-in slide-in-from-bottom-3 duration-300">

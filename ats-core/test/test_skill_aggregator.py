@@ -140,3 +140,46 @@ def test_aggregate_skills_scoring_matrix():
     assert aws["years"] >= 3.0
     assert aws["months_since_last_use"] is not None
     assert aws["months_since_last_use"] > 36  # Stale detection
+
+
+def test_aggregate_skills_month_only_start_date():
+    """
+    Verify that skills with date ranges like 'May - Aug 2022' (normalized to
+    '2022-05' and '2022-08') are credited with experience rather than dropped
+    due to inverted intervals.
+    """
+    from ats_core.parsers.normalizers import normalize_date_range
+
+    start, end, is_curr = normalize_date_range("May - Aug 2022")
+    assert start == "2022-05"
+    assert end == "2022-08"
+
+    mentions = [
+        {
+            "canonical_name": "Docker",
+            "skill_id": "skill-docker",
+            "surface": "Docker",
+            "section": "experience",
+            "role": "Backend Intern",
+            "start_date": start,
+            "end_date": end,
+            "is_current_role": is_curr,
+            "mention_tier": "demonstrated",
+            "evidence_weight": 1.6,
+            "is_certified": False,
+        }
+    ]
+
+    ref_date = datetime(2026, 8, 30)
+    db_rows, matrix = aggregate_skill_mentions(
+        mentions=mentions,
+        reference_date=ref_date,
+        candidate_id="cand-test-month-only"
+    )
+
+    assert "docker" in matrix
+    docker = matrix["docker"]
+    # 2022-05-01 to 2022-08-31 is ~123 days (~4 months, ~0.3 years)
+    assert docker["years"] > 0.2
+    assert docker["current"] is False
+

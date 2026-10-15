@@ -65,6 +65,35 @@ def test_normalize_date_range():
     assert end == "2025-01"
     assert is_curr is False
 
+    # Month-only start date inherits parsed year from end date
+    start, end, is_curr = normalize_date_range("May - Aug 2022")
+    assert start == "2022-05"
+    assert end == "2022-08"
+    assert is_curr is False
+
+    start, end, is_curr = normalize_date_range("May – August 2022")
+    assert start == "2022-05"
+    assert end == "2022-08"
+    assert is_curr is False
+
+    # Month-only start crossing year boundary
+    start, end, is_curr = normalize_date_range("Dec - Jan 2025")
+    assert start == "2024-12"
+    assert end == "2025-01"
+    assert is_curr is False
+
+    # MM/YYYY with dash
+    start, end, is_curr = normalize_date_range("05/2021 - 08/2022")
+    assert start == "2021-05"
+    assert end == "2022-08"
+    assert is_curr is False
+
+    # Year-only slash range
+    start, end, is_curr = normalize_date_range("2020 / 2021")
+    assert start == "2020"
+    assert end == "2021"
+    assert is_curr is False
+
 
 # =====================================================================
 # 2. PHONE NUMBER NORMALIZATION TESTS
