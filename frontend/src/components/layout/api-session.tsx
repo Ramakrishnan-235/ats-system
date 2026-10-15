@@ -11,13 +11,12 @@ import {
   signIn,
   signOut,
   registerWorkspace,
-  switchWorkspace,
   getErrorMessage,
   type Session,
 } from "@/lib/api";
 
-// Temporarily disable the login page for local development and preview
-const DISABLE_LOGIN_PAGE = true;
+// Explicit opt-in for local previews; Next.js embeds this value at build time.
+const DISABLE_LOGIN_PAGE = process.env.NEXT_PUBLIC_DISABLE_LOGIN === "true";
 
 const BYPASS_SESSION: Session = {
   user: {
@@ -39,16 +38,16 @@ const BYPASS_SESSION: Session = {
 };
 
 const SessionContext = createContext<{ session: Session | null; disconnect: () => Promise<void> }>({
-  session: BYPASS_SESSION,
+  session: DISABLE_LOGIN_PAGE ? BYPASS_SESSION : null,
   disconnect: async () => {},
 });
 
 export const useSession = () => useContext(SessionContext);
 
 export function ApiSession({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(BYPASS_SESSION);
-  const [loading, setLoading] = useState(false);
-  const [legacyConnected, setLegacyConnected] = useState(true);
+  const [session, setSession] = useState<Session | null>(DISABLE_LOGIN_PAGE ? BYPASS_SESSION : null);
+  const [loading, setLoading] = useState(!legacyBackend && !DISABLE_LOGIN_PAGE);
+  const [legacyConnected, setLegacyConnected] = useState(!requiresApiKey);
   const [key, setKey] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -64,13 +63,18 @@ export function ApiSession({ children }: { children: ReactNode }) {
     if (legacyBackend) return;
     let active = true;
 
-    // Attempt to fetch actual backend session if one exists, but fall back silently
     fetchSession()
       .then((value) => {
-        if (active && value) setSession(value);
+        if (active) setSession(value || (DISABLE_LOGIN_PAGE ? BYPASS_SESSION : null));
       })
-      .catch(() => {
-        // Fall back to bypass session without blocking or showing error
+      .catch((err) => {
+        if (active && !DISABLE_LOGIN_PAGE) {
+          setSession(null);
+          if (!(err instanceof ApiError && err.status === 401)) setError(getErrorMessage(err));
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
 
     fetchAuthConfig()
@@ -110,7 +114,8 @@ export function ApiSession({ children }: { children: ReactNode }) {
         }
         setPassword("");
         const currentSession = await fetchSession();
-        setSession(currentSession || BYPASS_SESSION);
+        if (!currentSession) throw new ApiError("Unable to confirm your session. Sign in again.");
+        setSession(currentSession);
       }
     } catch (err) {
       setError(getErrorMessage(err));
@@ -241,9 +246,8 @@ export function ApiSession({ children }: { children: ReactNode }) {
     }
   }
 
-  // Login is disabled: render children directly with active mock session
   return (
-    <SessionContext.Provider value={{ session: session || BYPASS_SESSION, disconnect }}>
+    <SessionContext.Provider value={{ session: session || (DISABLE_LOGIN_PAGE ? BYPASS_SESSION : null), disconnect }}>
       {error && !DISABLE_LOGIN_PAGE && (
         <p role="alert" className="fixed top-2 left-1/2 -translate-x-1/2 z-50 bg-white border rounded-lg p-3 text-red-700 shadow-md">
           {error}

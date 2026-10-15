@@ -16,6 +16,14 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+Login is enabled by default. For a local UI preview, explicitly set
+`NEXT_PUBLIC_DISABLE_LOGIN=true` in `frontend/.env.local`. This supplies a synthetic
+frontend session; backend authentication still applies. Leave the variable unset
+or set it to `false` for normal sign-in and registration (when enabled by the backend).
+Next.js embeds this setting at build time, so rebuild after changing it. For the
+architecture Compose stack, set it in the Compose environment and rebuild the
+frontend image; Compose passes it as a build argument, defaulting to `false`.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
