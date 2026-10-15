@@ -152,3 +152,28 @@ def test_date_range_regex_variations():
     assert DATE_RANGE_RE.search("2021 — 2023") is not None
     assert DATE_RANGE_RE.search("03/2020 - 05/2022") is not None
     assert DATE_RANGE_RE.search("Spring 2023 – Summer 2023") is not None
+
+
+def test_anchor_skill_c_does_not_falsely_match_cpp_csharp():
+    """Verify skill 'C' does not falsely match 'C++' or 'C#'."""
+    text_cpp_csharp = """
+    EXPERIENCE
+    Game Developer — Studio Inc.
+    2021 – 2023
+    • Built game engine components in C++ and tools in C#.
+    """
+    evidence = anchor_skill_mentions(text_cpp_csharp, ["C", "C++", "C#"])
+    assert len(evidence["C++"]) == 1
+    assert len(evidence["C#"]) == 1
+    assert len(evidence["C"]) == 0
+
+    text_with_c = """
+    EXPERIENCE
+    Embedded Engineer — Embedded Corp.
+    2021 – 2023
+    • Programmed microcontrollers in C and Assembly.
+    """
+    evidence_c = anchor_skill_mentions(text_with_c, ["C", "C++", "C#"])
+    assert len(evidence_c["C"]) == 1
+    assert len(evidence_c["C++"]) == 0
+    assert len(evidence_c["C#"]) == 0

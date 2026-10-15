@@ -213,12 +213,13 @@ class ResumeAnonymizer:
 
         # 3. Scrub phone
         if phone and phone.strip() and phone.strip().upper() != "N/A":
-            redacted = re.sub(rf"(?i)\b{re.escape(phone.strip())}\b", "[PHONE_NUMBER]", redacted)
+            clean_phone = phone.strip()
+            redacted = re.sub(rf"(?i)(?<!\w){re.escape(clean_phone)}(?!\w)", "[PHONE_NUMBER]", redacted)
             # Digits-only phone if len >= 7
             digits = re.sub(r"\D", "", phone)
             if len(digits) >= 7:
                 # Protect date collisions before replacing
-                if not any(digits in y for y in ["19", "20"]):
+                if not (len(digits) == 4 and digits[:2] in ("19", "20")):
                     redacted = re.sub(rf"\b{re.escape(digits)}\b", "[PHONE_NUMBER]", redacted)
         # Protect dates and redact structural phone numbers
         redacted = self._protect_and_redact_phones(redacted)

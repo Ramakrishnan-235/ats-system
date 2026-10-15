@@ -320,8 +320,8 @@ def anchor_skill_mentions(
             if not skill_token:
                 continue
 
-            # Check boundary match
-            pattern = r"(?<!\w)" + re.escape(skill_token) + r"(?!\w)"
+            # Check boundary match (prevent skill 'c' from falsely matching 'c++' or 'c#')
+            pattern = r"(?<!\w)" + re.escape(skill_token) + r"(?![\w+#])"
             if re.search(pattern, line_lower):
                 weight = SECTION_WEIGHTS.get(sec, 0.4)
                 evidence_by_skill[skill].append({

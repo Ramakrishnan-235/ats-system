@@ -137,3 +137,30 @@ def test_sanitize_audit_prompt_preserves_existing_hash_or_empty():
     assert sanitize_audit_prompt("") is None
     assert sanitize_audit_prompt(None) is None
     assert sanitize_audit_prompt("sha256:abc12345") == "sha256:abc12345"
+
+
+def test_anonymizer_redacts_e164_phone_with_plus_sign():
+    """Verify E.164 phone number starting with + after whitespace is redacted without \\b boundary failure."""
+    anonymizer = ResumeAnonymizer()
+    raw = "Candidate Profile\nPhone: +919876543210\nLocation: Bangalore"
+    phone_e164 = "+919876543210"
+
+    redacted = anonymizer.anonymize(raw, known_phone=phone_e164)
+    assert "+919876543210" not in redacted
+    assert "[PHONE_NUMBER]" in redacted
+
+    is_clean, leaks = anonymizer.check_preflight_leak(redacted, phone=phone_e164)
+    assert is_clean
+    assert leaks == []
+
+
+def test_anonymizer_protects_4_digit_years_from_phone_redaction():
+    """Verify phone digit redaction preserves 4-digit years like 2022 and 1999."""
+    anonymizer = ResumeAnonymizer()
+    raw = "Graduated in 2022. Earlier worked in 1999. Contact: 9876543210."
+    redacted = anonymizer.anonymize(raw, known_phone="9876543210")
+
+    assert "9876543210" not in redacted
+    assert "[PHONE_NUMBER]" in redacted
+    assert "2022" in redacted
+    assert "1999" in redacted

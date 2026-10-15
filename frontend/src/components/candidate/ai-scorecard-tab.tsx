@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Sparkles,
   AlertTriangle,
@@ -36,30 +36,56 @@ export function AIScorecardTab({ candidate, onSelectCitation }: AIScorecardTabPr
   const [notes, setNotes] = useState<TeamNote[]>(scorecard.team_notes || []);
   const [newNoteText, setNewNoteText] = useState("");
   const [isSubmittingNote, setIsSubmittingNote] = useState(false);
+  const scopeVersion = useRef(0);
+
+  useEffect(() => {
+    // Synchronize the editable note list with newly fetched scorecard data.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNotes(scorecard.team_notes || []);
+  }, [candidate.id, candidate.applied_for_job_id, scorecard.team_notes]);
+
+  useEffect(() => {
+    scopeVersion.current += 1;
+    // A new candidate/application starts a fresh draft and request state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNewNoteText("");
+    setError(null);
+    setIsSubmittingNote(false);
+    return () => { scopeVersion.current += 1; };
+  }, [candidate.id, candidate.applied_for_job_id]);
 
   const handleSendNote = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newNoteText.trim()) return;
+    if (!newNoteText.trim() || isSubmittingNote) return;
 
+    const version = scopeVersion.current;
     setIsSubmittingNote(true);
+    setError(null);
     try {
       const added = await addCandidateNote(candidate.id, newNoteText);
-      setNotes(previous => [...previous, added]);
+      if (version !== scopeVersion.current) return;
+      setNotes(previous => previous.some(note => note.id === added.id) ? previous : [...previous, added]);
       setError(null);
       setNewNoteText("");
+    } catch (reason) {
+      if (version === scopeVersion.current) setError(getErrorMessage(reason));
     } finally {
-      setIsSubmittingNote(false);
+      if (version === scopeVersion.current) setIsSubmittingNote(false);
     }
   };
 
   const handleCitationClick = async (cat: typeof scorecard.categories[0]) => {
     if (!onSelectCitation || !cat.quote) return;
+    const version = scopeVersion.current;
     try {
       const result = cat.citation_location ? { found: true, location: cat.citation_location } : await locateCandidateCitation(candidate.id, cat.quote);
+      if (version !== scopeVersion.current) return;
       if (!result.found || !result.location) { setError("This quote could not be located in the original resume."); return; }
       setError(null);
       onSelectCitation({ ...result.location, category_name: cat.name });
-    } catch (reason) { setError(getErrorMessage(reason)); }
+    } catch (reason) {
+      if (version === scopeVersion.current) setError(getErrorMessage(reason));
+    }
   };
 
   return (
@@ -178,7 +204,7 @@ export function AIScorecardTab({ candidate, onSelectCitation }: AIScorecardTabPr
         })}
       </div>
 
-      {/* 3. Risk Flags & Suggested Questions Grid */}
+      {/* 3. Risks, Improvements & Interview Questions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Risk Flags */}
         <div className="bg-[#fff7f7] rounded-2xl border border-red-200/80 p-5 shadow-xs space-y-3">
@@ -198,8 +224,9 @@ export function AIScorecardTab({ candidate, onSelectCitation }: AIScorecardTabPr
           </div>
         </div>
 
-        {/* Suggested Improvements / Areas for Improvement */}
-        <div className="bg-white rounded-2xl border border-zinc-200/80 p-5 shadow-xs space-y-3">
+        {/* Suggested Improvements */}
+        {!!scorecard.suggested_improvements?.length && (
+        <section aria-label="Areas for improvement" className="bg-white rounded-2xl border border-zinc-200/80 p-5 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-[11px] font-bold tracking-wider text-zinc-800 uppercase">
               <Sparkles className="w-4 h-4 text-amber-600" />
@@ -210,10 +237,7 @@ export function AIScorecardTab({ candidate, onSelectCitation }: AIScorecardTabPr
             </span>
           </div>
           <div className="space-y-2.5">
-            {((scorecard.suggested_improvements && scorecard.suggested_improvements.length > 0)
-              ? scorecard.suggested_improvements
-              : scorecard.suggested_questions
-            ).map((item, i) => (
+            {scorecard.suggested_improvements.map((item, i) => (
               <div
                 key={i}
                 className="text-xs text-zinc-700 leading-relaxed font-normal flex items-start gap-2 p-2 bg-zinc-50/60 rounded-lg border border-zinc-100"
@@ -225,7 +249,25 @@ export function AIScorecardTab({ candidate, onSelectCitation }: AIScorecardTabPr
               </div>
             ))}
           </div>
-        </div>
+        </section>
+        )}
+
+        {!!scorecard.suggested_questions?.length && (
+          <section aria-label="Suggested interview questions" className="bg-white rounded-2xl border border-zinc-200/80 p-5 shadow-xs space-y-3">
+            <div className="flex items-center gap-2 text-[11px] font-bold tracking-wider text-zinc-800 uppercase">
+              <MessageSquareCode className="w-4 h-4 text-zinc-600" />
+              <span>SUGGESTED INTERVIEW QUESTIONS</span>
+            </div>
+            <div className="space-y-2.5">
+              {scorecard.suggested_questions.map((question, i) => (
+                <div key={i} className="text-xs text-zinc-700 leading-relaxed flex items-start gap-2 p-2 bg-zinc-50/60 rounded-lg border border-zinc-100">
+                  <span className="font-semibold text-zinc-900 shrink-0 select-none">{question.match(/^\d+\./) ? "" : `${i + 1}.`}</span>
+                  <span className="flex-1">{question}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
 
       {/* 4. Team Notes Section */}
@@ -272,6 +314,7 @@ export function AIScorecardTab({ candidate, onSelectCitation }: AIScorecardTabPr
           <div className="border border-zinc-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-zinc-950">
             <textarea
               value={newNoteText}
+              disabled={isSubmittingNote}
               onChange={(e) => setNewNoteText(e.target.value)}
               placeholder="Add a note or @mention someone..."
               rows={2}
