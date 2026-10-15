@@ -505,7 +505,8 @@ async def match_and_evaluate_candidates(
         if not allow_pii and "metadata" in item_copy:
             meta_copy = dict(item_copy["metadata"])
             cid_str = str(item_copy.get("candidate_id", ""))
-            meta_copy["name"] = CANDIDATES_STORE.get(cid_str, {}).get("anonymized_name") or f"Candidate #{cid_str[:8]}"
+            cand_rec = get_candidate_from_store(cid_str) or {}
+            meta_copy["name"] = cand_rec.get("anonymized_name") or f"Candidate #{cid_str[:8]}"
             item_copy["metadata"] = meta_copy
         response_evaluations.append(item_copy)
 
@@ -513,7 +514,7 @@ async def match_and_evaluate_candidates(
     for c in updated_job_candidates:
         c_copy = dict(c)
         if not allow_pii:
-            cand_rec = CANDIDATES_STORE.get(c_copy["id"], {})
+            cand_rec = get_candidate_from_store(c_copy["id"]) or {}
             c_copy["name"] = cand_rec.get("anonymized_name") or f"Candidate #{str(c_copy['id'])[:8]}"
             c_copy["avatar"] = "CD"
             c_copy["isImageAvatar"] = False

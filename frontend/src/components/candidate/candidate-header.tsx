@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, XCircle, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { CandidateDetail } from "@/types/ats";
+import type { CandidateDetail } from "@/types/ats";
+
+const PIPELINE_STAGES = ["New", "Screening", "Recruiter Review", "Interview", "Offer", "Hired"];
 
 interface CandidateHeaderProps {
   candidate: CandidateDetail;
@@ -16,11 +16,12 @@ export function CandidateHeader({
   candidate,
   onStageChange,
 }: CandidateHeaderProps) {
-  const currentStage = candidate.stage || "Contacted";
+  const currentStage = candidate.stage || "Unassigned";
+  const stageIndex = PIPELINE_STAGES.indexOf(currentStage);
+  const nextStage = stageIndex >= 0 ? PIPELINE_STAGES[stageIndex + 1] : undefined;
 
   const handleAdvance = () => {
-    const nextStage = currentStage === "Interviewing" ? "Negotiation" : "Offered";
-    if (onStageChange) onStageChange(nextStage);
+    if (nextStage && onStageChange) onStageChange(nextStage);
   };
 
   const handleReject = () => {
@@ -77,6 +78,7 @@ export function CandidateHeader({
           variant="pill"
           size="sm"
           onClick={handleAdvance}
+          disabled={!nextStage || !onStageChange}
           className="text-xs px-5 gap-1.5 shadow-sm"
         >
           <span>Advance Stage</span>

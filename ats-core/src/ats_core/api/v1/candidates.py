@@ -30,7 +30,7 @@ logger = logging.getLogger("ats.api.candidates")
 
 router = APIRouter(prefix="/candidates", tags=["Candidates & Evaluations"])
 
-VALID_CANDIDATE_STAGES: set[str] = {"Screening", "Interview", "Qualified", "Offer", "Hired", "Rejected"}
+VALID_CANDIDATE_STAGES: set[str] = {"Screening", "Recruiter Review", "Interview", "Qualified", "Offer", "Hired", "Rejected"}
 
 MAX_CANDIDATES_STORE: int = int(os.getenv("ATS_MAX_CANDIDATES_STORE", "5000"))
 MAX_UPLOAD_TASKS: int = int(os.getenv("ATS_MAX_UPLOAD_TASKS", "1000"))
@@ -912,7 +912,7 @@ async def upload_resume_async(
         )
         task_info = UPLOAD_TASKS_STORE.get(task_id, {})
         processing_failed = (task_info.get("state") == "FAILURE")
-        parsed_candidate = CANDIDATES_STORE.get(candidate_id, {})
+        parsed_candidate = get_candidate_from_store(candidate_id) or {}
         final_score = parsed_candidate.get("scorecard", {}).get("overall_match_score")
         candidate_name = parsed_candidate.get("name", safe_filename.replace(".pdf", ""))
 

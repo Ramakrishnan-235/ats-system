@@ -573,6 +573,19 @@ def test_posting_cannot_fabricate_recruiter_assessment_score(api):
     assert job_cand["quote"] == ""
 
 
+def test_candidate_detail_pipeline_sequence_is_accepted(api, monkeypatch):
+    monkeypatch.setitem(sys.modules, "ats_core.db.store_sync", SimpleNamespace(
+        sync_candidate_to_db=lambda candidate: None,
+    ))
+    candidate = {"id": "cand-sequence", "name": "Test Candidate", "stage": "New"}
+    candidates.CANDIDATES_STORE[candidate["id"]] = candidate
+    for stage in ("Screening", "Recruiter Review", "Interview", "Offer", "Hired"):
+        response = api.patch(f"/api/v1/candidates/{candidate['id']}/stage", params={"new_stage": stage})
+        assert response.status_code == 200, response.text
+        assert response.json()["stage"] == stage
+        assert candidate["stage"] == stage
+
+
 def test_invalid_candidate_stage_rejected(api):
     response = api.post("/api/v1/jobs/job-open/candidates", json={
         "name": "Valid Candidate",
