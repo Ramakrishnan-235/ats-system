@@ -1128,6 +1128,7 @@ async def add_job_candidate(request: Request, job_id: str, candidate: JobCandida
 
     from ats_core.api.v1.candidates import (
         CANDIDATES_STORE,
+        get_candidate_from_store,
         is_generic_or_error_headline,
         is_masked_or_anonymous_name,
         register_candidate_profile,
@@ -1135,12 +1136,19 @@ async def add_job_candidate(request: Request, job_id: str, candidate: JobCandida
 
     if candidate.id and candidate.id.strip():
         target_id = candidate.id.strip()
-        cand_rec = CANDIDATES_STORE.get(target_id)
+        cand_rec = get_candidate_from_store(target_id)
+        if not cand_rec:
+            try:
+                from ats_core.db.store_sync import sync_candidate_by_id_from_db
+                cand_rec = sync_candidate_by_id_from_db(target_id)
+            except Exception as e:
+                logger.debug("Could not sync candidate %s from DB: %s", target_id, e)
         if not cand_rec:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Candidate with ID '{candidate.id}' not found.",
             )
+        target_id = cand_rec.get("id") or target_id
         is_new_candidate = False
     else:
         target_id = f"cand-{uuid.uuid4().hex}"
@@ -1333,13 +1341,14 @@ async def update_job_candidate_stage(request: Request, job_id: str, candidate_id
     if not matched_candidate:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidate not found on this job")
 
-    from ats_core.api.v1.candidates import CANDIDATES_STORE
-    if candidate_id in CANDIDATES_STORE:
-        CANDIDATES_STORE[candidate_id]["stage"] = new_stage
-        CANDIDATES_STORE[candidate_id]["status"] = new_stage
+    from ats_core.api.v1.candidates import CANDIDATES_STORE, get_candidate_from_store
+    cand_in_store = get_candidate_from_store(candidate_id)
+    if cand_in_store:
+        cand_in_store["stage"] = clean_stage
+        cand_in_store["status"] = clean_stage
         try:
             from ats_core.db.store_sync import sync_candidate_to_db
-            sync_candidate_to_db(CANDIDATES_STORE[candidate_id])
+            sync_candidate_to_db(cand_in_store)
         except Exception as e:
             logger.debug("Could not sync candidate stage to DB: %s", e)
 

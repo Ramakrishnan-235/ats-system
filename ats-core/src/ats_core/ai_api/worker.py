@@ -16,6 +16,7 @@ from celery import Celery
 from dotenv import load_dotenv
 
 from ats_core.ai_api.contracts import AIResult
+from ats_core.evidence import strip_privacy_markers
 
 load_dotenv(Path(__file__).resolve().parents[3] / ".env", override=False)
 logger = logging.getLogger(__name__)
@@ -59,7 +60,7 @@ def sanitize_fields(value: Any, contact: dict):
 
 def scoring_dossier(text: str, profile: dict) -> str:
     """Give the scorer technical evidence without service-generated PII markers."""
-    clean = re.sub(r"\[(?:CANDIDATE_NAME|EMAIL_ADDRESS|PHONE_NUMBER|LOCATION|REDACTED)\]", "", text)
+    clean = strip_privacy_markers(text)
     clean = "\n".join(line for line in clean.splitlines() if re.search(r"\w", line))
     # The parser's extracted skills retain evidence that PII recognition may mask
     # in prose (for example a tool incorrectly recognized as a person's name).
@@ -115,7 +116,10 @@ def compute_result(payload: dict, document: bytes | None) -> AIResult:
             profile=payload["profile"],
             sanitized_text=payload["sanitized_text"],
         )
-    if os.getenv("ATS_AI_ENABLE_EMBEDDINGS", "true").lower() == "true":
+    if (
+        payload["operation"] == "ingest"
+        and os.getenv("ATS_AI_ENABLE_EMBEDDINGS", "true").lower() == "true"
+    ):
         try:
             from ats_core.ai_api.app import embedder
 

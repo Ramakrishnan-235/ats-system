@@ -58,7 +58,9 @@ def sync_candidates_to_retriever(retriever, job_id: str | None = None) -> int:
     # 1. Gather all candidates from in-memory CANDIDATES_STORE
     for cid, cand in CANDIDATES_STORE.items():
         if cid and isinstance(cand, dict):
-            gathered[str(cid)] = cand
+            actual_id = cand.get("id") or str(cid)
+            if actual_id not in gathered and str(cid) not in gathered:
+                gathered[actual_id] = cand
 
     # 2. Gather candidates from in-memory JOB_CANDIDATES_STORE
     for j_id, j_cands in JOB_CANDIDATES_STORE.items():
@@ -83,10 +85,11 @@ def sync_candidates_to_retriever(retriever, job_id: str | None = None) -> int:
         with get_session_factory()() as session:
             db_candidates = session.query(Candidate).all()
             for db_c in db_candidates:
-                cid = str(db_c.id)
-                if cid not in gathered:
-                    gathered[cid] = {
-                        "id": cid,
+                cand_key = f"cand-{db_c.id.hex}"
+                str_id = str(db_c.id)
+                if cand_key not in gathered and str_id not in gathered:
+                    gathered[cand_key] = {
+                        "id": cand_key,
                         "name": db_c.anonymized_name,
                         "target_headline": db_c.target_headline,
                         "core_skills": db_c.core_skills or [],
@@ -235,7 +238,16 @@ async def match_and_evaluate_candidates(
     # Fallback to direct candidate pool if hybrid search returns empty but store has candidates
     if not stage1_candidates:
         from ats_core.api.v1.candidates import CANDIDATES_STORE
-        all_store_cands = list(CANDIDATES_STORE.values())
+        seen_store_ids: set[str] = set()
+        all_store_cands = []
+        for c in CANDIDATES_STORE.values():
+            if isinstance(c, dict):
+                cid = str(c.get("id"))
+                if cid:
+                    if cid in seen_store_ids:
+                        continue
+                    seen_store_ids.add(cid)
+                all_store_cands.append(c)
         if all_store_cands:
             logger.info("Hybrid search returned 0 candidates, using %d store candidates directly.", len(all_store_cands))
             stage1_candidates = []
@@ -381,7 +393,7 @@ async def match_and_evaluate_candidates(
     # -------------------------------------------------------------------------
     # STAGE 4: Update Candidate Scorecards & Job Pipeline
     # -------------------------------------------------------------------------
-    from ats_core.api.v1.candidates import CANDIDATES_STORE
+    from ats_core.api.v1.candidates import CANDIDATES_STORE, get_candidate_from_store
     from ats_core.api.v1.jobs import JOB_CANDIDATES_STORE, JOBS_STORE
 
     target_job_id = request.job_id
@@ -400,8 +412,8 @@ async def match_and_evaluate_candidates(
         tier_label = f"{tier} Match" if "Match" not in str(tier) else str(tier)
 
         # Update candidate scorecard in CANDIDATES_STORE
-        if cid in CANDIDATES_STORE:
-            cand = CANDIDATES_STORE[cid]
+        cand = get_candidate_from_store(cid)
+        if cand:
             if target_job_id:
                 cand["applied_for_job_id"] = target_job_id
                 if target_job_id in JOBS_STORE:
@@ -431,7 +443,7 @@ async def match_and_evaluate_candidates(
             scorecard["suggested_questions"] = eval_data.get("recommended_interview_questions", [])
 
         # Build JobCandidate item
-        cand_rec = CANDIDATES_STORE.get(cid, {})
+        cand_rec = get_candidate_from_store(cid) or {}
         name = cand_rec.get("name") or item.get("metadata", {}).get("name") or f"Candidate #{cid[-6:]}"
         headline = cand_rec.get("target_headline") or item.get("metadata", {}).get("title") or request.job_title
         initials = "".join([part[0] for part in name.split()[:2]]).upper() or "CD"

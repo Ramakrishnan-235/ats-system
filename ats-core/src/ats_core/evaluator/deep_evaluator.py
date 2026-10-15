@@ -16,6 +16,7 @@ from ats_core.evaluator.langsmith_tracker import (
     get_run_url,
     log_evaluation_feedback,
 )
+from ats_core.evidence import is_grounded_quote
 from ats_core.llm.client import get_llm_config, get_openrouter_chat_model, get_structured_llm
 from ats_core.llm.sanitizer import (
     ADVERSARIAL_DIRECTIVES_PATTERN,
@@ -257,14 +258,13 @@ Generate the complete structured evaluation report adhering strictly to the sche
 
             # Citation coordinates are ground truth only when located in uploaded PDF
             citation_source = candidate_profile_text if citation_source_text is None else citation_source_text
-            source = " ".join(citation_source.split())
             for criterion in report.criteria_breakdown:
                 criterion.citation_location = None
-                if criterion.verbatim_citation:
-                    quote = " ".join(criterion.verbatim_citation.split())
-                    if not quote or quote not in source:
-                        criterion.verbatim_citation = None
-                        logger.warning("Dropped an ungrounded evaluation citation for candidate %s", candidate_id)
+                if criterion.verbatim_citation and not is_grounded_quote(
+                    criterion.verbatim_citation, citation_source
+                ):
+                    criterion.verbatim_citation = None
+                    logger.warning("Dropped an ungrounded evaluation citation for candidate %s", candidate_id)
 
             report.qualification_tier = (
                 QualificationTier.STRONG_FIT if report.overall_match_score >= 80

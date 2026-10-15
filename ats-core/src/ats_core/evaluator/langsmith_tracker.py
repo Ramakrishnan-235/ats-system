@@ -22,6 +22,8 @@ import os
 import threading
 from typing import Any
 
+from ats_core.evidence import normalize_for_grounding
+
 logger = logging.getLogger("ats.evaluator.langsmith")
 
 _client_instance: Any | None = None
@@ -234,7 +236,7 @@ def compute_citation_validity(
     Checks how many citations produced by the model are genuinely present
     in the candidate resume text.
     """
-    cleaned_source = " ".join(source_text.split()).lower() if source_text else ""
+    cleaned_source = normalize_for_grounding(source_text).lower() if source_text else ""
     total_citations = 0
     grounded_citations = 0
 
@@ -245,8 +247,8 @@ def compute_citation_validity(
 
         if citation and str(citation).strip():
             total_citations += 1
-            cleaned_citation = " ".join(str(citation).split()).lower()
-            if cleaned_citation in cleaned_source:
+            cleaned_citation = normalize_for_grounding(str(citation)).lower()
+            if cleaned_citation and cleaned_citation in cleaned_source:
                 grounded_citations += 1
 
     validity_rate = (

@@ -72,7 +72,16 @@ async def get_dashboard_stats(request: Request, include_pii: bool = Query(False)
     from ats_core.api.v1.candidates import CANDIDATES_STORE, mask_candidate_pii
     from ats_core.api.v1.jobs import JOBS_STORE
 
-    cand_list = list(CANDIDATES_STORE.values())
+    seen_ids: set[str] = set()
+    cand_list: list[dict[str, Any]] = []
+    for c in CANDIDATES_STORE.values():
+        if isinstance(c, dict):
+            cid = c.get("id")
+            if cid:
+                if cid in seen_ids:
+                    continue
+                seen_ids.add(cid)
+            cand_list.append(c)
     total_candidates = len(cand_list)
     active_jobs = sum(job.get("status") == "OPEN" for job in JOBS_STORE.values())
     evaluated_scores = [c.get("scorecard", {}).get("overall_match_score") for c in cand_list

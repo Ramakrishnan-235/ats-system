@@ -53,6 +53,76 @@ def prune_candidates_store() -> None:
         del CANDIDATES_STORE[oldest_key]
 
 
+def get_candidate_key_in_store(
+    candidate_id: str,
+    store: dict[str, dict[str, Any]] | None = None,
+) -> str | None:
+    """
+    Resolve the matching key in CANDIDATES_STORE for candidate_id.
+
+    Resolves:
+    - Direct key match (e.g. canonical key f"cand-{hex}" or exact custom key)
+    - Raw UUID string with dashes (e.g. "550e8400-e29b-41d4-a716-446655440000")
+    - Raw 32-char hex string (e.g. "550e8400e29b41d4a716446655440000")
+    - Prefixed UUID with dashes (e.g. "cand-550e8400-e29b-41d4-a716-446655440000")
+    - Custom IDs with or without "cand-" prefix (e.g. "cand-db-001" vs "db-001")
+    """
+    if not candidate_id or not isinstance(candidate_id, str):
+        return None
+    if store is None:
+        store = CANDIDATES_STORE
+
+    # 1. Exact match
+    if candidate_id in store:
+        return candidate_id
+
+    s = candidate_id.strip()
+    if s in store:
+        return s
+
+    # 2. Try UUID-based resolution to canonical f"cand-{u.hex}"
+    raw = s[5:] if s.startswith("cand-") else s
+    try:
+        u = uuid.UUID(raw)
+        canonical_key = f"cand-{u.hex}"
+        if canonical_key in store:
+            return canonical_key
+        str_key = str(u)
+        if str_key in store:
+            return str_key
+    except (ValueError, AttributeError):
+        pass
+
+    # 3. Try toggling "cand-" prefix
+    if s.startswith("cand-"):
+        alt_key = s[5:]
+    else:
+        alt_key = f"cand-{s}"
+    if alt_key in store:
+        return alt_key
+
+    # 4. Check if any candidate in store has matching "id" field
+    for k, v in store.items():
+        if isinstance(v, dict) and v.get("id") == candidate_id:
+            return k
+
+    return None
+
+
+def get_candidate_from_store(
+    candidate_id: str,
+    store: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
+    """
+    Look up a candidate in CANDIDATES_STORE resolving canonical (f"cand-{hex}"),
+    raw UUID strings (with or without dashes), and alternate key formats.
+    """
+    if store is None:
+        store = CANDIDATES_STORE
+    key = get_candidate_key_in_store(candidate_id, store=store)
+    return store.get(key) if key else None
+
+
 def prune_upload_tasks() -> None:
     """Bounded task store eviction to prevent unlimited memory growth."""
     while len(UPLOAD_TASKS_STORE) >= MAX_UPLOAD_TASKS:
@@ -136,7 +206,7 @@ def register_candidate_profile(
 ) -> dict[str, Any]:
     """Register supplied facts without inventing employment history or AI assessments."""
     cand_id = cand_dict.get("id") or f"cand-{uuid.uuid4().hex}"
-    existing = CANDIDATES_STORE.get(cand_id)
+    existing = get_candidate_from_store(cand_id)
     if existing:
         # Existing candidate already in repository: preserve canonical identity, stage, and evaluation
         if job_id and not existing.get("applied_for_job_id"):
@@ -250,7 +320,17 @@ async def list_candidates(
     except Exception as e:
         logger.debug("Could not sync candidates from DB: %s", e)
 
-    candidates = list(CANDIDATES_STORE.values())
+    seen_ids: set[str] = set()
+    deduped_candidates: list[dict[str, Any]] = []
+    for c in CANDIDATES_STORE.values():
+        if isinstance(c, dict):
+            cid = c.get("id")
+            if cid:
+                if cid in seen_ids:
+                    continue
+                seen_ids.add(cid)
+            deduped_candidates.append(c)
+    candidates = deduped_candidates
 
     if stage and stage.upper() != "ALL":
         candidates = [c for c in candidates if c.get("stage", "").lower() == stage.lower()]
@@ -283,10 +363,7 @@ async def get_candidate(
     candidate_id: str,
     include_pii: bool = Query(False, description="Set to true only when authorized to view unmasked PII")
 ):
-    target = CANDIDATES_STORE.get(candidate_id)
-    if not target:
-        alt_id = candidate_id.replace("cand-", "")
-        target = CANDIDATES_STORE.get(alt_id)
+    target = get_candidate_from_store(candidate_id)
 
     if not target:
         try:
@@ -311,36 +388,37 @@ async def get_candidate(
 
 @router.get("/{candidate_id}/scorecard")
 async def get_candidate_scorecard(candidate_id: str):
-    if candidate_id not in CANDIDATES_STORE:
+    cand = get_candidate_from_store(candidate_id)
+    if not cand:
         try:
             from ats_core.db.store_sync import sync_candidate_by_id_from_db
-            sync_candidate_by_id_from_db(candidate_id)
+            cand = sync_candidate_by_id_from_db(candidate_id)
         except Exception as e:
             logger.debug("Could not sync candidate %s from DB: %s", candidate_id, e)
 
-    if candidate_id not in CANDIDATES_STORE:
+    if not cand:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Candidate with ID '{candidate_id}' not found."
         )
-    return mask_candidate_pii(CANDIDATES_STORE[candidate_id]).get("scorecard", {})
+    return mask_candidate_pii(cand).get("scorecard", {})
 
 
 @router.post("/{candidate_id}/notes")
 async def add_candidate_note(request: Request, candidate_id: str, note: NoteCreateRequest):
-    if candidate_id not in CANDIDATES_STORE:
+    cand = get_candidate_from_store(candidate_id)
+    if not cand:
         try:
             from ats_core.db.store_sync import sync_candidate_by_id_from_db
-            sync_candidate_by_id_from_db(candidate_id)
+            cand = sync_candidate_by_id_from_db(candidate_id)
         except Exception as e:
             logger.debug("Could not sync candidate %s from DB: %s", candidate_id, e)
 
-    if candidate_id not in CANDIDATES_STORE:
+    if not cand:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Candidate with ID '{candidate_id}' not found."
         )
-    cand = CANDIDATES_STORE[candidate_id]
 
     # Anti-spoofing: enforce authenticated actor identity if present
     user = get_current_user(request)
@@ -384,19 +462,19 @@ async def update_candidate_stage(candidate_id: str, new_stage: str = Query(...))
             detail="Invalid candidate stage"
         )
 
-    if candidate_id not in CANDIDATES_STORE:
+    cand = get_candidate_from_store(candidate_id)
+    if not cand:
         try:
             from ats_core.db.store_sync import sync_candidate_by_id_from_db
-            sync_candidate_by_id_from_db(candidate_id)
+            cand = sync_candidate_by_id_from_db(candidate_id)
         except Exception as e:
             logger.debug("Could not sync candidate %s from DB: %s", candidate_id, e)
 
-    if candidate_id not in CANDIDATES_STORE:
+    if not cand:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Candidate with ID '{candidate_id}' not found."
         )
-    cand = CANDIDATES_STORE[candidate_id]
     cand["stage"] = clean_stage
     cand["status"] = clean_stage
 
@@ -406,7 +484,7 @@ async def update_candidate_stage(candidate_id: str, new_stage: str = Query(...))
     except Exception as e:
         logger.debug("Could not persist candidate stage to DB: %s", e)
 
-    return {"status": "SUCCESS", "candidate_id": candidate_id, "stage": clean_stage}
+    return {"status": "SUCCESS", "candidate_id": cand.get("id") or candidate_id, "stage": clean_stage}
 
 
 async def _process_resume_pipeline(
@@ -674,8 +752,9 @@ async def _process_resume_pipeline(
                 ])
 
         try:
-            from ats_core.api.v1.match import sync_candidates_to_retriever
-            sync_candidates_to_retriever()
+            from ats_core.api.v1.match import get_retriever, sync_candidates_to_retriever
+            retriever = await run_in_threadpool(get_retriever)
+            await run_in_threadpool(sync_candidates_to_retriever, retriever)
         except Exception as sync_err:
             logger.debug("Retriever sync on upload: %s", sync_err)
 
@@ -949,11 +1028,23 @@ class LocateCitationRequest(BaseModel):
 
 
 def _get_staged_resume_path(candidate_id: str):
-    if candidate_id not in CANDIDATES_STORE:
+    cand = get_candidate_from_store(candidate_id)
+    if not cand:
+        try:
+            from ats_core.db.store_sync import sync_candidate_by_id_from_db
+            cand = sync_candidate_by_id_from_db(candidate_id)
+        except Exception as e:
+            logger.debug("Could not sync candidate %s from DB: %s", candidate_id, e)
+    if not cand:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Candidate not found.")
+    canonical_id = cand.get("id") or candidate_id
     try:
-        path = resume_path(candidate_id)
+        path = resume_path(canonical_id)
         resolved = path.resolve(strict=True)
+        if resolved.parent != UPLOAD_STAGING_DIR.resolve() or not resolved.is_file():
+            if canonical_id != candidate_id:
+                path = resume_path(candidate_id)
+                resolved = path.resolve(strict=True)
         if resolved.parent != UPLOAD_STAGING_DIR.resolve() or not resolved.is_file():
             raise ValueError("Invalid resume path")
         return resolved
@@ -996,7 +1087,9 @@ async def get_candidate_resume_pdf(request: Request, candidate_id: str):
     check_and_audit_pii_access(request, user, "DOWNLOAD_RESUME_PDF", "candidate_resume_pdf", candidate_id)
 
     path = await run_in_threadpool(_get_staged_resume_path, candidate_id)
+    cand = get_candidate_from_store(candidate_id)
+    filename = cand.get("resume_filename", "resume.pdf") if cand else "resume.pdf"
     return FileResponse(
         path=str(path), media_type="application/pdf",
-        filename=CANDIDATES_STORE[candidate_id].get("resume_filename", "resume.pdf"),
+        filename=filename,
     )

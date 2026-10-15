@@ -127,10 +127,6 @@ def sync_candidates_from_db() -> int:
                 cand_dict = _candidate_row_to_dict(db_c, original_id=cid)
                 if cid not in CANDIDATES_STORE:
                     CANDIDATES_STORE[cid] = cand_dict
-                # Also index by UUID string
-                str_id = str(db_c.id)
-                if str_id not in CANDIDATES_STORE:
-                    CANDIDATES_STORE[str_id] = cand_dict
             return len(db_candidates)
         except Exception as e:
             mark_db_failed()
@@ -150,14 +146,20 @@ def sync_candidate_by_id_from_db(candidate_id: str) -> dict[str, Any] | None:
             cand_uuid = coerce_to_uuid(candidate_id)
             db_c = session.query(Candidate).filter(Candidate.id == cand_uuid).first()
             if db_c:
-                cand_dict = _candidate_row_to_dict(db_c, original_id=candidate_id)
-                CANDIDATES_STORE[candidate_id] = cand_dict
-                CANDIDATES_STORE[str(db_c.id)] = cand_dict
+                canonical_id = f"cand-{db_c.id.hex}"
+                cand_dict = _candidate_row_to_dict(db_c, original_id=canonical_id)
+                CANDIDATES_STORE[canonical_id] = cand_dict
                 return cand_dict
         except Exception as e:
             mark_db_failed()
             logger.debug("Database candidate lookup skipped for %s: %s", candidate_id, e)
     return None
+
+
+def get_candidate_from_store(candidate_id: str) -> dict[str, Any] | None:
+    """Resolve a candidate in CANDIDATES_STORE by canonical or raw UUID."""
+    from ats_core.api.v1.candidates import get_candidate_from_store as _lookup
+    return _lookup(candidate_id)
 
 
 def sync_candidate_to_db(cand_dict: dict[str, Any]) -> bool:

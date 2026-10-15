@@ -1,6 +1,7 @@
 import hashlib
 import subprocess
 import sys
+from types import SimpleNamespace
 from unittest.mock import Mock
 from uuid import uuid4
 
@@ -123,7 +124,7 @@ def test_scoring_uses_technical_evidence_without_privacy_artifacts(monkeypatch):
     model = Mock()
     model.evaluate.return_value = {"success": False}
     monkeypatch.setattr(evaluation, "evaluator", lambda: model)
-    text = "[CANDIDATE_NAME]\n[EMAIL_ADDRESS]\nDeveloped Python APIs and optimized SQL queries by 30%.\nPython, SQL, [CANDIDATE_NAME]"
+    text = "[CANDIDATE_NAME]\n[EMAIL_ADDRESS]\n[PROFILE_URL]\nDeveloped Python APIs and optimized SQL queries by 30%.\nPython, SQL, [CANDIDATE_NAME]"
     payload = result().model_dump(mode="json")
     payload.update(operation="evaluate", candidate_id=str(uuid4()),
                    profile={"core_skills": ["Python", "SQL", "Docker"]}, sanitized_text=text,
@@ -131,10 +132,89 @@ def test_scoring_uses_technical_evidence_without_privacy_artifacts(monkeypatch):
     outcome = worker.compute_result(payload, None)
     sent = model.evaluate.call_args.kwargs["candidate_profile_text"]
     assert "[CANDIDATE_NAME]" not in sent and "[EMAIL_ADDRESS]" not in sent
+    assert "[PROFILE_URL]" not in sent
     assert "optimized SQL queries by 30%." in sent and "Docker" in sent
     assert outcome.sanitized_text == text
     assert model.evaluate.call_args.kwargs["citation_source_text"] == text
     assert outcome.evaluation_status == "FAILED" and outcome.scorecard is None
+
+
+@pytest.mark.parametrize("marker", [
+    "CANDIDATE_NAME", "EMAIL_ADDRESS", "PHONE_NUMBER", "LOCATION", "PROFILE_URL", "REDACTED",
+])
+def test_citations_crossing_privacy_markers_remain_grounded(marker):
+    from ats_core.ai_api.evaluation import VerifiedReport
+    from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
+    from ats_core.evaluator.langsmith_tracker import compute_citation_validity
+
+    source = f"Built Python APIs. [{marker}]\nOptimized SQL queries."
+    quote = worker.scoring_dossier(source, {})
+    model = LocalDeepEvaluator(api_key="test-key", base_url="https://openrouter.ai/api/v1")
+    model.chain = Mock()
+    model.chain.invoke.return_value = VerifiedReport.model_validate({
+        "overall_match_score": 75, "executive_verdict": "Relevant Python evidence.",
+        "criteria_breakdown": [{"category": "Tech Stack Alignment", "score": 4,
+            "assessment": "Python and SQL are demonstrated.", "verbatim_citation": quote}],
+    })
+
+    evaluated = model.evaluate("synthetic", quote, "Developer", "Python APIs",
+                               citation_source_text=source)
+
+    assert evaluated["success"]
+    criteria = evaluated["report"].criteria_breakdown
+    assert criteria[0].verbatim_citation == quote
+    assert criteria[0].citation_location is None
+    assert compute_citation_validity(criteria, source)["grounded_citations"] == 1
+
+
+@pytest.mark.parametrize("quote", ["[CANDIDATE_NAME]", "[PROFILE_URL]", "Invented quantum storage"])
+def test_privacy_normalization_does_not_ground_empty_or_invented_quotes(quote):
+    from ats_core.evaluator.langsmith_tracker import compute_citation_validity
+    from ats_core.evidence import is_grounded_quote
+
+    source = "Python APIs [CANDIDATE_NAME] [PROFILE_URL]"
+    assert not is_grounded_quote(quote, source)
+    assert compute_citation_validity([{"verbatim_citation": quote}], source)["grounded_citations"] == 0
+
+
+@pytest.mark.parametrize("operation,enabled", [
+    ("ingest", "true"), ("ingest", "false"), ("evaluate", "true"), ("evaluate", "false"),
+])
+def test_document_embeddings_are_generated_only_on_enabled_ingest(monkeypatch, operation, enabled):
+    monkeypatch.setenv("ATS_AI_ENABLE_LLM", "false")
+    monkeypatch.setenv("ATS_AI_ENABLE_EMBEDDINGS", enabled)
+    document = b"%PDF-1.4 synthetic resume"
+    text = "Developed Python APIs."
+    parse = Mock(return_value={"raw_text": text, "core_skills": ["Python"]})
+    monkeypatch.setitem(sys.modules, "ats_core.parsers.resume_parser", SimpleNamespace(
+        parse_resume_to_candidate=parse,
+    ))
+    redactor = Mock()
+    redactor.anonymize.return_value = text
+    redactor.scrub_residual_pii.side_effect = lambda value, **kwargs: value
+    monkeypatch.setattr(worker, "anonymizer", lambda: redactor)
+    vectors = Mock()
+    vectors.embed_documents.return_value = [[0.25] * 768]
+    factory = Mock(return_value=vectors)
+    monkeypatch.setattr(module, "embedder", factory)
+    payload = result().model_dump(mode="json")
+    payload.update(operation=operation, filename="resume.pdf",
+                   source_hash=hashlib.sha256(document).hexdigest(), taxonomy=[], taxonomy_version=1,
+                   sanitized_text=text)
+
+    outcome = worker.compute_result(payload, document if operation == "ingest" else None)
+
+    if operation == "ingest" and enabled == "true":
+        factory.assert_called_once_with()
+        vectors.embed_documents.assert_called_once_with([text])
+        assert outcome.embedding == [0.25] * 768
+        assert outcome.embedding_model == "google/embeddinggemma-2"
+    else:
+        factory.assert_not_called()
+        assert outcome.embedding is None
+        assert outcome.embedding_model is None
+        assert outcome.preprocessing_version is None
+    assert "EMBEDDING_UNAVAILABLE" not in outcome.warnings
 
 
 def test_added_skill_summary_cannot_become_a_verbatim_resume_quote():
