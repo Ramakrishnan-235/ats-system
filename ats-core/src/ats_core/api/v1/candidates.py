@@ -515,7 +515,9 @@ async def _process_resume_pipeline(
         })
 
     try:
-        from ats_core.parsers.resume_parser import parse_resume_to_candidate
+        from ats_core.parsers.llm_embedding_resume_parser import (
+            parse_resume_with_llm_and_embeddings as parse_resume_to_candidate,
+        )
         parsed_candidate = await run_in_threadpool(
             parse_resume_to_candidate,
             doc_bytes,

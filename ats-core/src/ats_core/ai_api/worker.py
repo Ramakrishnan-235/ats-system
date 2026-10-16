@@ -81,7 +81,9 @@ def compute_result(payload: dict, document: bytes | None) -> AIResult:
     if payload["operation"] == "ingest":
         if not document or hashlib.sha256(document).hexdigest() != payload["source_hash"]:
             raise ValueError("DOCUMENT_HASH_MISMATCH")
-        from ats_core.parsers.resume_parser import parse_resume_to_candidate
+        from ats_core.parsers.llm_embedding_resume_parser import (
+            parse_resume_with_llm_and_embeddings as parse_resume_to_candidate,
+        )
 
         profile = parse_resume_to_candidate(
             document,

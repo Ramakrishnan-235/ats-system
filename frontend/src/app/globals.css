@@ -193,3 +193,64 @@ main :where(input, textarea, select) { max-width: 100%; }
     overflow-wrap: anywhere;
   }
 }
+
+/* Modal entrance & backdrop transitions */
+@keyframes modalPop {
+  0% { opacity: 0; transform: scale(0.96) translateY(10px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-modal-pop {
+  animation: modalPop 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Shimmering progress bar */
+@keyframes progressShimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer-bar {
+  background: linear-gradient(90deg, #4f46e5 0%, #7c3aed 45%, #a78bfa 50%, #7c3aed 55%, #4f46e5 100%);
+  background-size: 200% 100%;
+  animation: progressShimmer 2s linear infinite;
+}
+
+/* Laser scan animation on the PDF mini-preview */
+@keyframes pdfScanLine {
+  0% { top: 8%; opacity: 0.3; }
+  50% { top: 86%; opacity: 1; }
+  100% { top: 8%; opacity: 0.3; }
+}
+.pdf-laser-line {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #6366f1, #a855f7, #6366f1, transparent);
+  box-shadow: 0 0 8px 2px rgba(99, 102, 241, 0.65);
+  animation: pdfScanLine 2.2s ease-in-out infinite;
+}
+
+/* Floating pulse ring */
+@keyframes pulseRing {
+  0% { transform: scale(0.9); opacity: 0.75; }
+  70% { transform: scale(1.35); opacity: 0; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+.pulse-ring::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  border: 2px solid #6366f1;
+  animation: pulseRing 1.6s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+}
+
+/* Staggered skill pill entrance */
+@keyframes pillPop {
+  0% { opacity: 0; transform: translateY(6px) scale(0.92); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.skill-pill-anim {
+  animation: pillPop 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+

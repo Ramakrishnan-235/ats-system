@@ -117,13 +117,15 @@ class HybridPDFParser:
                 raise ValueError("PDF document contains 0 pages.")
 
             # Step 1: Layout Complexity Analysis
-            is_complex = False
-            for page_index in range(min(total_pages, 3)):  # Sample up to first 3 pages
-                page = doc[page_index]
-                if PDFLayoutAnalyzer.is_multi_column_or_complex(page):
-                    logger.info(f"Complex / multi-column layout detected on page {page_index + 1}.")
-                    is_complex = True
-                    break
+            force_docling = os.getenv("ATS_FORCE_DOCLING", "false").lower() in ("true", "1")
+            is_complex = force_docling
+            if not is_complex:
+                for page_index in range(total_pages):  # Check all pages for multi-column geometry
+                    page = doc[page_index]
+                    if PDFLayoutAnalyzer.is_multi_column_or_complex(page):
+                        logger.info(f"Complex / multi-column layout detected on page {page_index + 1}.")
+                        is_complex = True
+                        break
 
             # Step 2: Route to appropriate extraction engine
             if is_complex:
