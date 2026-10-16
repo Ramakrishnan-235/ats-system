@@ -97,6 +97,7 @@ export default function CandidateDirectoryPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isMovingStage, setIsMovingStage] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [candidates, setCandidates] = useState<CandidateRosterItem[]>([]);
   const [jobs, setJobs] = useState<JobRequisition[]>([]);
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
@@ -143,7 +144,7 @@ export default function CandidateDirectoryPage() {
                   ? c.applied_for_job
                   : source === "LinkedIn Sourced"
                   ? "Inbound profile"
-                  : "Direct upload");
+                  : source === "Not recorded" ? "Not recorded" : "Direct upload");
               const owner = candObj.owner || "Unassigned";
 
               return {
@@ -177,7 +178,8 @@ export default function CandidateDirectoryPage() {
       })
       .catch((err) => {
         if (!cancelled) setError(getErrorMessage(err));
-      });
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => {
       cancelled = true;
@@ -385,6 +387,7 @@ export default function CandidateDirectoryPage() {
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex flex-col w-full gap-6">
             {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>}
+            {loading && <p role="status" className="text-sm text-zinc-600">Loading candidates…</p>}
             {/* Toast Notification */}
             {toastMessage && (
               <div className="fixed bottom-6 right-6 z-50 bg-[#131c29] text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-[#6137e0]/40 animate-in fade-in slide-in-from-bottom-3 duration-300">
