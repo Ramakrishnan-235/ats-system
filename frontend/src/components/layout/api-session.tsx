@@ -37,9 +37,14 @@ const BYPASS_SESSION: Session = {
   development_mode: true,
 };
 
-const SessionContext = createContext<{ session: Session | null; disconnect: () => Promise<void> }>({
+const SessionContext = createContext<{
+  session: Session | null;
+  disconnect: () => Promise<void>;
+  refreshSession: () => Promise<Session | null>;
+}>({
   session: DISABLE_LOGIN_PAGE ? BYPASS_SESSION : null,
   disconnect: async () => {},
+  refreshSession: async () => null,
 });
 
 export const useSession = () => useContext(SessionContext);
@@ -246,8 +251,19 @@ export function ApiSession({ children }: { children: ReactNode }) {
     }
   }
 
+  async function refreshSession() {
+    if (legacyBackend) return null;
+    try {
+      const current = await fetchSession();
+      setSession(current);
+      return current;
+    } catch {
+      return null;
+    }
+  }
+
   return (
-    <SessionContext.Provider value={{ session: session || (DISABLE_LOGIN_PAGE ? BYPASS_SESSION : null), disconnect }}>
+    <SessionContext.Provider value={{ session: session || (DISABLE_LOGIN_PAGE ? BYPASS_SESSION : null), disconnect, refreshSession }}>
       {error && !DISABLE_LOGIN_PAGE && (
         <p role="alert" className="fixed top-2 left-1/2 -translate-x-1/2 z-50 bg-white border rounded-lg p-3 text-red-700 shadow-md">
           {error}

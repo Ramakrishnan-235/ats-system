@@ -368,11 +368,19 @@ export const switchWorkspace = (tenantId: string) => json("/auth/workspace", { m
 export interface WorkspaceMember { id: string; name: string; email: string; role: string }
 export const fetchMembers = () => json<WorkspaceMember[]>("/settings/members");
 export const addMember = (email: string, role: string) => json("/settings/members", { method: "POST", ...body({ email, role }) });
-export const updateWorkspace = (name: string) => json("/settings/workspace", {method: "PATCH", ...body({name})});
+export const updateWorkspace = (name: string) => json<{ id: string; name: string }>("/settings/workspace", {method: "PATCH", ...body({name})});
 export interface AnalyticsData { stages: {stage: string; count: number; average_score: number | null}[]; processing: {state: string; count: number}[]; hires: number; average_days_to_hire: number | null; generated_at: string }
 export const fetchAnalytics = () => json<AnalyticsData>("/analytics");
 export interface AgencyClient {id: string; name: string}
-export interface AgencySubmission {id: string; client_name: string; application_id: string; status: string; created_at: string}
+export interface AgencySubmission {
+  id: string;
+  client_id?: string;
+  client_name: string;
+  application_id: string;
+  status: string;
+  snapshot?: Record<string, unknown> | null;
+  created_at: string;
+}
 export const fetchClients = () => json<AgencyClient[]>("/clients");
 export const createClient = (name: string) => json<AgencyClient>("/clients", {method: "POST", ...body({name})});
 export const fetchSubmissions = () => json<AgencySubmission[]>("/submissions");

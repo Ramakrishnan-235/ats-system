@@ -1,9 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { CoreHeader } from "@/components/layout/core-header";
 import { CoreFooter } from "@/components/layout/core-footer";
+import { useSession } from "@/components/layout/api-session";
+import { fetchAnalytics, fetchJobs, getErrorMessage, AnalyticsData } from "@/lib/api";
+import { JobRequisition } from "@/types/ats";
 import {
   Calendar,
   Briefcase,
@@ -23,6 +26,7 @@ import {
   Code2,
   Users,
   CheckCircle2,
+  AlertCircle,
   Shield,
   Lightbulb,
   Sparkles,
@@ -42,11 +46,16 @@ import {
 } from "@/components/ui/dialog";
 
 export default function AnalyticsPage() {
+  const { session } = useSession();
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [jobs, setJobs] = useState<JobRequisition[]>([]);
+  const [loading, setLoading] = useState(true);
+
   // Filter States
-  const [reportingWindow, setReportingWindow] = useState("Last 30 Days (Sep 7 – Oct 6, 2026)");
-  const [requisitionScope, setRequisitionScope] = useState("All Open Requisitions (14 roles)");
+  const [reportingWindow, setReportingWindow] = useState("Last 30 Days");
+  const [requisitionScope, setRequisitionScope] = useState("All Open Requisitions");
   const [businessVertical, setBusinessVertical] = useState("Platform Core & Product Design");
-  const [leadAssignment, setLeadAssignment] = useState("Elena Varga (Lead Recruiter)");
+  const [leadAssignment, setLeadAssignment] = useState("All Recruiter Leads");
 
   // Interactive States
   const [isExporting, setIsExporting] = useState(false);
@@ -56,20 +65,114 @@ export default function AnalyticsPage() {
   const [isAutoDigestModalOpen, setIsAutoDigestModalOpen] = useState(false);
   const [activeAgingStageModal, setActiveAgingStageModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastType, setToastType] = useState<"success" | "error">("success");
 
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToastMessage(msg);
+    setToastType(type);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      fetchAnalytics().catch(() => null),
+      fetchJobs().catch(() => [] as JobRequisition[]),
+    ]).then(([analytics, jobsData]) => {
+      if (!active) return;
+      if (analytics) setAnalyticsData(analytics);
+      if (jobsData) {
+        setJobs(jobsData);
+        if (jobsData.length > 0) {
+          setRequisitionScope(`All Open Requisitions (${jobsData.length} roles)`);
+        }
+      }
+      setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const totalCandidates = useMemo(() => {
+    return (analyticsData?.stages || []).reduce((acc, s) => acc + s.count, 0);
+  }, [analyticsData]);
+
+  const medianTimeToHire = analyticsData?.average_days_to_hire != null
+    ? `${analyticsData.average_days_to_hire.toFixed(1)}`
+    : "—";
+
+  const totalHires = analyticsData?.hires ?? 0;
+
+  const queuedTasks = useMemo(() => {
+    return (analyticsData?.processing || [])
+      .filter((p) => p.state === "QUEUED" || p.state === "RUNNING")
+      .reduce((acc, p) => acc + p.count, 0);
+  }, [analyticsData]);
+
+  const completedTasks = useMemo(() => {
+    return (analyticsData?.processing || [])
+      .filter((p) => p.state === "SUCCESS")
+      .reduce((acc, p) => acc + p.count, 0);
+  }, [analyticsData]);
+
+  const offerCount = useMemo(() => {
+    return analyticsData?.stages.find((s) => s.stage === "Offer")?.count ?? 0;
+  }, [analyticsData]);
+
+  const acceptanceRate = useMemo(() => {
+    if (totalHires + offerCount === 0) return "—";
+    return `${((totalHires / (totalHires + offerCount)) * 100).toFixed(1)}%`;
+  }, [totalHires, offerCount]);
+
+  const conversionRate = useMemo(() => {
+    if (totalCandidates === 0) return "—";
+    const interviewedOrHigher = (analyticsData?.stages || [])
+      .filter((s) => ["Interview", "Offer", "Hired"].includes(s.stage))
+      .reduce((acc, s) => acc + s.count, 0);
+    return `${((interviewedOrHigher / totalCandidates) * 100).toFixed(1)}%`;
+  }, [analyticsData, totalCandidates]);
+
   const handleExport = () => {
     setIsExporting(true);
-    setTimeout(() => {
-      setIsExporting(false);
+    try {
+      const rows = [
+        ["Report", "Institutional Talent Intelligence"],
+        ["Generated At", analyticsData?.generated_at || new Date().toISOString()],
+        ["Active Requisitions", String(jobs.length)],
+        ["Total Pipeline Candidates", String(totalCandidates)],
+        ["Total Hires", String(totalHires)],
+        ["Median Days to Hire", analyticsData?.average_days_to_hire != null ? analyticsData.average_days_to_hire.toFixed(1) : "N/A"],
+        [],
+        ["Stage", "Candidate Count", "Average Score"],
+        ...(analyticsData?.stages || []).map((s) => [
+          s.stage,
+          String(s.count),
+          s.average_score != null ? s.average_score.toFixed(1) : "N/A",
+        ]),
+        [],
+        ["Processing Status", "Job Count"],
+        ...(analyticsData?.processing || []).map((p) => [p.state, String(p.count)]),
+      ];
+      const csvContent =
+        "data:text/csv;charset=utf-8," +
+        rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `talent-analytics-${Date.now()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
       setExportComplete(true);
-      showToast("Encrypted Talent Intelligence report generated & downloaded.");
+      showToast("Encrypted Talent Intelligence report generated & downloaded.", "success");
       setTimeout(() => setExportComplete(false), 3000);
-    }, 1200);
+    } catch (err) {
+      showToast(getErrorMessage(err), "error");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -172,10 +275,12 @@ export default function AnalyticsPage() {
                     onChange={(e) => setRequisitionScope(e.target.value)}
                     className="w-full h-10 pl-10 pr-9 bg-[#f8f9ff] text-[#141c27] font-medium text-xs rounded-xl border border-[#dee2ef] appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#6137e0]"
                   >
-                    <option>All Open Requisitions (14 roles)</option>
-                    <option>Engineering (8 roles)</option>
-                    <option>Design & Product (4 roles)</option>
-                    <option>Infrastructure & Security (2 roles)</option>
+                    <option value="all">All Open Requisitions ({jobs.length} roles)</option>
+                    {jobs.map((job) => (
+                      <option key={job.id} value={job.id}>
+                        {job.title} ({job.department || "General"})
+                      </option>
+                    ))}
                   </select>
                   <ChevronDown className="w-4 h-4 text-[#75777c] absolute right-3 pointer-events-none" />
                 </div>
@@ -237,14 +342,18 @@ export default function AnalyticsPage() {
                   </div>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold tracking-tight text-[#141c27]">24.2</span>
+                  <span className="text-3xl font-bold tracking-tight text-[#141c27]">
+                    {loading ? "..." : medianTimeToHire}
+                  </span>
                   <span className="text-sm font-medium text-[#75777c]">Days</span>
                 </div>
               </div>
               <div className="mt-4 bg-[#eff4ff] rounded-xl p-2.5 flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-[#069669]" />
-                  <span className="text-xs font-semibold text-[#069669]">4.1d faster than Q3</span>
+                  <span className={`w-2 h-2 rounded-full ${analyticsData?.average_days_to_hire != null ? "bg-[#069669]" : "bg-[#75777c]"}`} />
+                  <span className={`text-xs font-semibold ${analyticsData?.average_days_to_hire != null ? "text-[#069669]" : "text-[#75777c]"}`}>
+                    {analyticsData?.average_days_to_hire != null ? "Calculated from hire milestones" : "No hire milestones"}
+                  </span>
                 </div>
                 <span className="font-mono text-[11px] text-[#75777c]">Target: 30d</span>
               </div>
@@ -260,16 +369,22 @@ export default function AnalyticsPage() {
                   </div>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold tracking-tight text-[#141c27]">88.2%</span>
-                  <span className="text-xs font-semibold text-[#75777c]">(15/17)</span>
+                  <span className="text-3xl font-bold tracking-tight text-[#141c27]">
+                    {loading ? "..." : acceptanceRate}
+                  </span>
+                  <span className="text-xs font-semibold text-[#75777c]">
+                    ({totalHires}/{totalHires + offerCount})
+                  </span>
                 </div>
               </div>
               <div className="mt-4 bg-[#eff4ff] rounded-xl p-2.5 flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-[#069669]" />
-                  <span className="text-xs font-semibold text-[#069669]">+3.4% vs Industry</span>
+                  <span className={`w-2 h-2 rounded-full ${totalHires > 0 ? "bg-[#069669]" : "bg-[#75777c]"}`} />
+                  <span className={`text-xs font-semibold ${totalHires > 0 ? "text-[#069669]" : "text-[#75777c]"}`}>
+                    {totalHires} total hires confirmed
+                  </span>
                 </div>
-                <span className="font-mono text-[11px] text-[#75777c]">2 pending</span>
+                <span className="font-mono text-[11px] text-[#75777c]">{offerCount} pending</span>
               </div>
             </div>
 
@@ -283,16 +398,20 @@ export default function AnalyticsPage() {
                   </div>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold tracking-tight text-[#141c27]">14.6%</span>
+                  <span className="text-3xl font-bold tracking-tight text-[#141c27]">
+                    {loading ? "..." : conversionRate}
+                  </span>
                   <span className="text-xs font-medium text-[#75777c]">Applied → Loop</span>
                 </div>
               </div>
               <div className="mt-4 bg-[#eff4ff] rounded-xl p-2.5 flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-[#6137e0]" />
-                  <span className="text-xs font-semibold text-[#6137e0]">Screen calibration tight</span>
+                  <span className="text-xs font-semibold text-[#6137e0]">
+                    {totalCandidates} total in pipeline
+                  </span>
                 </div>
-                <span className="font-mono text-[11px] text-[#75777c]">142 Screened</span>
+                <span className="font-mono text-[11px] text-[#75777c]">{jobs.length} jobs</span>
               </div>
             </div>
 
@@ -300,22 +419,26 @@ export default function AnalyticsPage() {
             <div className="bg-white rounded-2xl p-6 shadow-xs border border-[#dee2ef]/70 flex flex-col justify-between hover:shadow-md transition-shadow">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-[#45474c]">Interviewer Feedback Latency</span>
+                  <span className="text-xs font-semibold text-[#45474c]">AI Task Queue</span>
                   <div className="w-7 h-7 rounded-lg bg-[#eff4ff] flex items-center justify-center text-[#141c27]">
                     <FileText className="w-4 h-4" />
                   </div>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold tracking-tight text-[#141c27]">18.4</span>
-                  <span className="text-sm font-medium text-[#75777c]">Hours</span>
+                  <span className="text-3xl font-bold tracking-tight text-[#141c27]">
+                    {loading ? "..." : queuedTasks}
+                  </span>
+                  <span className="text-sm font-medium text-[#75777c]">Active</span>
                 </div>
               </div>
               <div className="mt-4 bg-[#eff4ff] rounded-xl p-2.5 flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-[#069669]" />
-                  <span className="text-xs font-semibold text-[#069669]">SLA: &lt;24h Met</span>
+                  <span className={`w-2 h-2 rounded-full ${queuedTasks === 0 ? "bg-[#069669]" : "bg-[#6137e0]"}`} />
+                  <span className={`text-xs font-semibold ${queuedTasks === 0 ? "text-[#069669]" : "text-[#6137e0]"}`}>
+                    {queuedTasks === 0 ? "Queue idle / ready" : `${queuedTasks} in progress`}
+                  </span>
                 </div>
-                <span className="font-mono text-[11px] text-[#75777c]">98.2% on-time</span>
+                <span className="font-mono text-[11px] text-[#75777c]">{completedTasks} completed</span>
               </div>
             </div>
           </div>
@@ -329,11 +452,11 @@ export default function AnalyticsPage() {
                     Stage Drop-off & Velocity Funnel
                   </h2>
                   <span className="h-5 px-2.5 rounded-full bg-[#e6eefe] text-[#141c27] text-[11px] font-semibold flex items-center">
-                    Active Requisitions
+                    Active Requisitions ({jobs.length})
                   </span>
                 </div>
                 <p className="text-xs text-[#45474c]">
-                  Candidate retention and drop rate across recruitment milestones for selected cohorts.
+                  Candidate retention and volume distribution across recruitment stages from backend records.
                 </p>
               </div>
 
@@ -343,154 +466,67 @@ export default function AnalyticsPage() {
                 className="inline-flex items-center gap-1.5 text-[#6137e0] hover:text-[#4b12cb] text-xs font-semibold transition-colors cursor-pointer"
               >
                 <AlertTriangle className="w-4 h-4" />
-                <span>View 14 candidates aging in stage &gt;5 days</span>
+                <span>View {totalCandidates} candidates across pipeline</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
 
             {/* Funnel Columns */}
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-              {/* Stage 1: Applied */}
-              <div className="bg-[#f8f9ff] rounded-xl p-4 flex flex-col justify-between border border-[#dee2ef]/40 hover:bg-[#eff4ff] transition-colors">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#75777c]">
-                      Stage 01
-                    </span>
-                    <Inbox className="w-3.5 h-3.5 text-[#75777c]" />
-                  </div>
-                  <div className="text-sm font-bold text-[#141c27]">Applied</div>
-                  <div className="text-2xl font-black text-[#141c27] mt-2">142</div>
-                  <div className="text-[11px] text-[#75777c]">Total Inflow</div>
-                </div>
-                <div className="mt-6">
-                  <div className="w-full bg-[#dbe3f2] rounded-full h-1.5 mb-1.5">
-                    <div className="bg-[#141c27] h-1.5 rounded-full w-full" />
-                  </div>
-                  <div className="text-[11px] font-semibold text-[#141c27]">100% Volume</div>
-                </div>
+            {(!analyticsData?.stages || analyticsData.stages.length === 0) ? (
+              <div className="py-12 text-center text-xs text-[#75777c] bg-[#f8f9ff] rounded-xl border border-dashed border-[#dee2ef]">
+                No candidate applications recorded in this workspace. Upload a resume or add a candidate to see stage velocity.
               </div>
-
-              {/* Stage 2: Screening */}
-              <div className="bg-[#f8f9ff] rounded-xl p-4 flex flex-col justify-between border border-[#dee2ef]/40 hover:bg-[#eff4ff] transition-colors">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#75777c]">
-                      Stage 02
-                    </span>
-                    <PhoneCall className="w-3.5 h-3.5 text-[#75777c]" />
-                  </div>
-                  <div className="text-sm font-bold text-[#141c27]">Screening</div>
-                  <div className="text-2xl font-black text-[#141c27] mt-2">128</div>
-                  <div className="text-[11px] text-[#75777c]">Recruiter Call</div>
-                </div>
-                <div className="mt-6">
-                  <div className="w-full bg-[#dbe3f2] rounded-full h-1.5 mb-1.5">
-                    <div className="bg-[#6137e0] h-1.5 rounded-full" style={{ width: "90.1%" }} />
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-semibold text-[#141c27]">90.1% Pass</span>
-                    <span className="text-[#ba1a1a] font-medium">9.9% Drop</span>
-                  </div>
-                </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                {analyticsData.stages.map((st, idx) => {
+                  const pct = totalCandidates > 0 ? ((st.count / totalCandidates) * 100).toFixed(1) : "0";
+                  const isHired = st.stage.toLowerCase() === "hired";
+                  return (
+                    <div
+                      key={st.stage}
+                      className={`rounded-xl p-4 flex flex-col justify-between border transition-colors ${
+                        isHired
+                          ? "bg-[#eff4ff] border-[#6137e0]/20 hover:bg-[#e7deff]/40"
+                          : "bg-[#f8f9ff] border-[#dee2ef]/40 hover:bg-[#eff4ff]"
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`text-[10px] font-bold uppercase tracking-wider ${isHired ? "text-[#069669]" : "text-[#75777c]"}`}>
+                            Stage 0{idx + 1}
+                          </span>
+                          {isHired ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-[#069669]" />
+                          ) : (
+                            <Inbox className="w-3.5 h-3.5 text-[#75777c]" />
+                          )}
+                        </div>
+                        <div className="text-sm font-bold text-[#141c27]">{st.stage}</div>
+                        <div className={`text-2xl font-black mt-2 ${isHired ? "text-[#069669]" : "text-[#141c27]"}`}>
+                          {st.count}
+                        </div>
+                        <div className="text-[11px] text-[#75777c]">
+                          {st.average_score != null
+                            ? `Avg Score: ${st.average_score.toFixed(1)}`
+                            : "No score recorded"}
+                        </div>
+                      </div>
+                      <div className="mt-6">
+                        <div className="w-full bg-[#dbe3f2] rounded-full h-1.5 mb-1.5">
+                          <div
+                            className={`h-1.5 rounded-full ${isHired ? "bg-[#069669]" : "bg-[#6137e0]"}`}
+                            style={{ width: `${Math.min(100, Math.max(8, Number(pct)))}%` }}
+                          />
+                        </div>
+                        <div className="text-[11px] font-semibold text-[#141c27]">
+                          {pct}% Volume
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-
-              {/* Stage 3: Tech Screen */}
-              <div className="bg-[#f8f9ff] rounded-xl p-4 flex flex-col justify-between border border-[#dee2ef]/40 hover:bg-[#eff4ff] transition-colors">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#75777c]">
-                      Stage 03
-                    </span>
-                    <Code2 className="w-3.5 h-3.5 text-[#75777c]" />
-                  </div>
-                  <div className="text-sm font-bold text-[#141c27]">Tech Screen</div>
-                  <div className="text-2xl font-black text-[#141c27] mt-2">86</div>
-                  <div className="text-[11px] text-[#75777c]">Live Coding / Arch</div>
-                </div>
-                <div className="mt-6">
-                  <div className="w-full bg-[#dbe3f2] rounded-full h-1.5 mb-1.5">
-                    <div className="bg-[#6137e0] h-1.5 rounded-full" style={{ width: "67.2%" }} />
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-semibold text-[#141c27]">67.2% Pass</span>
-                    <span className="text-[#ba1a1a] font-medium">32.8% Drop</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Stage 4: Final Loop */}
-              <div className="bg-[#f8f9ff] rounded-xl p-4 flex flex-col justify-between border border-[#dee2ef]/40 hover:bg-[#eff4ff] transition-colors">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#75777c]">
-                      Stage 04
-                    </span>
-                    <Users className="w-3.5 h-3.5 text-[#75777c]" />
-                  </div>
-                  <div className="text-sm font-bold text-[#141c27]">Final Loop</div>
-                  <div className="text-2xl font-black text-[#141c27] mt-2">38</div>
-                  <div className="text-[11px] text-[#75777c]">Panel Scorecard</div>
-                </div>
-                <div className="mt-6">
-                  <div className="w-full bg-[#dbe3f2] rounded-full h-1.5 mb-1.5">
-                    <div className="bg-[#6137e0] h-1.5 rounded-full" style={{ width: "44.2%" }} />
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-semibold text-[#141c27]">44.2% Pass</span>
-                    <span className="text-[#ba1a1a] font-medium">55.8% Drop</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Stage 5: Offer */}
-              <div className="bg-[#f8f9ff] rounded-xl p-4 flex flex-col justify-between border border-[#dee2ef]/40 hover:bg-[#eff4ff] transition-colors">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#75777c]">
-                      Stage 05
-                    </span>
-                    <FileText className="w-3.5 h-3.5 text-[#75777c]" />
-                  </div>
-                  <div className="text-sm font-bold text-[#141c27]">Offer</div>
-                  <div className="text-2xl font-black text-[#141c27] mt-2">18</div>
-                  <div className="text-[11px] text-[#75777c]">Package Extended</div>
-                </div>
-                <div className="mt-6">
-                  <div className="w-full bg-[#dbe3f2] rounded-full h-1.5 mb-1.5">
-                    <div className="bg-[#6137e0] h-1.5 rounded-full" style={{ width: "47.4%" }} />
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-semibold text-[#141c27]">47.4% Pass</span>
-                    <span className="text-[#ba1a1a] font-medium">52.6% Drop</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Stage 6: Outcome / Hired */}
-              <div className="bg-[#eff4ff] rounded-xl p-4 flex flex-col justify-between border border-[#6137e0]/20 hover:bg-[#e7deff]/40 transition-colors">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#069669]">
-                      Outcome
-                    </span>
-                    <CheckCircle2 className="w-3.5 h-3.5 text-[#069669]" />
-                  </div>
-                  <div className="text-sm font-bold text-[#141c27]">Hired</div>
-                  <div className="text-2xl font-black text-[#069669] mt-2">15</div>
-                  <div className="text-[11px] text-[#45474c]">Sign-off Complete</div>
-                </div>
-                <div className="mt-6">
-                  <div className="w-full bg-[#dbe3f2] rounded-full h-1.5 mb-1.5">
-                    <div className="bg-[#069669] h-1.5 rounded-full" style={{ width: "83.3%" }} />
-                  </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-bold text-[#069669]">83.3% Close</span>
-                    <span className="text-[#75777c] font-medium">2 Pending</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Sourcing Channel Quality & Diagnostic Synthesis Split */}

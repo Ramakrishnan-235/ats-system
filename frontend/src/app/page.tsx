@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CoreHeader } from "@/components/layout/core-header";
+import { useSession } from "@/components/layout/api-session";
 import { fetchCandidates, fetchJobs, fetchDashboardStats, DashboardData } from "@/lib/api";
 import { CandidateDetail, JobRequisition } from "@/types/ats";
 import {
@@ -43,6 +44,7 @@ import {
 
 export default function RecruiterWorkspacePage() {
   const router = useRouter();
+  const { session } = useSession();
 
   // State
   const [activeQueueTab, setActiveQueueTab] = useState<"Mine" | "Team">("Mine");
@@ -59,19 +61,19 @@ export default function RecruiterWorkspacePage() {
 
   useEffect(() => {
     let cancelled = false;
-    setCurrentDateStr(
-      new Date().toLocaleDateString("en-US", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-      })
-    );
     Promise.all([
       fetchCandidates().catch(() => [] as CandidateDetail[]),
       fetchJobs().catch(() => [] as JobRequisition[]),
       fetchDashboardStats().catch(() => null),
     ]).then(([cands, jobsData, dashStats]) => {
       if (cancelled) return;
+      setCurrentDateStr(
+        new Date().toLocaleDateString("en-US", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+        })
+      );
       if (cands) setCandidates(cands);
       if (jobsData) setJobs(jobsData);
       if (dashStats) setDashboardData(dashStats);
@@ -133,7 +135,30 @@ export default function RecruiterWorkspacePage() {
   };
 
   const handleExportLedger = () => {
-    showToast("Daily Ledger exported (CSV & Audit JSON generated)");
+    if (candidates.length === 0) {
+      showToast("No active candidate records to export in this workspace.");
+      return;
+    }
+    const headers = ["Candidate ID", "Name", "Role", "Stage", "Applied Job", "Match Score", "Location"];
+    const rows = candidates.map((c) => [
+      `"${c.id}"`,
+      `"${(c.name || c.anonymized_name || "").replace(/"/g, '""')}"`,
+      `"${(c.role || c.target_headline || "").replace(/"/g, '""')}"`,
+      `"${(c.stage || "").replace(/"/g, '""')}"`,
+      `"${(c.applied_for_job || "").replace(/"/g, '""')}"`,
+      c.scorecard?.overall_match_score != null ? Math.round(c.scorecard.overall_match_score) : "",
+      `"${(c.location || "").replace(/"/g, '""')}"`,
+    ]);
+    const csvContent =
+      "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `ats_candidate_ledger_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast("Daily Ledger exported (CSV downloaded)");
   };
 
   return (
@@ -163,7 +188,7 @@ export default function RecruiterWorkspacePage() {
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
               <h1 className="text-3xl sm:text-4xl font-extrabold text-[#111827] tracking-tight">
-                Good morning, Elena
+                Good morning, {session?.user?.name ? session.user.name.split(" ")[0] : "Recruiter"}
               </h1>
               <p className="text-xs sm:text-sm text-[#555a64] mt-1 font-medium">
                 {currentDateStr || "Requisition sync active"} • Requisition sync active across active roles

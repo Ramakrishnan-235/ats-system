@@ -22,6 +22,7 @@ import {
   Menu
 } from "lucide-react";
 import { useSession } from "./api-session";
+import { switchWorkspace } from "@/lib/api";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,7 +41,7 @@ import {
 export function CoreHeader() {
   const pathname = usePathname();
   const router = useRouter();
-  const { session, disconnect } = useSession();
+  const { session, disconnect, refreshSession } = useSession();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -119,12 +120,47 @@ export function CoreHeader() {
                   Active Workspace
                 </DropdownMenuLabel>
                 <DropdownMenuItem className="flex items-center justify-between text-xs font-medium px-2 py-2 rounded-lg bg-[#f0f3ff] text-[#171c25]">
-                  <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-[#6137e0]" />
-                    <span>{workspaceName}</span>
+                  <div className="flex items-center gap-2 truncate">
+                    <Building2 className="w-4 h-4 text-[#6137e0] shrink-0" />
+                    <span className="truncate">{workspaceName}</span>
                   </div>
-                  <Check className="w-3.5 h-3.5 text-[#6137e0]" />
+                  <Check className="w-3.5 h-3.5 text-[#6137e0] shrink-0" />
                 </DropdownMenuItem>
+
+                {session?.workspaces && session.workspaces.length > 1 && (
+                  <>
+                    <DropdownMenuSeparator className="my-1 bg-[#dee2ef]" />
+                    <DropdownMenuLabel className="text-[11px] font-semibold uppercase tracking-wider text-[#75777c] px-2 py-1">
+                      Available Workspaces
+                    </DropdownMenuLabel>
+                    {session.workspaces
+                      .filter((w) => w.id !== activeWorkspace?.id)
+                      .map((w) => (
+                        <DropdownMenuItem
+                          key={w.id}
+                          onClick={async () => {
+                            try {
+                              await switchWorkspace(w.id);
+                              await refreshSession();
+                              window.location.reload();
+                            } catch {
+                              // error
+                            }
+                          }}
+                          className="flex items-center justify-between text-xs font-medium px-2 py-1.5 rounded-lg cursor-pointer hover:bg-[#f0f3ff] text-[#45474c]"
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <Building2 className="w-3.5 h-3.5 text-[#75777c] shrink-0" />
+                            <span className="truncate">{w.name}</span>
+                          </div>
+                          <span className="text-[10px] uppercase font-bold text-[#75777c] shrink-0">
+                            {w.kind}
+                          </span>
+                        </DropdownMenuItem>
+                      ))}
+                  </>
+                )}
+
                 <DropdownMenuSeparator className="my-1 bg-[#dee2ef]" />
                 <DropdownMenuItem
                   onClick={() => router.push("/settings")}

@@ -230,7 +230,8 @@ def run_job(job_id: str):
                 document = response.content
             try:
                 result = compute_result(payload, document)
-            except Exception:  # noqa: BLE001 -- task boundary returns safe errors without retaining resume text
+            except Exception as exc:  # noqa: BLE001 -- task boundary returns safe errors without retaining resume text
+                logger.exception("Task %s failed in compute_result: %s", job_id, exc)
                 # Never put exception strings, prompts or resume text into public errors.
                 result = AIResult(
                     **{

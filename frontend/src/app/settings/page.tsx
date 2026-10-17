@@ -1,9 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { CoreHeader } from "@/components/layout/core-header";
 import { CoreFooter } from "@/components/layout/core-footer";
+import { useSession } from "@/components/layout/api-session";
+import {
+  fetchSession,
+  updateWorkspace,
+  fetchMembers,
+  addMember,
+  getErrorMessage,
+  WorkspaceMember,
+} from "@/lib/api";
 import {
   Building2,
   Users,
@@ -19,6 +28,7 @@ import {
   Filter,
   MoreVertical,
   CheckCircle2,
+  AlertCircle,
   FileText,
   Code2,
   Mic,
@@ -26,9 +36,6 @@ import {
   Gavel,
   RefreshCw,
   Globe,
-  SlidersHorizontal,
-  FolderLock,
-  Palette,
   Calendar,
 } from "lucide-react";
 import {
@@ -39,87 +46,110 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 
-interface TeamMember {
-  id: string;
-  name: string;
-  isYou?: boolean;
-  email: string;
-  role: string;
-  authority: string;
-  fence: string;
-  fenceReqs?: string[];
-  fenceIcon: "public" | "reqs" | "palette" | "calendar";
-  status: "Active" | "Pending";
-  avatar: string;
-}
-
 export default function SettingsPage() {
+  const { session, refreshSession } = useSession();
   const [activeTab, setActiveTab] = useState<string>("general");
+  const [workspaceName, setWorkspaceName] = useState<string>("");
   const [operatingModel, setOperatingModel] = useState<"corporate" | "agency">("corporate");
   const [isStrictRubricChecked, setIsStrictRubricChecked] = useState<boolean>(true);
   const [searchMemberQuery, setSearchMemberQuery] = useState<string>("");
   const [roleScopeFilter, setRoleScopeFilter] = useState<string>("All Governance Roles");
   const [isInviteModalOpen, setIsInviteModalOpen] = useState<boolean>(false);
+  const [inviteEmail, setInviteEmail] = useState<string>("");
+  const [inviteRole, setInviteRole] = useState<string>("recruiter");
+  const [inviting, setInviting] = useState<boolean>(false);
+  const [savingWorkspace, setSavingWorkspace] = useState<boolean>(false);
+  const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastType, setToastType] = useState<"success" | "error">("success");
 
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToastMessage(msg);
+    setToastType(type);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard?.writeText(text);
-    showToast(`Copied to clipboard: ${text}`);
+    showToast(`Copied to clipboard: ${text}`, "success");
   };
 
-  const members: TeamMember[] = [
-    {
-      id: "ev",
-      name: "Elena Varga",
-      isYou: true,
-      email: "elena.varga@halden.com",
-      role: "Lead Recruiter & Admin",
-      authority: "Full Tenant Master Controls",
-      fence: "All Requisitions (Universal)",
-      fenceIcon: "public",
-      status: "Active",
-      avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuDtqJFJrZcfrEz_Ztsm9wuF0MkV9I8iEAz8DTfmT3TbtKgEKGeMorELLfULMaodPU3JAOXFMVoDO3mxi6TF4kl_N2oIt-qBYziNOeK1JYSMLuIPZNOfNZtqo6vsTU4XSQEZlFV5D1KoaDc3CCkavhgfC_QhTwPh_jcGjeBbkDKo90v4cfGoThPGDUZuGNyvAgemiWCqE70hPUeES4qKF99HeJThmE8IFVheUcwvikcpTf4GoALsQT2pkQ",
-    },
-    {
-      id: "cm",
-      name: "Chris Miller",
-      email: "c.miller@halden.com",
-      role: "Hiring Manager (Engineering)",
-      authority: "Scorecard Reviewer & Offer Author",
-      fence: "Platform & Infra",
-      fenceReqs: ["Req-204", "Req-208"],
-      fenceIcon: "reqs",
-      status: "Active",
-      avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuBK7iDHS7qaV9gJxYLA4L2NIKwgytH-8smT8mxYWKdhOFQHZKqV50JzEYozpOa9RGrZneYFlEG1Rxdv6VrLUcP8yWXTtj1SrmqWaL1fh8HfX5uxWz67sB8prvNdb6Qpdl0hjrjvZi_m93jIMiRVDn2_bEg6cwTD5YpvqIWfADsbL-0xhw4RwA60B8yTzO2WEBp8Knm0KcyDEUspoLTCBIV_pWqWXv4osmm2q2lFcEHt_UPIEJsH-Z71Bg",
-    },
-    {
-      id: "tn",
-      name: "Tomas Novak",
-      email: "t.novak@halden.com",
-      role: "Interviewer",
-      authority: "Portfolio & Critique Evaluator",
-      fence: "Product Design",
-      fenceIcon: "palette",
-      status: "Active",
-      avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuDEnmAgu0zrbZH5LhJeHSsQFrT49OLr3WPhW2W2Ltu77t-MZRm4jVHLjz02n_whNi2LXLYVSmwKd8fQ8UGwWhB1ZedoCcjBtpYFmdLGPocTrE7uTesqrYBjNHQPYMBZBupNbh5CH-Jr19BuogX_zWagYZOst1oMH_2uNY7IDBE8I5a3iACaNHr5Z72wk_MddDYHfjE0mYYkjbGzbIWGxN8_iUX-YvF4_K1GzkSoHe9M6RczNXe9DnwKOg",
-    },
-    {
-      id: "sj",
-      name: "Sarah Jenkins",
-      email: "s.jenkins@halden.com",
-      role: "Recruiting Coordinator",
-      authority: "Logistics & Candidate Journey",
-      fence: "Scheduling & Ingestion",
-      fenceIcon: "calendar",
-      status: "Active",
-      avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuBGiZ1bcmqhr7BxQ6AnF0xLFgj0Lzk7dC58jQ_3rr2assWYspp3RaDPO71duLET0cMiy9a9piMT8CElv9SnPdX5d8WRAxpZZ_ZrApBC1yei5kqQglAQv_daO_F7Luh-J5eRGBof8MAOdx0wpiFJ1-ckNGw4UP4iYm4UyBbsdQZOSxgXOwjKnZQ2wf1SszsGqVCv9OJryL3nq3SFeWQf-xEHMSepW_dJDDrrk_jGt1zxt1z1lGDT9K2wTw",
-    },
-  ];
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      fetchSession().catch(() => null),
+      fetchMembers().catch(() => [] as WorkspaceMember[]),
+    ]).then(([sess, mems]) => {
+      if (!active) return;
+      if (sess) {
+        const currentWs =
+          sess.workspaces.find((w) => w.id === sess.user.tenant_id) ||
+          sess.workspaces[0];
+        if (currentWs) {
+          setWorkspaceName(currentWs.name);
+          setOperatingModel(currentWs.kind);
+        }
+      }
+      if (mems) {
+        setMembers(mems);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleSaveWorkspace = async () => {
+    if (!workspaceName.trim()) {
+      showToast("Workspace legal entity name cannot be empty.", "error");
+      return;
+    }
+    setSavingWorkspace(true);
+    try {
+      const res = await updateWorkspace(workspaceName.trim());
+      setWorkspaceName(res.name);
+      await refreshSession();
+      showToast("Workspace settings updated across tenant.", "success");
+    } catch (err) {
+      showToast(getErrorMessage(err), "error");
+    } finally {
+      setSavingWorkspace(false);
+    }
+  };
+
+  const handleResetDefaults = async () => {
+    try {
+      const sess = await fetchSession();
+      const currentWs =
+        sess?.workspaces.find((w) => w.id === sess.user.tenant_id) ||
+        sess?.workspaces?.[0];
+      if (currentWs) {
+        setWorkspaceName(currentWs.name);
+        setOperatingModel(currentWs.kind);
+      }
+      showToast("Configuration reset to saved enterprise settings.", "success");
+    } catch (err) {
+      showToast(getErrorMessage(err), "error");
+    }
+  };
+
+  const handleInviteMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteEmail.trim()) return;
+    setInviting(true);
+    try {
+      await addMember(inviteEmail.trim().toLowerCase(), inviteRole.toLowerCase());
+      showToast(`Member invitation added for ${inviteEmail.trim()}`, "success");
+      setIsInviteModalOpen(false);
+      setInviteEmail("");
+      const updated = await fetchMembers();
+      setMembers(updated);
+    } catch (err) {
+      showToast(getErrorMessage(err), "error");
+    } finally {
+      setInviting(false);
+    }
+  };
 
   const filteredMembers = members.filter((m) => {
     const matchSearch =
@@ -130,13 +160,17 @@ export default function SettingsPage() {
 
     const matchRole =
       roleScopeFilter === "All Governance Roles" ||
-      (roleScopeFilter === "Lead Recruiter & Admin" && m.role.includes("Lead Recruiter")) ||
-      (roleScopeFilter === "Hiring Manager" && m.role.includes("Hiring Manager")) ||
-      (roleScopeFilter === "Interviewer" && m.role.includes("Interviewer")) ||
-      (roleScopeFilter === "Coordinator" && m.role.includes("Coordinator"));
+      (roleScopeFilter === "Lead Recruiter & Admin" && (m.role === "admin" || m.role.includes("Recruiter"))) ||
+      (roleScopeFilter === "Hiring Manager" && m.role.includes("Manager")) ||
+      (roleScopeFilter === "Interviewer" && (m.role === "interviewer" || m.role.includes("Interviewer"))) ||
+      (roleScopeFilter === "Coordinator" && (m.role === "coordinator" || m.role.includes("Coordinator")));
 
     return matchSearch && matchRole;
   });
+
+  const subdomainStr =
+    (workspaceName.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "workspace") +
+    ".coreats.internal";
 
   return (
     <div className="min-h-screen bg-[#f8f9ff] text-[#141c27] flex flex-col font-sans antialiased">
@@ -258,7 +292,9 @@ export default function SettingsPage() {
                   <div className="relative">
                     <input
                       type="text"
-                      defaultValue="Halden Financial · Corporate Recruitment"
+                      value={workspaceName}
+                      onChange={(e) => setWorkspaceName(e.target.value)}
+                      placeholder="Workspace Legal Entity Name"
                       className="w-full h-10 px-3.5 bg-[#f8f9ff] text-[#141c27] text-xs font-medium rounded-xl border border-[#dee2ef] focus:outline-none focus:ring-2 focus:ring-[#6137e0]"
                     />
                     <Building2 className="w-4 h-4 text-[#75777c] absolute right-3.5 top-3 pointer-events-none" />
@@ -307,12 +343,12 @@ export default function SettingsPage() {
                   <div className="flex items-center">
                     <input
                       readOnly
-                      value="halden.coreats.internal"
+                      value={subdomainStr}
                       className="flex-1 h-10 px-3 bg-[#f8f9ff] text-[#141c27] font-mono text-xs rounded-l-xl border border-r-0 border-[#dee2ef] select-all focus:outline-none"
                     />
                     <button
                       type="button"
-                      onClick={() => copyToClipboard("halden.coreats.internal")}
+                      onClick={() => copyToClipboard(subdomainStr)}
                       className="h-10 px-4 bg-[#eff4ff] hover:bg-[#dee2ef] text-[#141c27] text-xs font-semibold rounded-r-xl border border-[#dee2ef] transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer"
                     >
                       <Copy className="w-3.5 h-3.5 text-[#45474c]" />
@@ -468,7 +504,7 @@ export default function SettingsPage() {
                         Team Members &amp; Governance
                       </h2>
                       <span className="px-2.5 py-0.5 rounded-full bg-[#eff4ff] text-[#141c27] text-xs font-semibold">
-                        4 Seats Assigned
+                        {members.length} Seat{members.length === 1 ? "" : "s"} Assigned
                       </span>
                     </div>
                     <p className="text-xs text-[#75777c] mt-0.5">
@@ -527,89 +563,92 @@ export default function SettingsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#eff4ff]">
-                      {filteredMembers.map((m) => (
-                        <tr key={m.id} className="hover:bg-[#f8f9ff]/70 transition-colors">
-                          <td className="py-3.5 px-4">
-                            <div className="flex items-center gap-3">
-                              <img
-                                src={m.avatar}
-                                alt={m.name}
-                                className="w-10 h-10 rounded-full object-cover shadow-2xs ring-2 ring-white"
-                              />
-                              <div className="flex flex-col">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-bold text-sm text-[#141c27]">{m.name}</span>
-                                  {m.isYou && (
-                                    <span className="px-1.5 py-0.2 rounded bg-[#dee2ef] text-[#141c27] text-[10px] font-bold">
-                                      You
-                                    </span>
-                                  )}
-                                </div>
-                                <span className="font-mono text-[11px] text-[#75777c]">{m.email}</span>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="py-3.5 px-4">
-                            <div className="flex flex-col">
-                              <span className="font-semibold text-xs text-[#141c27]">{m.role}</span>
-                              <span className={`text-[11px] ${m.isYou ? "text-[#6137e0] font-medium" : "text-[#75777c]"}`}>
-                                {m.authority}
-                              </span>
-                            </div>
-                          </td>
-
-                          <td className="py-3.5 px-4">
-                            {m.fenceIcon === "public" ? (
-                              <span className="px-2.5 py-1 rounded-full bg-[#eff4ff] text-[#141c27] text-[11px] inline-flex items-center gap-1.5 font-medium border border-[#dee2ef]/40">
-                                <Globe className="w-3.5 h-3.5 text-[#069669]" />
-                                <span>{m.fence}</span>
-                              </span>
-                            ) : m.fenceIcon === "palette" ? (
-                              <span className="px-2.5 py-1 rounded-full bg-[#eff4ff] text-[#141c27] text-[11px] inline-flex items-center gap-1.5 font-medium border border-[#dee2ef]/40">
-                                <Palette className="w-3.5 h-3.5 text-[#6137e0]" />
-                                <span>{m.fence}</span>
-                              </span>
-                            ) : m.fenceIcon === "calendar" ? (
-                              <span className="px-2.5 py-1 rounded-full bg-[#eff4ff] text-[#141c27] text-[11px] inline-flex items-center gap-1.5 font-medium border border-[#dee2ef]/40">
-                                <Calendar className="w-3.5 h-3.5 text-[#75777c]" />
-                                <span>{m.fence}</span>
-                              </span>
-                            ) : (
-                              <div className="flex flex-col gap-1">
-                                <span className="font-medium text-[#141c27]">{m.fence}</span>
-                                <div className="flex items-center gap-1">
-                                  {m.fenceReqs?.map((req, i) => (
-                                    <span
-                                      key={i}
-                                      className="px-1.5 py-0.5 rounded bg-[#eff4ff] text-[#141c27] font-mono text-[10px] border border-[#dee2ef]/50"
-                                    >
-                                      {req}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </td>
-
-                          <td className="py-3.5 px-4">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-                              <span>{m.status}</span>
-                            </span>
-                          </td>
-
-                          <td className="py-3.5 px-4 text-right">
-                            <button
-                              type="button"
-                              onClick={() => showToast(`Governance options for ${m.name}`)}
-                              className="p-1 rounded-lg text-[#75777c] hover:text-[#141c27] hover:bg-[#eff4ff] transition-colors"
-                            >
-                              <MoreVertical className="w-4 h-4" />
-                            </button>
+                      {filteredMembers.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-8 text-center text-[#75777c] text-xs">
+                            No team members found.
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        filteredMembers.map((m) => {
+                          const isYou = m.email === session?.user?.email;
+                          const initials = m.name
+                            ? m.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
+                            : "U";
+                          const roleName =
+                            m.role === "admin"
+                              ? "Lead Recruiter & Admin"
+                              : m.role === "recruiter"
+                              ? "Recruiter"
+                              : m.role === "interviewer"
+                              ? "Interviewer"
+                              : m.role === "viewer"
+                              ? "Viewer"
+                              : m.role;
+                          const authority =
+                            m.role === "admin"
+                              ? "Full Tenant Master Controls"
+                              : isYou
+                              ? "Requisition Reviewer"
+                              : "Assigned Requisitions";
+
+                          return (
+                            <tr key={m.id} className="hover:bg-[#f8f9ff]/70 transition-colors">
+                              <td className="py-3.5 px-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-full bg-[#131c29] text-white flex items-center justify-center font-bold text-xs shadow-2xs ring-2 ring-white">
+                                    {initials}
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-bold text-sm text-[#141c27]">{m.name}</span>
+                                      {isYou && (
+                                        <span className="px-1.5 py-0.2 rounded bg-[#dee2ef] text-[#141c27] text-[10px] font-bold">
+                                          You
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="font-mono text-[11px] text-[#75777c]">{m.email}</span>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="py-3.5 px-4">
+                                <div className="flex flex-col">
+                                  <span className="font-semibold text-xs text-[#141c27]">{roleName}</span>
+                                  <span className={`text-[11px] ${isYou ? "text-[#6137e0] font-medium" : "text-[#75777c]"}`}>
+                                    {authority}
+                                  </span>
+                                </div>
+                              </td>
+
+                              <td className="py-3.5 px-4">
+                                <span className="px-2.5 py-1 rounded-full bg-[#eff4ff] text-[#141c27] text-[11px] inline-flex items-center gap-1.5 font-medium border border-[#dee2ef]/40">
+                                  <Globe className="w-3.5 h-3.5 text-[#069669]" />
+                                  <span>Universal Workspace Fence</span>
+                                </span>
+                              </td>
+
+                              <td className="py-3.5 px-4">
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                                  <span>Active</span>
+                                </span>
+                              </td>
+
+                              <td className="py-3.5 px-4 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => showToast(`Governance options for ${m.name}`)}
+                                  className="p-1 rounded-lg text-[#75777c] hover:text-[#141c27] hover:bg-[#eff4ff] transition-colors"
+                                >
+                                  <MoreVertical className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -706,18 +745,28 @@ export default function SettingsPage() {
             <div className="flex items-center gap-3 shrink-0">
               <button
                 type="button"
-                onClick={() => showToast("Configuration reset to enterprise default.")}
+                onClick={handleResetDefaults}
                 className="h-10 px-4 rounded-xl bg-[#eff4ff] text-[#141c27] hover:bg-[#dee2ef] text-xs font-semibold transition-colors cursor-pointer"
               >
                 Reset to Defaults
               </button>
               <button
                 type="button"
-                onClick={() => showToast("Workspace settings updated across tenant.")}
-                className="h-10 px-5 rounded-xl bg-[#131c29] text-white hover:bg-[#202d3f] text-xs font-semibold shadow-md flex items-center gap-2 transition-all cursor-pointer"
+                onClick={handleSaveWorkspace}
+                disabled={savingWorkspace}
+                className="h-10 px-5 rounded-xl bg-[#131c29] text-white hover:bg-[#202d3f] text-xs font-semibold shadow-md flex items-center gap-2 transition-all cursor-pointer disabled:opacity-75"
               >
-                <CheckCircle2 className="w-4 h-4 text-[#85f8c4]" />
-                <span>Save Workspace Changes</span>
+                {savingWorkspace ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                    <span>Saving Changes...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-[#85f8c4]" />
+                    <span>Save Workspace Changes</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -727,8 +776,16 @@ export default function SettingsPage() {
 
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-24 right-6 z-50 bg-[#131c29] text-white text-xs font-medium px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
-          <CheckCircle2 className="w-4 h-4 text-[#85f8c4]" />
+        <div
+          className={`fixed bottom-24 right-6 z-50 text-white text-xs font-medium px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 ${
+            toastType === "error" ? "bg-[#ba1a1a]" : "bg-[#131c29]"
+          }`}
+        >
+          {toastType === "error" ? (
+            <AlertCircle className="w-4 h-4 text-white" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-[#85f8c4]" />
+          )}
           <span>{toastMessage}</span>
         </div>
       )}
@@ -745,44 +802,41 @@ export default function SettingsPage() {
             </DialogDescription>
           </DialogHeader>
           <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setIsInviteModalOpen(false);
-              showToast("Invitation dispatched via Okta Enterprise SSO.");
-            }}
+            onSubmit={handleInviteMember}
             className="flex flex-col gap-3 mt-3 text-xs"
           >
-            <div className="flex flex-col gap-1">
-              <label className="font-semibold text-[#141c27]">Full Name</label>
-              <input
-                required
-                placeholder="e.g. Rachel Sterling"
-                className="h-10 px-3 bg-[#f8f9ff] rounded-xl border border-[#dee2ef] text-[#141c27]"
-              />
-            </div>
             <div className="flex flex-col gap-1">
               <label className="font-semibold text-[#141c27]">Work Email</label>
               <input
                 required
                 type="email"
-                placeholder="r.sterling@halden.com"
-                className="h-10 px-3 bg-[#f8f9ff] rounded-xl border border-[#dee2ef] text-[#141c27]"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="colleague@domain.com"
+                className="h-10 px-3 bg-[#f8f9ff] rounded-xl border border-[#dee2ef] text-[#141c27] focus:outline-none focus:ring-2 focus:ring-[#6137e0]"
               />
             </div>
             <div className="flex flex-col gap-1">
               <label className="font-semibold text-[#141c27]">Seat Role &amp; Authority</label>
-              <select className="h-10 px-3 bg-[#f8f9ff] rounded-xl border border-[#dee2ef] text-[#141c27]">
-                <option>Hiring Manager (Assigned Requisitions)</option>
-                <option>Panel Reviewer / Interviewer</option>
-                <option>Recruiting Coordinator</option>
-                <option>Lead Recruiter &amp; Admin</option>
+              <select
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value)}
+                className="h-10 px-3 bg-[#f8f9ff] rounded-xl border border-[#dee2ef] text-[#141c27] focus:outline-none focus:ring-2 focus:ring-[#6137e0]"
+              >
+                <option value="recruiter">Recruiter (Requisitions &amp; Candidate Review)</option>
+                <option value="interviewer">Interviewer (Scorecard Reviewer)</option>
+                <option value="viewer">Viewer (Read-Only Access)</option>
+                <option value="admin">System Administrator (Full Controls)</option>
+                <option value="compliance">Compliance Officer (Audit &amp; Governance)</option>
               </select>
             </div>
             <button
               type="submit"
-              className="mt-2 h-10 bg-[#131c29] text-white font-semibold rounded-xl hover:bg-[#202d3f] transition-colors"
+              disabled={inviting}
+              className="mt-2 h-10 bg-[#131c29] text-white font-semibold rounded-xl hover:bg-[#202d3f] transition-colors disabled:opacity-75 flex items-center justify-center gap-2 cursor-pointer"
             >
-              Send Invitation
+              {inviting && <RefreshCw className="w-4 h-4 animate-spin text-white" />}
+              <span>{inviting ? "Sending Invitation..." : "Send Invitation"}</span>
             </button>
           </form>
         </DialogContent>

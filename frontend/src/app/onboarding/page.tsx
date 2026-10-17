@@ -1,111 +1,132 @@
 "use client";
 
-import React, { useState } from "react";
-import Link from "next/link";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { CoreHeader } from "@/components/layout/core-header";
 import { CoreFooter } from "@/components/layout/core-footer";
+import { useSession } from "@/components/layout/api-session";
+import {
+  fetchSession,
+  updateWorkspace,
+  fetchMembers,
+  addMember,
+  getErrorMessage,
+  WorkspaceMember,
+} from "@/lib/api";
 import {
   Building2,
   Users,
   CheckCircle2,
-  Lock,
+  AlertCircle,
   ArrowRight,
   ArrowLeft,
-  ShieldCheck,
-  Check,
   Plus,
   Send,
   Sparkles,
-  Info,
-  Clock,
-  Layers,
-  ChevronDown,
-  Briefcase,
   HelpCircle,
-  EyeOff,
+  RefreshCw,
 } from "lucide-react";
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { session, refreshSession } = useSession();
 
   // Architecture Model Selection
   const [architectureModel, setArchitectureModel] = useState<"corporate" | "agency">("corporate");
+  const [workspaceName, setWorkspaceName] = useState<string>("Halden Financial");
 
   // Masking Toggle
   const [strictMasking, setStrictMasking] = useState(true);
 
   // New Invite Form
   const [newInviteEmail, setNewInviteEmail] = useState("");
-  const [newInviteRole, setNewInviteRole] = useState("Recruiter");
+  const [newInviteRole, setNewInviteRole] = useState("recruiter");
+  const [isInviting, setIsInviting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Team Table Data
-  const [teamMembers, setTeamMembers] = useState([
-    {
-      name: "Elena Varga (You)",
-      email: "elena.varga@halden.com",
-      initials: "EV",
-      assignedAuthority: "Primary Admin",
-      functionalScope: "Full Architectural Control",
-      status: "Root Owner",
-      statusColor: "text-emerald-700 bg-emerald-50",
-      dotColor: "bg-emerald-600",
-      isOwner: true,
-    },
-    {
-      name: "Chris Miller",
-      email: "c.miller@halden.com",
-      initials: "CM",
-      assignedAuthority: "Hiring Manager",
-      functionalScope: "Engineering & Platform Org",
-      status: "Pending Invite",
-      statusColor: "text-purple-700 bg-purple-50",
-      dotColor: "bg-purple-600",
-      isOwner: false,
-    },
-    {
-      name: "Tomas Novak",
-      email: "t.novak@halden.com",
-      initials: "TN",
-      assignedAuthority: "Panel Reviewer",
-      functionalScope: "Quantitative Alpha & Risk",
-      status: "Pending Invite",
-      statusColor: "text-purple-700 bg-purple-50",
-      dotColor: "bg-purple-600",
-      isOwner: false,
-    },
-  ]);
+  const [teamMembers, setTeamMembers] = useState<WorkspaceMember[]>([]);
 
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastType, setToastType] = useState<"success" | "error">("success");
 
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToastMessage(msg);
+    setToastType(type);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const handleSendInvite = (e: React.FormEvent) => {
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      fetchSession().catch(() => null),
+      fetchMembers().catch(() => [] as WorkspaceMember[]),
+    ]).then(([sess, mems]) => {
+      if (!active) return;
+      if (sess) {
+        const cur = sess.workspaces.find((w) => w.id === sess.user.tenant_id) || sess.workspaces[0];
+        if (cur) {
+          setWorkspaceName(cur.name);
+          setArchitectureModel(cur.kind);
+        }
+      }
+      if (mems) {
+        setTeamMembers(mems);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleSendInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newInviteEmail) return;
+    if (!newInviteEmail.trim()) return;
 
-    setTeamMembers((prev) => [
-      ...prev,
-      {
-        name: newInviteEmail.split("@")[0].replace(".", " "),
-        email: newInviteEmail,
-        initials: newInviteEmail.slice(0, 2).toUpperCase(),
-        assignedAuthority: newInviteRole,
-        functionalScope: "General Corporate Intake",
-        status: "Pending Invite",
-        statusColor: "text-purple-700 bg-purple-50",
-        dotColor: "bg-purple-600",
-        isOwner: false,
-      },
-    ]);
-
-    showToast(`Invitation dispatched to ${newInviteEmail}`);
-    setNewInviteEmail("");
+    setIsInviting(true);
+    try {
+      await addMember(newInviteEmail.trim().toLowerCase(), newInviteRole.toLowerCase());
+      showToast(`Invitation dispatched to ${newInviteEmail.trim()}`, "success");
+      setNewInviteEmail("");
+      const updated = await fetchMembers();
+      setTeamMembers(updated);
+    } catch (err) {
+      showToast(getErrorMessage(err), "error");
+    } finally {
+      setIsInviting(false);
+    }
   };
+
+  const handleCreateAndLaunch = async () => {
+    setIsSubmitting(true);
+    try {
+      const res = await updateWorkspace(workspaceName.trim() || "Corporate Workspace");
+      await refreshSession();
+      showToast(`${res.name} Workspace provisioned successfully!`, "success");
+      setTimeout(() => router.push("/settings"), 800);
+    } catch (err) {
+      showToast(getErrorMessage(err), "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    setIsSubmitting(true);
+    try {
+      await updateWorkspace(workspaceName.trim() || "Corporate Workspace");
+      await refreshSession();
+      showToast("Onboarding workspace draft saved to server.", "success");
+    } catch (err) {
+      showToast(getErrorMessage(err), "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const uriPrefix =
+    (workspaceName.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "halden");
 
   return (
     <div className="min-h-screen bg-[#f8f9ff] text-[#141c27] flex flex-col font-sans antialiased">
@@ -203,13 +224,15 @@ export default function OnboardingPage() {
                   <div className="flex flex-col gap-1.5">
                     <div className="flex items-center justify-between text-xs">
                       <label className="font-semibold text-[#141c27]">Legal Organization Name</label>
-                      <span className="text-[11px] text-[#75777c] font-mono">Immutable</span>
+                      <span className="text-[11px] text-[#6137e0] font-semibold">Configurable</span>
                     </div>
                     <div className="relative flex items-center">
                       <input
-                        readOnly
-                        value="Halden Financial"
-                        className="w-full h-10 px-3.5 bg-[#f8f9ff] text-[#141c27] text-xs font-bold rounded-xl border border-[#dee2ef] focus:outline-none"
+                        type="text"
+                        value={workspaceName}
+                        onChange={(e) => setWorkspaceName(e.target.value)}
+                        placeholder="Organization Name"
+                        className="w-full h-10 px-3.5 bg-[#f8f9ff] text-[#141c27] text-xs font-bold rounded-xl border border-[#dee2ef] focus:outline-none focus:ring-2 focus:ring-[#6137e0]"
                       />
                       <CheckCircle2 className="w-4 h-4 text-[#069669] absolute right-3 pointer-events-none" />
                     </div>
@@ -225,7 +248,7 @@ export default function OnboardingPage() {
                     <div className="flex items-center">
                       <input
                         readOnly
-                        value="halden"
+                        value={uriPrefix}
                         className="flex-1 h-10 px-3.5 bg-[#f8f9ff] text-[#141c27] text-xs font-mono font-semibold rounded-l-xl border border-r-0 border-[#dee2ef]"
                       />
                       <span className="h-10 px-3 bg-[#eff4ff] text-[#75777c] font-mono text-xs rounded-r-xl border border-[#dee2ef] flex items-center">
@@ -324,8 +347,8 @@ export default function OnboardingPage() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => showToast("Seat capacity upgraded to Enterprise Plus.")}
-                    className="text-xs font-semibold text-[#6137e0] hover:underline flex items-center gap-1"
+                    onClick={() => showToast("Seat capacity is managed in Workspace Settings.")}
+                    className="text-xs font-semibold text-[#6137e0] hover:underline flex items-center gap-1 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add Recruiter Seat</span>
@@ -344,49 +367,69 @@ export default function OnboardingPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#eff4ff]">
-                      {teamMembers.map((m, idx) => (
-                        <tr key={idx} className="hover:bg-[#f8f9ff]/70 transition-colors">
-                          <td className="py-3 px-3">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-7 h-7 rounded-full bg-[#131c29] text-white flex items-center justify-center font-bold text-[10px]">
-                                {m.initials}
-                              </div>
-                              <div className="flex flex-col">
-                                <span className="font-bold text-[#141c27]">{m.name}</span>
-                                <span className="font-mono text-[11px] text-[#75777c]">{m.email}</span>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td className="py-3 px-3">
-                            {m.isOwner ? (
-                              <span className="px-2 py-0.5 rounded bg-[#e7deff] text-[#1e0060] font-bold text-[10px]">
-                                {m.assignedAuthority}
-                              </span>
-                            ) : (
-                              <select
-                                defaultValue={m.assignedAuthority}
-                                className="bg-[#eff4ff] text-[#141c27] text-xs font-semibold px-2 py-1 rounded-lg border border-[#dee2ef] focus:outline-none"
-                              >
-                                <option>Hiring Manager</option>
-                                <option>Panel Reviewer</option>
-                                <option>Recruiter</option>
-                              </select>
-                            )}
-                          </td>
-
-                          <td className="py-3 px-3 font-medium text-[#45474c]">
-                            {m.functionalScope}
-                          </td>
-
-                          <td className="py-3 px-3 text-right">
-                            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold ${m.statusColor}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${m.dotColor}`} />
-                              <span>{m.status}</span>
-                            </span>
+                      {teamMembers.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="py-6 text-center text-[#75777c] text-xs">
+                            No team members assigned yet.
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        teamMembers.map((m, idx) => {
+                          const isOwner = m.email === session?.user?.email;
+                          const initials = m.name
+                            ? m.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
+                            : "U";
+                          const authority =
+                            m.role === "admin"
+                              ? "Primary Admin"
+                              : m.role === "recruiter"
+                              ? "Recruiter"
+                              : m.role === "interviewer"
+                              ? "Panel Reviewer"
+                              : m.role === "viewer"
+                              ? "Viewer"
+                              : m.role;
+
+                          return (
+                            <tr key={idx} className="hover:bg-[#f8f9ff]/70 transition-colors">
+                              <td className="py-3 px-3">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-7 h-7 rounded-full bg-[#131c29] text-white flex items-center justify-center font-bold text-[10px]">
+                                    {initials}
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="font-bold text-[#141c27]">
+                                      {m.name} {isOwner && "(You)"}
+                                    </span>
+                                    <span className="font-mono text-[11px] text-[#75777c]">{m.email}</span>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-3">
+                                <span
+                                  className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                                    isOwner ? "bg-[#e7deff] text-[#1e0060]" : "bg-[#eff4ff] text-[#141c27]"
+                                  }`}
+                                >
+                                  {authority}
+                                </span>
+                              </td>
+
+                              <td className="py-3 px-3 font-medium text-[#45474c]">
+                                {isOwner ? "Full Architectural Control" : "Universal Requisition Scope"}
+                              </td>
+
+                              <td className="py-3 px-3 text-right">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold text-emerald-700 bg-emerald-50">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                                  <span>Active</span>
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -397,7 +440,8 @@ export default function OnboardingPage() {
                     type="email"
                     value={newInviteEmail}
                     onChange={(e) => setNewInviteEmail(e.target.value)}
-                    placeholder="colleague.email@halden.com"
+                    placeholder="colleague@domain.com"
+                    required
                     className="flex-1 h-10 px-3.5 bg-[#f8f9ff] text-[#141c27] placeholder:text-[#75777c] text-xs rounded-xl border border-[#dee2ef] focus:outline-none focus:ring-2 focus:ring-[#6137e0]"
                   />
                   <select
@@ -405,16 +449,22 @@ export default function OnboardingPage() {
                     onChange={(e) => setNewInviteRole(e.target.value)}
                     className="h-10 px-3 bg-[#f8f9ff] text-[#141c27] text-xs font-semibold rounded-xl border border-[#dee2ef] focus:outline-none"
                   >
-                    <option>Recruiter</option>
-                    <option>Hiring Manager</option>
-                    <option>Panel Reviewer</option>
+                    <option value="recruiter">Recruiter</option>
+                    <option value="interviewer">Panel Reviewer</option>
+                    <option value="admin">Administrator</option>
+                    <option value="viewer">Viewer</option>
                   </select>
                   <button
                     type="submit"
-                    className="h-10 px-4 bg-[#131c29] text-white hover:bg-[#202d3f] text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                    disabled={isInviting}
+                    className="h-10 px-4 bg-[#131c29] text-white hover:bg-[#202d3f] text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 disabled:opacity-75"
                   >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>Invite</span>
+                    {isInviting ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Send className="w-3.5 h-3.5" />
+                    )}
+                    <span>{isInviting ? "Inviting..." : "Invite"}</span>
                   </button>
                 </form>
 
@@ -570,22 +620,30 @@ export default function OnboardingPage() {
             <div className="flex items-center gap-2.5 shrink-0">
               <button
                 type="button"
-                onClick={() => showToast("Onboarding workspace draft saved.")}
-                className="h-10 px-4 rounded-xl bg-white border border-[#dee2ef] text-[#141c27] hover:bg-[#f8f9ff] text-xs font-semibold transition-colors cursor-pointer"
+                onClick={handleSaveDraft}
+                disabled={isSubmitting}
+                className="h-10 px-4 rounded-xl bg-white border border-[#dee2ef] text-[#141c27] hover:bg-[#f8f9ff] text-xs font-semibold transition-colors cursor-pointer disabled:opacity-75"
               >
                 Save Draft
               </button>
 
               <button
                 type="button"
-                onClick={() => {
-                  showToast("Halden Financial Workspace provisioned successfully!");
-                  setTimeout(() => router.push("/settings"), 1000);
-                }}
-                className="h-10 px-5 rounded-xl bg-[#131c29] text-white hover:bg-[#202d3f] text-xs font-semibold shadow-md flex items-center gap-2 transition-all cursor-pointer"
+                onClick={handleCreateAndLaunch}
+                disabled={isSubmitting}
+                className="h-10 px-5 rounded-xl bg-[#131c29] text-white hover:bg-[#202d3f] text-xs font-semibold shadow-md flex items-center gap-2 transition-all cursor-pointer disabled:opacity-75"
               >
-                <span>Create &amp; Launch Workspace</span>
-                <ArrowRight className="w-4 h-4" />
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                    <span>Provisioning...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Create &amp; Launch Workspace</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -595,8 +653,16 @@ export default function OnboardingPage() {
 
       {/* Toast */}
       {toastMessage && (
-        <div className="fixed bottom-24 right-6 z-50 bg-[#131c29] text-white text-xs font-medium px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
-          <CheckCircle2 className="w-4 h-4 text-[#85f8c4]" />
+        <div
+          className={`fixed bottom-24 right-6 z-50 text-white text-xs font-medium px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 ${
+            toastType === "error" ? "bg-[#ba1a1a]" : "bg-[#131c29]"
+          }`}
+        >
+          {toastType === "error" ? (
+            <AlertCircle className="w-4 h-4 text-white" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-[#85f8c4]" />
+          )}
           <span>{toastMessage}</span>
         </div>
       )}

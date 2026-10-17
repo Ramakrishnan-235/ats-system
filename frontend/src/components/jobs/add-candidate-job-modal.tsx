@@ -46,11 +46,13 @@ export function AddCandidateJobModal(props: AddCandidateJobModalProps) {
   const [trayTitle, setTrayTitle] = useState("Processing candidate…");
 
   // Reset minimized state when dialog opens normally
-  useEffect(() => {
-    if (props.open) {
+  const [prevOpen, setPrevOpen] = useState(props.open);
+  if (props.open !== prevOpen) {
+    setPrevOpen(props.open);
+    if (props.open && minimized) {
       setMinimized(false);
     }
-  }, [props.open]);
+  }
 
   const handleMinimize = (title: string, progress: number, step: string) => {
     setTrayTitle(title);

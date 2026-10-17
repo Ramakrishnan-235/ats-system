@@ -505,7 +505,23 @@ def parse_resume_with_llm_and_embeddings(
         ("human", USER_EXTRACTION_PROMPT),
     ])
     chain = prompt | structured_llm
-    extracted: FullLLMResumeExtraction = chain.invoke({"resume_markdown": safe_markdown})
+    try:
+        extracted: FullLLMResumeExtraction = chain.invoke({"resume_markdown": safe_markdown})
+    except Exception as llm_err:
+        logger.warning(
+            "LLM extraction failed or timed out (%s); falling back to local deterministic parser",
+            llm_err,
+        )
+        from ats_core.parsers.resume_parser import parse_resume_to_candidate as legacy_parse
+
+        return legacy_parse(
+            file_bytes,
+            filename=filename,
+            target_job=target_job,
+            taxonomy_rows=taxonomy_rows,
+            allow_llm=False,
+            **kwargs,
+        )
 
     # 4. Normalize and ground skills using EmbeddingGemma 2 (768-d cosine similarity)
     normalizer = (

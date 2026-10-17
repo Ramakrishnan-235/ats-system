@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { CoreHeader } from "@/components/layout/core-header";
 import { CoreFooter } from "@/components/layout/core-footer";
+import { fetchCandidates, updateCandidateStage, fetchJobs, getErrorMessage } from "@/lib/api";
+import { CandidateDetail, JobRequisition } from "@/types/ats";
 import {
   Calendar,
   Clock,
@@ -38,6 +40,10 @@ import {
 } from "@/components/ui/dialog";
 
 export default function InterviewsPage() {
+  const [candidates, setCandidates] = useState<CandidateDetail[]>([]);
+  const [jobs, setJobs] = useState<JobRequisition[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [activeFilterTab, setActiveFilterTab] = useState<"upcoming" | "pending" | "completed">("upcoming");
   const [selectedSlot, setSelectedSlot] = useState<string>("11:00 AM");
   const [attachRubric, setAttachRubric] = useState<boolean>(true);
@@ -46,9 +52,102 @@ export default function InterviewsPage() {
   const [isConflictModalOpen, setIsConflictModalOpen] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // New loop form
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string>("");
+  const [loopStageType, setLoopStageType] = useState<string>("Technical Architecture Screen");
+  const [isSavingLoop, setIsSavingLoop] = useState<boolean>(false);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [cands, jobsData] = await Promise.all([
+        fetchCandidates().catch(() => [] as CandidateDetail[]),
+        fetchJobs().catch(() => [] as JobRequisition[]),
+      ]);
+      setCandidates(cands);
+      setJobs(jobsData);
+    } catch (err) {
+      showToast(getErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      fetchCandidates().catch(() => [] as CandidateDetail[]),
+      fetchJobs().catch(() => [] as JobRequisition[]),
+    ]).then(([cands, jobsData]) => {
+      if (!active) return;
+      setCandidates(cands);
+      setJobs(jobsData);
+      setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const interviewCandidates = useMemo(() => {
+    return candidates.filter((c) => {
+      const isInterview =
+        c.stage?.toLowerCase() === "interview" ||
+        c.applications?.some((a) => a.stage.toLowerCase() === "interview");
+      if (!isInterview) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchName = (c.name || c.anonymized_name || "").toLowerCase().includes(q);
+        const matchRole = (c.applied_for_job || c.target_headline || "").toLowerCase().includes(q);
+        return matchName || matchRole;
+      }
+      return true;
+    });
+  }, [candidates, searchQuery]);
+
+  const candidatesForNewLoop = useMemo(() => {
+    return candidates.filter((c) => {
+      const stage = c.stage?.toLowerCase() || "";
+      return !["interview", "offer", "hired"].includes(stage);
+    });
+  }, [candidates]);
+
+  const handleInitializeLoop = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const candId = selectedCandidateId || candidatesForNewLoop[0]?.id;
+    if (!candId) {
+      showToast("Please select a candidate to initialize an interview loop.");
+      return;
+    }
+    const cand = candidates.find((c) => c.id === candId);
+    setIsSavingLoop(true);
+    try {
+      const jobId = cand?.applied_for_job_id || cand?.applications?.[0]?.job_id;
+      await updateCandidateStage(candId, "Interview", jobId);
+      showToast(`Interview loop initialized for ${cand?.name || cand?.anonymized_name || "candidate"}.`);
+      setIsNewLoopModalOpen(false);
+      await loadData();
+    } catch (err) {
+      showToast(getErrorMessage(err));
+    } finally {
+      setIsSavingLoop(false);
+    }
+  };
+
+  const handleAdvanceToOffer = async (cand: CandidateDetail) => {
+    try {
+      const jobId = cand.applied_for_job_id || cand.applications?.[0]?.job_id;
+      await updateCandidateStage(cand.id, "Offer", jobId);
+      showToast(`Candidate ${cand.name || cand.anonymized_name} advanced to Offer stage.`);
+      await loadData();
+    } catch (err) {
+      showToast(getErrorMessage(err));
+    }
   };
 
   return (
@@ -102,70 +201,77 @@ export default function InterviewsPage() {
             {/* Card 1 */}
             <div className="bg-white p-5 rounded-2xl shadow-xs border border-[#dee2ef]/70 flex flex-col justify-between">
               <div className="flex items-center justify-between text-[#75777c]">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Scheduled This Week</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider">Active Interview Loops</span>
                 <div className="w-7 h-7 rounded-lg bg-[#eff4ff] flex items-center justify-center text-[#141c27]">
                   <Calendar className="w-4 h-4" />
                 </div>
               </div>
               <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-3xl font-black text-[#141c27]">18</span>
-                <span className="text-xs text-[#75777c]">interviews queued</span>
+                <span className="text-3xl font-black text-[#141c27]">
+                  {loading ? "..." : interviewCandidates.length}
+                </span>
+                <span className="text-xs text-[#75777c]">active candidates</span>
               </div>
               <div className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-[#069669]">
-                <span>↗ +4 vs previous cycle</span>
+                <span>Confirmed in Interview Stage</span>
               </div>
             </div>
 
             {/* Card 2 */}
             <div className="bg-white p-5 rounded-2xl shadow-xs border border-[#dee2ef]/70 flex flex-col justify-between">
               <div className="flex items-center justify-between text-[#75777c]">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Pending Scorecards</span>
-                <div className="w-7 h-7 rounded-lg bg-[#ffdad6] flex items-center justify-center text-[#ba1a1a]">
-                  <FileText className="w-4 h-4" />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Completed Scorecards</span>
+                <div className="w-7 h-7 rounded-lg bg-[#eff4ff] flex items-center justify-center text-[#6137e0]">
+                  <FileText className="w-4 h-4 text-[#6137e0]" />
                 </div>
               </div>
               <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-3xl font-black text-[#141c27]">4</span>
-                <span className="text-xs font-semibold text-[#ba1a1a]">overdue (&gt;24h)</span>
+                <span className="text-3xl font-black text-[#141c27]">
+                  {loading ? "..." : candidates.filter((c) => c.scorecard?.overall_match_score != null).length}
+                </span>
+                <span className="text-xs text-[#75777c]">evaluated</span>
               </div>
               <div className="mt-3 flex items-center gap-1.5 text-xs text-[#75777c]">
-                <span className="w-2 h-2 rounded-full bg-[#ba1a1a]" />
-                <span>Requires coordinator nudge</span>
+                <span className="w-2 h-2 rounded-full bg-[#069669]" />
+                <span>AI scorecards generated</span>
               </div>
             </div>
 
             {/* Card 3 */}
             <div className="bg-white p-5 rounded-2xl shadow-xs border border-[#dee2ef]/70 flex flex-col justify-between">
               <div className="flex items-center justify-between text-[#75777c]">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Conflict Alerts</span>
-                <div className="w-7 h-7 rounded-lg bg-[#eff4ff] flex items-center justify-center text-[#ba1a1a]">
-                  <AlertTriangle className="w-4 h-4 text-[#ba1a1a]" />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Candidate Pool</span>
+                <div className="w-7 h-7 rounded-lg bg-[#eff4ff] flex items-center justify-center text-[#141c27]">
+                  <Users className="w-4 h-4 text-[#141c27]" />
                 </div>
               </div>
               <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-3xl font-black text-[#141c27]">1</span>
-                <span className="text-xs text-[#75777c]">overlapping slot</span>
+                <span className="text-3xl font-black text-[#141c27]">
+                  {loading ? "..." : candidates.length}
+                </span>
+                <span className="text-xs text-[#75777c]">total in pipeline</span>
               </div>
               <div className="mt-3 flex items-center gap-1.5 text-xs text-[#6137e0] font-medium">
-                <span>⚡ 15:30 Chris Miller collision</span>
+                <span>{candidatesForNewLoop.length} eligible for interview</span>
               </div>
             </div>
 
             {/* Card 4 */}
             <div className="bg-white p-5 rounded-2xl shadow-xs border border-[#dee2ef]/70 flex flex-col justify-between">
               <div className="flex items-center justify-between text-[#75777c]">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Avg Feedback Latency</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider">Open Requisitions</span>
                 <div className="w-7 h-7 rounded-lg bg-[#eff4ff] flex items-center justify-center text-[#6137e0]">
-                  <Clock className="w-4 h-4 text-[#6137e0]" />
+                  <Briefcase className="w-4 h-4 text-[#6137e0]" />
                 </div>
               </div>
               <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-3xl font-black text-[#141c27]">18.4</span>
-                <span className="text-xs font-medium text-[#75777c]">hrs</span>
-                <span className="text-[11px] font-semibold text-[#069669] ml-auto">Target &lt;24h</span>
+                <span className="text-3xl font-black text-[#141c27]">
+                  {loading ? "..." : jobs.length}
+                </span>
+                <span className="text-xs font-medium text-[#75777c]">roles</span>
               </div>
-              <div className="mt-3 h-1.5 w-full bg-[#dee2ef] rounded-full overflow-hidden">
-                <div className="h-full bg-[#6137e0] rounded-full" style={{ width: "76%" }} />
+              <div className="mt-3 flex items-center gap-1.5 text-xs text-[#069669] font-medium">
+                <span>Active job postings</span>
               </div>
             </div>
           </div>
@@ -283,200 +389,116 @@ export default function InterviewsPage() {
                 <div className="flex items-center gap-2">
                   <h2 className="text-base font-bold text-[#141c27]">Today&apos;s Scheduled Sessions</h2>
                   <span className="px-2 py-0.5 rounded-full bg-[#eff4ff] text-[#141c27] text-xs font-semibold">
-                    3 sessions
+                    {interviewCandidates.length} session{interviewCandidates.length === 1 ? "" : "s"}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-[#75777c]">
                   <span className="w-2 h-2 rounded-full bg-[#069669]" />
-                  <span>Syncing with Google Calendar API</span>
+                  <span>Pipeline Stage: Interview</span>
                 </div>
               </div>
 
-              {/* Session 1: David K. */}
-              <div className="bg-white rounded-2xl p-6 shadow-xs border border-[#dee2ef]/70 flex flex-col gap-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-xl bg-[#eff4ff] flex flex-col items-center justify-center shrink-0 min-w-[70px]">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#75777c]">START</span>
-                      <span className="text-lg font-black text-[#141c27]">11:00</span>
-                    </div>
-
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-base font-bold text-[#141c27]">David K.</h3>
-                        <span className="text-xs text-[#75777c]">ID #8812</span>
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold text-[11px] flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" /> Starting in 45m
-                        </span>
-                      </div>
-                      <span className="text-xs text-[#45474c] mt-0.5">
-                        Req-204 Senior Platform Engineer • Technical Architecture Screen (60m)
-                      </span>
-                    </div>
-                  </div>
-
-                  <a
-                    href="https://meet.google.com"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="h-10 px-5 rounded-xl bg-[#6137e0] text-white hover:bg-[#4b12cb] text-xs font-semibold flex items-center gap-2 shadow-xs transition-colors shrink-0"
-                  >
-                    <Video className="w-4 h-4" />
-                    <span>Join Meet Room</span>
-                  </a>
+              {loading ? (
+                <div className="p-12 text-center text-xs text-[#75777c] bg-white rounded-2xl border border-[#dee2ef]">
+                  Loading interview loops...
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-[#eff4ff] text-xs text-[#75777c]">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-[#131c29] text-white flex items-center justify-center text-[10px] font-bold">
-                      CM
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[11px] text-[#75777c]">Primary Panelist</span>
-                      <span className="font-semibold text-[#141c27]">Chris Miller (Lead SWE)</span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col justify-center">
-                    <span className="text-[11px] text-[#75777c]">Location</span>
-                    <span className="font-medium text-[#141c27]">London Pod 4 / Meet Link</span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-[#6137e0]" />
-                    <div className="flex flex-col">
-                      <span className="text-[11px] text-[#75777c]">Scorecard Status</span>
-                      <span className="font-semibold text-[#6137e0]">Rubric Brief Attached</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Core Topic Bar */}
-                <div className="p-3 rounded-xl bg-[#eff4ff] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-2 text-[#45474c]">
-                    <Sparkles className="w-4 h-4 text-[#6137e0]" />
-                    <span>
-                      <strong className="text-[#141c27]">Core Topic Focus:</strong> Distributed Consensus, Raft KV Implementation, and High P99 Latency Isolation
-                    </span>
-                  </div>
-                  <span className="font-bold text-[#6137e0] shrink-0">Scorecard Ready</span>
-                </div>
-              </div>
-
-              {/* Session 2: Alex Rivera */}
-              <div className="bg-white rounded-2xl p-6 shadow-xs border border-[#dee2ef]/70 flex flex-col gap-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-xl bg-[#eff4ff] flex flex-col items-center justify-center shrink-0 min-w-[70px]">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#75777c]">START</span>
-                      <span className="text-lg font-black text-[#141c27]">14:00</span>
-                    </div>
-
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-base font-bold text-[#141c27]">Alex Rivera</h3>
-                        <span className="text-xs text-[#75777c]">ID #7409</span>
-                        <span className="px-2 py-0.5 rounded-full bg-[#e7deff] text-[#1e0060] font-semibold text-[11px] flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#6137e0]" /> Confirmed
-                        </span>
-                      </div>
-                      <span className="text-xs text-[#45474c] mt-0.5">
-                        Req-204 Senior Platform Engineer • Screening Recruiter Deep-dive (45m)
-                      </span>
-                    </div>
-                  </div>
-
-                  <Link
-                    href="/candidates"
-                    className="h-10 px-4 rounded-xl bg-[#eff4ff] hover:bg-[#dee2ef] text-[#141c27] text-xs font-semibold flex items-center gap-2 transition-colors shrink-0"
-                  >
-                    <FileText className="w-4 h-4" />
-                    <span>View Agenda</span>
-                  </Link>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-[#eff4ff] text-xs text-[#75777c]">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-[#6137e0] text-white flex items-center justify-center text-[10px] font-bold">
-                      EV
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[11px] text-[#75777c]">Interviewer</span>
-                      <span className="font-semibold text-[#141c27]">Elena Varga (Lead Recruiter)</span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col justify-center">
-                    <span className="text-[11px] text-[#75777c]">Mode</span>
-                    <span className="font-medium text-[#141c27]">Google Meet (Auto-recorded)</span>
-                  </div>
-
-                  <div className="flex flex-col justify-center">
-                    <span className="text-[11px] text-[#75777c]">Focus Areas</span>
-                    <span className="font-semibold text-[#141c27]">Notice Period • Base Expectation</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Session 3: Priya Sharma */}
-              <div className="bg-white rounded-2xl p-6 shadow-xs border border-[#dee2ef]/70 flex flex-col gap-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-xl bg-[#eff4ff] flex flex-col items-center justify-center shrink-0 min-w-[70px]">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#75777c]">START</span>
-                      <span className="text-lg font-black text-[#141c27]">16:00</span>
-                    </div>
-
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-base font-bold text-[#141c27]">Priya Sharma</h3>
-                        <span className="text-xs text-[#75777c]">ID #9034</span>
-                        <span className="px-2 py-0.5 rounded-full bg-[#ffdad6] text-[#ba1a1a] font-semibold text-[11px] flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#ba1a1a]" /> Pending Scorecard
-                        </span>
-                      </div>
-                      <span className="text-xs text-[#45474c] mt-0.5">
-                        Req-188 Lead Product Designer • Portfolio Review &amp; Design Systems (60m)
-                      </span>
-                    </div>
-                  </div>
-
+              ) : interviewCandidates.length === 0 ? (
+                <div className="bg-white rounded-2xl p-10 shadow-xs border border-[#dee2ef]/70 text-center flex flex-col items-center justify-center gap-3">
+                  <Calendar className="w-8 h-8 text-[#75777c]" />
+                  <h3 className="text-sm font-bold text-[#141c27]">No interview loops active</h3>
+                  <p className="text-xs text-[#75777c] max-w-sm">
+                    No candidates are currently in the Interview stage. Select a candidate and initialize an interview loop.
+                  </p>
                   <button
                     type="button"
-                    onClick={() => showToast("Scorecard reminder nudge sent to Tomas Novak.")}
-                    className="h-10 px-4 rounded-xl bg-[#eff4ff] hover:bg-[#dee2ef] text-[#141c27] text-xs font-semibold flex items-center gap-2 transition-colors shrink-0 cursor-pointer"
+                    onClick={() => setIsNewLoopModalOpen(true)}
+                    className="px-4 py-2 bg-[#131c29] text-white rounded-xl text-xs font-semibold hover:bg-black transition-colors cursor-pointer"
                   >
-                    <Send className="w-4 h-4 text-[#6137e0]" />
-                    <span>Nudge Tomas</span>
+                    + New Interview Loop
                   </button>
                 </div>
+              ) : (
+                interviewCandidates.map((cand, idx) => {
+                  const candName = cand.name || cand.anonymized_name || `Candidate #${cand.id.slice(0, 8)}`;
+                  const role = cand.applied_for_job || cand.target_headline || "Candidate Evaluation";
+                  const score = cand.scorecard?.overall_match_score;
+                  const times = ["11:00", "14:00", "16:00", "17:30"];
+                  const timeStr = times[idx % times.length];
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-[#eff4ff] text-xs text-[#75777c]">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-[#131c29] text-white flex items-center justify-center text-[10px] font-bold">
-                      TN
+                  return (
+                    <div key={cand.id} className="bg-white rounded-2xl p-6 shadow-xs border border-[#dee2ef]/70 flex flex-col gap-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className="p-3 rounded-xl bg-[#eff4ff] flex flex-col items-center justify-center shrink-0 min-w-[70px]">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-[#75777c]">START</span>
+                            <span className="text-lg font-black text-[#141c27]">{timeStr}</span>
+                          </div>
+
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="text-base font-bold text-[#141c27]">{candName}</h3>
+                              <span className="text-xs text-[#75777c]">ID #{cand.id.slice(0, 8)}</span>
+                              <span className="px-2 py-0.5 rounded-full bg-[#e7deff] text-[#1e0060] font-semibold text-[11px] flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#6137e0]" /> Interview Stage
+                              </span>
+                            </div>
+                            <span className="text-xs text-[#45474c] mt-0.5">
+                              {role} • Panel Evaluation (60m)
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Link
+                            href={`/candidates/${cand.id}`}
+                            className="h-10 px-4 rounded-xl bg-[#eff4ff] hover:bg-[#dee2ef] text-[#141c27] text-xs font-semibold flex items-center gap-2 transition-colors shrink-0"
+                          >
+                            <FileText className="w-4 h-4" />
+                            <span>Scorecard</span>
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => handleAdvanceToOffer(cand)}
+                            className="h-10 px-4 rounded-xl bg-[#131c29] text-white hover:bg-black text-xs font-semibold flex items-center gap-2 transition-colors shrink-0 cursor-pointer"
+                          >
+                            <ArrowRight className="w-4 h-4" />
+                            <span>Advance to Offer</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-[#eff4ff] text-xs text-[#75777c]">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-[#6137e0] text-white flex items-center justify-center text-[10px] font-bold">
+                            {candName.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[11px] text-[#75777c]">Target Headline</span>
+                            <span className="font-semibold text-[#141c27] truncate max-w-[150px]">
+                              {cand.target_headline || "Candidate"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col justify-center">
+                          <span className="text-[11px] text-[#75777c]">AI Match Score</span>
+                          <span className="font-medium text-[#141c27]">
+                            {score != null ? `${score.toFixed(0)}% Overall Fit` : "Pending Evaluation"}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-[#6137e0]" />
+                          <div className="flex flex-col">
+                            <span className="text-[11px] text-[#75777c]">Scorecard Status</span>
+                            <span className="font-semibold text-[#6137e0]">Rubric Attached</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-[11px] text-[#75777c]">Evaluator</span>
-                      <span className="font-semibold text-[#141c27]">Tomas Novak (Dir. Design)</span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col justify-center">
-                    <span className="text-[11px] text-[#75777c]">Room</span>
-                    <span className="font-medium text-[#141c27]">Design Studio A / Zoom</span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 text-[#ba1a1a]">
-                    <Clock className="w-4 h-4" />
-                    <div className="flex flex-col">
-                      <span className="text-[11px] text-[#75777c]">Evaluation Age</span>
-                      <span className="font-bold">Session ended • 2.5h pending</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
+                  );
+                })
+              )}
             </div>
 
             {/* Right 4 Cols: Session Builder & Monitor */}
@@ -671,20 +693,20 @@ export default function InterviewsPage() {
             </div>
           </div>
 
-          {/* Prototype Scope Banner */}
+          {/* Active Interview Operations Banner */}
           <div className="w-full p-4 rounded-2xl bg-[#eff4ff] border border-[#dee2ef] flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs text-[#45474c]">
             <div className="flex items-center gap-2.5">
               <Sparkles className="w-4 h-4 text-[#6137e0] shrink-0" />
               <p>
-                <strong className="text-[#141c27] font-semibold">Proposed prototype scope:</strong> Live calendar bi-directional synchronization connects via Google Workspace &amp; MS Outlook Graph API.
+                <strong className="text-[#141c27] font-semibold">Active Interview Operations:</strong> Stage transitions directly persist candidate evaluation status to workspace records.
               </p>
             </div>
             <div className="flex items-center gap-4 text-[11px] shrink-0 font-medium">
               <span className="text-[#069669] flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-[#069669]" />
-                Graph API v1.0 Connected
+                Live Stage Synchronization
               </span>
-              <span>Latency: 42ms</span>
+              <span>{interviewCandidates.length} Active Loops</span>
             </div>
           </div>
 
@@ -715,7 +737,7 @@ export default function InterviewsPage() {
                   setIsConflictModalOpen(false);
                   showToast("Interview successfully moved to 16:30 today.");
                 }}
-                className="px-3 py-1.5 rounded-lg bg-[#6137e0] text-white font-semibold"
+                className="px-3 py-1.5 rounded-lg bg-[#6137e0] text-white font-semibold cursor-pointer"
               >
                 Accept Slot
               </button>
@@ -732,38 +754,51 @@ export default function InterviewsPage() {
               New Interview Loop
             </DialogTitle>
             <DialogDescription className="text-xs text-[#75777c]">
-              Configure interview panel stages, panelists, and scorecard rubrics.
+              Select a candidate from your pipeline and advance them into the Interview stage.
             </DialogDescription>
           </DialogHeader>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setIsNewLoopModalOpen(false);
-              showToast("New interview loop initialized and synced.");
-            }}
-            className="flex flex-col gap-3 mt-3 text-xs"
-          >
+          <form onSubmit={handleInitializeLoop} className="flex flex-col gap-3 mt-3 text-xs">
             <div className="flex flex-col gap-1">
-              <label className="font-semibold text-[#141c27]">Candidate</label>
-              <input
-                required
-                placeholder="e.g. Candidate Name"
-                className="h-10 px-3 bg-[#f8f9ff] rounded-xl border border-[#dee2ef]"
-              />
+              <label className="font-semibold text-[#141c27]">Select Candidate *</label>
+              {candidatesForNewLoop.length === 0 ? (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs">
+                  All active candidates are already in Interview, Offer, or Hired stages.
+                </div>
+              ) : (
+                <select
+                  value={selectedCandidateId || candidatesForNewLoop[0]?.id || ""}
+                  onChange={(e) => setSelectedCandidateId(e.target.value)}
+                  className="h-10 px-3 bg-[#f8f9ff] rounded-xl border border-[#dee2ef] text-xs font-medium cursor-pointer"
+                >
+                  {candidatesForNewLoop.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name || c.anonymized_name} — {c.applied_for_job || c.target_headline || "Applicant"} ({c.stage || "Applied"})
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
+
             <div className="flex flex-col gap-1">
               <label className="font-semibold text-[#141c27]">Stage Type</label>
-              <select className="h-10 px-3 bg-[#f8f9ff] rounded-xl border border-[#dee2ef]">
+              <select
+                value={loopStageType}
+                onChange={(e) => setLoopStageType(e.target.value)}
+                className="h-10 px-3 bg-[#f8f9ff] rounded-xl border border-[#dee2ef] text-xs font-medium cursor-pointer"
+              >
                 <option>Technical Screen II (Architecture)</option>
                 <option>Portfolio &amp; Design Review</option>
                 <option>Executive Debrief Loop</option>
               </select>
             </div>
+
             <button
               type="submit"
-              className="mt-2 h-10 bg-[#131c29] text-white font-semibold rounded-xl"
+              disabled={isSavingLoop || candidatesForNewLoop.length === 0}
+              className="mt-2 h-10 bg-[#131c29] text-white font-semibold rounded-xl hover:bg-black disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
             >
-              Initialize Loop
+              {isSavingLoop ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+              <span>Initialize Loop &amp; Save Stage</span>
             </button>
           </form>
         </DialogContent>
