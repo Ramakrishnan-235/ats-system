@@ -11,7 +11,7 @@ logger = logging.getLogger("ats.llm.client")
 T = TypeVar("T", bound=BaseModel)
 
 DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
+DEFAULT_OPENROUTER_MODEL = "poolside/laguna-xs-2.1:free"
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
 DEFAULT_OLLAMA_MODEL = "qwen3.5:2b"
 
