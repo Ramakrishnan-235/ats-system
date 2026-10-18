@@ -77,6 +77,17 @@ pub fn router(state: AppState) -> Router {
             get(platform::members).post(platform::add_member),
         )
         .route(
+            "/settings/members/{id}",
+            axum::routing::patch(platform::update_member_role)
+                .delete(platform::remove_member),
+        )
+        .route("/settings/invitations", get(platform::list_invitations))
+        .route(
+            "/settings/invitations/{id}",
+            axum::routing::delete(platform::revoke_invitation),
+        )
+        .route("/auth/invitations/accept", post(auth::accept_invitation))
+        .route(
             "/clients",
             get(platform::clients).post(platform::create_client),
         )
@@ -142,6 +153,23 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/auth/register", post(auth::register))
         .route("/api/v1/auth/login", post(auth::login))
         .route("/api/v1/auth/logout", post(auth::logout))
+        .route(
+            "/api/v1/auth/invitations/{token}",
+            get(auth::inspect_invitation),
+        )
+        .route(
+            "/api/v1/auth/password/reset-request",
+            post(auth::password_reset_request),
+        )
+        .route(
+            "/api/v1/auth/password/reset",
+            post(auth::password_reset_confirm),
+        )
+        .route(
+            "/api/v1/auth/verify-email",
+            post(auth::verify_email_confirm),
+        )
+        .route("/api/v1/auth/email-tasks", get(auth::list_email_tasks))
         .nest("/api/v1", business)
         .nest("/internal", internal)
         .layer(middleware::from_fn_with_state(state.clone(), auth::csrf))

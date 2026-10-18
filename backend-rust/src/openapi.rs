@@ -6,6 +6,10 @@ use utoipa::OpenApi;
 #[derive(OpenApi)]
 #[openapi(components(schemas(
     crate::auth::Credentials,
+    crate::auth::PasswordResetRequest,
+    crate::auth::PasswordResetConfirm,
+    crate::auth::AcceptInvitationInput,
+    crate::auth::VerifyEmailInput,
     crate::domain::JobInput,
     crate::domain::ProfileEdit,
     crate::jobs::AIResult,
@@ -29,6 +33,12 @@ pub fn document() -> Value {
         ("/auth/logout", "post", None, 200),
         ("/auth/me", "get", None, 200),
         ("/auth/workspace", "post", Some("workspace"), 200),
+        ("/auth/invitations/{token}", "get", None, 200),
+        ("/auth/invitations/accept", "post", Some("AcceptInvitationInput"), 200),
+        ("/auth/password/reset-request", "post", Some("PasswordResetRequest"), 200),
+        ("/auth/password/reset", "post", Some("PasswordResetConfirm"), 200),
+        ("/auth/verify-email", "post", Some("VerifyEmailInput"), 200),
+        ("/auth/email-tasks", "get", None, 200),
         ("/jobs", "get", None, 200),
         ("/jobs", "post", Some("JobInput"), 200),
         ("/jobs/{id}", "get", None, 200),
@@ -69,6 +79,10 @@ pub fn document() -> Value {
         ("/audit/logs", "get", None, 200),
         ("/settings/members", "get", None, 200),
         ("/settings/members", "post", Some("member"), 200),
+        ("/settings/members/{id}", "patch", Some("role"), 200),
+        ("/settings/members/{id}", "delete", None, 200),
+        ("/settings/invitations", "get", None, 200),
+        ("/settings/invitations/{id}", "delete", None, 200),
         ("/settings/workspace", "patch", Some("name"), 200),
         ("/taxonomy/version", "get", None, 200),
         ("/taxonomy/skills", "get", None, 200),
@@ -88,13 +102,13 @@ pub fn document() -> Value {
     ];
     for (path, method, body, status) in routes {
         let mut operation = json!({"responses":{status.to_string():{"description":"Success","content":{"application/json":{"schema":{}}}},"400":{"description":"Invalid request"},"401":{"description":"Session required"},"403":{"description":"Permission denied"},"404":{"description":"Resource not found in this workspace"},"409":{"description":"Stale revision or conflicting request"}},"security":[{"session":[]}]});
-        if ["/auth/config", "/auth/register", "/auth/login"].contains(&path) {
+        if ["/auth/config", "/auth/register", "/auth/login", "/auth/invitations/{token}", "/auth/password/reset-request", "/auth/password/reset", "/auth/verify-email", "/auth/email-tasks"].contains(&path) {
             operation["security"] = json!([]);
         }
         let mut params = vec![];
         for token in path.split('/') {
             if token.starts_with('{') {
-                params.push(json!({"name":token.trim_matches(['{','}']),"in":"path","required":true,"schema":{"type":"string","format":"uuid"}}));
+                params.push(json!({"name":token.trim_matches(['{','}']),"in":"path","required":true,"schema":{"type":"string"}}));
             }
         }
         if path.ends_with("/stage") {
@@ -119,6 +133,7 @@ pub fn document() -> Value {
                 ),
                 "name" => ("application/json", fields(&["name"])),
                 "member" => ("application/json", fields(&["email", "role"])),
+                "role" => ("application/json", fields(&["role"])),
                 "workspace" => ("application/json", fields(&["tenant_id"])),
                 "note" => ("application/json", fields(&["content"])),
                 "alias" => ("application/json", fields(&["alias"])),

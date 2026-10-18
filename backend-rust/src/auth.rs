@@ -11,7 +11,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 use sqlx::Row;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
@@ -119,35 +119,55 @@ pub async fn authenticated(
     mut request: Request,
     next: Next,
 ) -> Result<Response> {
-    if state.config.development_mode {
-        let tenant = if let Some(token) = token(request.headers()) {
-            sqlx::query_scalar("SELECT tenant_id FROM ats_v2.sessions WHERE token_hash=$1 AND user_id=$2 AND expires_at>now() AND tenant_id IN ($3,$4)")
-                .bind(hash(token.as_bytes())).bind(DEVELOPMENT_USER).bind(DEVELOPMENT_CORPORATE).bind(DEVELOPMENT_AGENCY)
-                .fetch_optional(&state.db).await?.unwrap_or(DEVELOPMENT_CORPORATE)
+    if let Some(tok) = token(request.headers()) {
+        let tok_hash = hash(tok.as_bytes());
+        let row = sqlx::query(
+            "SELECT s.user_id, s.tenant_id, m.role, u.name, u.email \
+             FROM ats_v2.sessions s \
+             JOIN ats_v2.memberships m ON m.user_id = s.user_id AND m.tenant_id = s.tenant_id \
+             JOIN ats_v2.users u ON u.id = s.user_id \
+             WHERE s.token_hash = $1 AND s.expires_at > now()"
+        )
+        .bind(&tok_hash)
+        .fetch_optional(&state.db)
+        .await?;
+
+        if let Some(r) = row {
+            let uid: Uuid = r.get("user_id");
+            if !state.config.development_mode && uid == DEVELOPMENT_USER {
+                return Err(ApiError(
+                    StatusCode::UNAUTHORIZED,
+                    "Developer sessions are not permitted in production mode.",
+                ));
+            }
+            request.extensions_mut().insert(Identity {
+                user_id: uid,
+                tenant_id: r.get("tenant_id"),
+                role: r.get("role"),
+                name: r.get("name"),
+                email: r.get("email"),
+            });
+            return Ok(next.run(request).await);
         } else {
-            DEVELOPMENT_CORPORATE
-        };
+            return Err(ApiError(
+                StatusCode::UNAUTHORIZED,
+                "Session expired or revoked. Sign in again.",
+            ));
+        }
+    }
+
+    if state.config.development_mode {
         request.extensions_mut().insert(Identity {
             user_id: DEVELOPMENT_USER,
-            tenant_id: tenant,
+            tenant_id: DEVELOPMENT_CORPORATE,
             role: "admin".into(),
             name: "Local Developer".into(),
             email: "developer@local.test".into(),
         });
         return Ok(next.run(request).await);
     }
-    let token = token(request.headers())
-        .ok_or(ApiError(StatusCode::UNAUTHORIZED, "Sign in to continue."))?;
-    let row=sqlx::query("SELECT s.user_id,s.tenant_id,m.role,u.name,u.email FROM ats_v2.sessions s JOIN ats_v2.memberships m ON m.user_id=s.user_id AND m.tenant_id=s.tenant_id JOIN ats_v2.users u ON u.id=s.user_id WHERE token_hash=$1 AND expires_at>now() AND s.user_id<>$2")
-        .bind(hash(token.as_bytes())).bind(DEVELOPMENT_USER).fetch_optional(&state.db).await?.ok_or(ApiError(StatusCode::UNAUTHORIZED,"Session expired. Sign in again."))?;
-    request.extensions_mut().insert(Identity {
-        user_id: row.get("user_id"),
-        tenant_id: row.get("tenant_id"),
-        role: row.get("role"),
-        name: row.get("name"),
-        email: row.get("email"),
-    });
-    Ok(next.run(request).await)
+
+    Err(ApiError(StatusCode::UNAUTHORIZED, "Sign in to continue."))
 }
 pub async fn service_auth(
     State(state): State<AppState>,
@@ -208,6 +228,8 @@ pub struct Credentials {
     pub workspace_name: String,
     #[serde(default = "corporate")]
     pub workspace_kind: String,
+    #[serde(default)]
+    pub invitation_token: Option<String>,
 }
 fn corporate() -> String {
     "corporate".into()
@@ -228,7 +250,12 @@ async fn issue_session(state: &AppState, user_id: Uuid, tenant_id: Uuid) -> Resu
         .bind(hash(value.as_bytes())).bind(user_id).bind(tenant_id).execute(&state.db).await?;
     Ok((
         [(header::SET_COOKIE, cookie(state, &value, 43200))],
-        Json(json!({"status":"authenticated"})),
+        Json(json!({
+            "status": "authenticated",
+            "token": value,
+            "user_id": user_id,
+            "tenant_id": tenant_id
+        })),
     )
         .into_response())
 }
@@ -254,18 +281,17 @@ pub async fn register(
         ));
     }
     validate_credentials(&input)?;
-    if input.workspace_name.trim().is_empty()
-        || input.workspace_name.len() > 200
-        || input.name.trim().is_empty()
-        || input.name.len() > 200
-    {
-        return Err(bad("Name and workspace name are required."));
-    }
-    if !["corporate", "agency"].contains(&input.workspace_kind.as_str()) {
-        return Err(bad("Invalid workspace type."));
-    }
     let email = input.email.trim().to_lowercase();
     auth_limit(&state, &format!("register:{email}")).await?;
+
+    let existing: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM ats_v2.users WHERE email = $1)")
+        .bind(&email)
+        .fetch_one(&state.db)
+        .await?;
+    if existing {
+        return Err(bad("An account with this email already exists."));
+    }
+
     let password = input.password;
     let encoded = tokio::task::spawn_blocking(move || {
         Argon2::default()
@@ -276,11 +302,83 @@ pub async fn register(
     .map_err(|_| bad("Password processing failed."))?
     .map_err(|_| bad("Password processing failed."))?;
     let user = Uuid::new_v4();
+
+    // Check if registering via an invitation token
+    if let Some(inv_tok) = input.invitation_token.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        let inv_hash = hash(inv_tok.as_bytes());
+        let mut tx = state.db.begin().await?;
+
+        let inv_row = sqlx::query("SELECT id, tenant_id, email, role, status, expires_at FROM ats_v2.invitations WHERE token_hash = $1 FOR UPDATE")
+            .bind(&inv_hash)
+            .fetch_optional(&mut *tx)
+            .await?;
+
+        let inv = inv_row.ok_or_else(|| bad("Invalid invitation token."))?;
+        let inv_id: Uuid = inv.get("id");
+        let tenant_id: Uuid = inv.get("tenant_id");
+        let inv_email: String = inv.get("email");
+        let inv_role: String = inv.get("role");
+        let inv_status: String = inv.get("status");
+        let expires_at: chrono::DateTime<chrono::Utc> = inv.get("expires_at");
+
+        if inv_status == "accepted" {
+            return Err(bad("Invitation has already been accepted and cannot be reused."));
+        }
+        if inv_status == "revoked" {
+            return Err(bad("Invitation has been revoked."));
+        }
+        if inv_status == "expired" || expires_at < chrono::Utc::now() {
+            sqlx::query("UPDATE ats_v2.invitations SET status = 'expired' WHERE id = $1")
+                .bind(inv_id)
+                .execute(&mut *tx)
+                .await?;
+            tx.commit().await?;
+            return Err(bad("Invitation has expired."));
+        }
+        if inv_email.to_lowercase() != email {
+            return Err(bad("Email address does not match invitation recipient."));
+        }
+
+        sqlx::query("INSERT INTO ats_v2.users(id, email, name, password_hash, email_verified) VALUES($1, $2, $3, $4, true)")
+            .bind(user)
+            .bind(&email)
+            .bind(if input.name.trim().is_empty() { &email } else { input.name.trim() })
+            .bind(encoded)
+            .execute(&mut *tx)
+            .await?;
+
+        sqlx::query("INSERT INTO ats_v2.memberships(tenant_id, user_id, role) VALUES($1, $2, $3)")
+            .bind(tenant_id)
+            .bind(user)
+            .bind(&inv_role)
+            .execute(&mut *tx)
+            .await?;
+
+        sqlx::query("UPDATE ats_v2.invitations SET status = 'accepted', accepted_at = now(), updated_at = now() WHERE id = $1")
+            .bind(inv_id)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+        return issue_session(&state, user, tenant_id).await;
+    }
+
+    if input.workspace_name.trim().is_empty()
+        || input.workspace_name.len() > 200
+        || input.name.trim().is_empty()
+        || input.name.len() > 200
+    {
+        return Err(bad("Name and workspace name are required."));
+    }
+    if !["corporate", "agency"].contains(&input.workspace_kind.as_str()) {
+        return Err(bad("Invalid workspace type."));
+    }
+
     let tenant = Uuid::new_v4();
     let mut tx = state.db.begin().await?;
     sqlx::query("INSERT INTO ats_v2.users(id,email,name,password_hash) VALUES($1,$2,$3,$4)")
         .bind(user)
-        .bind(email)
+        .bind(&email)
         .bind(input.name.trim())
         .bind(encoded)
         .execute(&mut *tx)
@@ -426,4 +524,366 @@ pub async fn switch_workspace(
         .execute(&state.db)
         .await?;
     Ok(Json(json!({"status":"switched"})).into_response())
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct AcceptInvitationInput {
+    pub token: String,
+}
+
+pub async fn accept_invitation(
+    State(state): State<AppState>,
+    Extension(user): Extension<Identity>,
+    headers: HeaderMap,
+    Json(input): Json<AcceptInvitationInput>,
+) -> Result<Json<Value>> {
+    let raw_token = input.token.trim();
+    if raw_token.is_empty() {
+        return Err(bad("Invitation token is required."));
+    }
+    let token_hash = hash(raw_token.as_bytes());
+
+    let mut tx = state.db.begin().await?;
+
+    let inv_row = sqlx::query("SELECT id, tenant_id, email, role, status, expires_at FROM ats_v2.invitations WHERE token_hash = $1 FOR UPDATE")
+        .bind(&token_hash)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+    let inv = inv_row.ok_or_else(|| bad("Invalid invitation token."))?;
+    let inv_id: Uuid = inv.get("id");
+    let tenant_id: Uuid = inv.get("tenant_id");
+    let inv_email: String = inv.get("email");
+    let role: String = inv.get("role");
+    let status: String = inv.get("status");
+    let expires_at: chrono::DateTime<chrono::Utc> = inv.get("expires_at");
+
+    if status == "accepted" {
+        return Err(bad("Invitation has already been accepted and cannot be reused."));
+    }
+    if status == "revoked" {
+        return Err(bad("Invitation has been revoked."));
+    }
+    if status == "expired" || expires_at < chrono::Utc::now() {
+        sqlx::query("UPDATE ats_v2.invitations SET status = 'expired' WHERE id = $1")
+            .bind(inv_id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        return Err(bad("Invitation has expired."));
+    }
+
+    // Add or update membership for the accepting user
+    sqlx::query("INSERT INTO ats_v2.memberships(tenant_id, user_id, role) VALUES($1, $2, $3) ON CONFLICT(tenant_id, user_id) DO UPDATE SET role = EXCLUDED.role")
+        .bind(tenant_id)
+        .bind(user.user_id)
+        .bind(&role)
+        .execute(&mut *tx)
+        .await?;
+
+    // Mark invitation accepted
+    sqlx::query("UPDATE ats_v2.invitations SET status = 'accepted', accepted_at = now(), updated_at = now() WHERE id = $1")
+        .bind(inv_id)
+        .execute(&mut *tx)
+        .await?;
+
+    if user.email.to_lowercase() == inv_email.to_lowercase() {
+        sqlx::query("UPDATE ats_v2.users SET email_verified = true WHERE id = $1")
+            .bind(user.user_id)
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    // Update current session's tenant_id if available
+    if let Some(tok) = token(&headers) {
+        sqlx::query("UPDATE ats_v2.sessions SET tenant_id = $1 WHERE token_hash = $2 AND user_id = $3")
+            .bind(tenant_id)
+            .bind(hash(tok.as_bytes()))
+            .bind(user.user_id)
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    tx.commit().await?;
+
+    Ok(Json(json!({
+        "status": "accepted",
+        "workspace_id": tenant_id,
+        "role": role,
+        "invitation_id": inv_id
+    })))
+}
+
+pub async fn inspect_invitation(
+    State(state): State<AppState>,
+    axum::extract::Path(token_val): axum::extract::Path<String>,
+) -> Result<Json<Value>> {
+    let token_hash = hash(token_val.trim().as_bytes());
+    let row = sqlx::query(
+        "SELECT i.id, i.tenant_id, i.email, i.role, i.status, i.expires_at, t.name as workspace_name \
+         FROM ats_v2.invitations i \
+         JOIN ats_v2.tenants t ON t.id = i.tenant_id \
+         WHERE i.token_hash = $1"
+    )
+    .bind(&token_hash)
+    .fetch_optional(&state.db)
+    .await?;
+
+    let row = row.ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "Invitation not found."))?;
+    let status: String = row.get("status");
+    let expires_at: chrono::DateTime<chrono::Utc> = row.get("expires_at");
+
+    if status == "accepted" {
+        return Err(bad("Invitation has already been accepted and cannot be reused."));
+    }
+    if status == "revoked" {
+        return Err(bad("Invitation has been revoked."));
+    }
+    if status == "expired" || expires_at < chrono::Utc::now() {
+        return Err(bad("Invitation has expired."));
+    }
+
+    Ok(Json(json!({
+        "id": row.get::<Uuid, _>("id"),
+        "workspace_id": row.get::<Uuid, _>("tenant_id"),
+        "workspace_name": row.get::<String, _>("workspace_name"),
+        "email": row.get::<String, _>("email"),
+        "role": row.get::<String, _>("role"),
+        "status": status,
+        "expires_at": expires_at
+    })))
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct PasswordResetRequest {
+    pub email: String,
+}
+
+pub async fn password_reset_request(
+    State(state): State<AppState>,
+    Json(input): Json<PasswordResetRequest>,
+) -> Result<Json<Value>> {
+    let email = input.email.trim().to_lowercase();
+    if email.is_empty() || !email.contains('@') {
+        return Err(bad("Enter a valid email address."));
+    }
+    auth_limit(&state, &format!("reset-req:{email}")).await?;
+
+    let user_row = sqlx::query("SELECT id, name FROM ats_v2.users WHERE email = $1")
+        .bind(&email)
+        .fetch_optional(&state.db)
+        .await?;
+
+    if let Some(user) = user_row {
+        let user_id: Uuid = user.get("id");
+        let raw_token = format!("rst_{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+        let token_hash = hash(raw_token.as_bytes());
+        let task_id = Uuid::new_v4();
+        let token_id = Uuid::new_v4();
+
+        let mut tx = state.db.begin().await?;
+
+        // Invalidate prior unused tokens
+        sqlx::query("DELETE FROM ats_v2.password_reset_tokens WHERE user_id = $1 AND used_at IS NULL")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
+
+        // Insert new reset token (1 hour expiry)
+        sqlx::query("INSERT INTO ats_v2.password_reset_tokens(id, user_id, token_hash, expires_at) VALUES($1, $2, $3, now() + interval '1 hour')")
+            .bind(token_id)
+            .bind(user_id)
+            .bind(&token_hash)
+            .execute(&mut *tx)
+            .await?;
+
+        // Save email delivery task in same transaction
+        let payload = json!({
+            "token_id": token_id,
+            "user_id": user_id,
+            "email": email,
+            "token": raw_token,
+            "expires_in": "1 hour"
+        });
+        sqlx::query("INSERT INTO ats_v2.email_tasks(id, recipient_email, template, payload, status) VALUES($1, $2, 'password_reset', $3, 'queued')")
+            .bind(task_id)
+            .bind(&email)
+            .bind(payload)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+    } else {
+        // OWASP timing defense: perform dummy Argon2 operation
+        tokio::task::spawn_blocking(|| {
+            let _ = Argon2::default().hash_password(b"dummy-timing-password", &SaltString::generate(&mut OsRng));
+        })
+        .await
+        .ok();
+    }
+
+    // OWASP constant response: never disclose whether an account exists
+    Ok(Json(json!({
+        "status": "ok",
+        "message": "If an account with that email exists, password reset instructions have been sent."
+    })))
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct PasswordResetConfirm {
+    pub token: String,
+    pub password: String,
+}
+
+pub async fn password_reset_confirm(
+    State(state): State<AppState>,
+    Json(input): Json<PasswordResetConfirm>,
+) -> Result<Json<Value>> {
+    let raw_token = input.token.trim();
+    if raw_token.is_empty() {
+        return Err(bad("Reset token is required."));
+    }
+    if input.password.len() < 12 || input.password.len() > 256 {
+        return Err(bad("Password must be between 12 and 256 characters."));
+    }
+    auth_limit(&state, "reset-confirm").await?;
+
+    let token_hash = hash(raw_token.as_bytes());
+    let mut tx = state.db.begin().await?;
+
+    let row = sqlx::query("SELECT id, user_id, expires_at, used_at FROM ats_v2.password_reset_tokens WHERE token_hash = $1 FOR UPDATE")
+        .bind(&token_hash)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+    let row = row.ok_or_else(|| bad("Invalid or expired password reset token."))?;
+    let token_id: Uuid = row.get("id");
+    let user_id: Uuid = row.get("user_id");
+    let expires_at: chrono::DateTime<chrono::Utc> = row.get("expires_at");
+    let used_at: Option<chrono::DateTime<chrono::Utc>> = row.get("used_at");
+
+    if used_at.is_some() {
+        return Err(bad("This password reset token has already been used and cannot be reused."));
+    }
+    if expires_at < chrono::Utc::now() {
+        return Err(bad("This password reset token has expired."));
+    }
+
+    let password = input.password;
+    let encoded = tokio::task::spawn_blocking(move || {
+        Argon2::default()
+            .hash_password(password.as_bytes(), &SaltString::generate(&mut OsRng))
+            .map(|v| v.to_string())
+    })
+    .await
+    .map_err(|_| bad("Password processing failed."))?
+    .map_err(|_| bad("Password processing failed."))?;
+
+    // Update password
+    sqlx::query("UPDATE ats_v2.users SET password_hash = $1 WHERE id = $2")
+        .bind(encoded)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // Mark token as used
+    sqlx::query("UPDATE ats_v2.password_reset_tokens SET used_at = now() WHERE id = $1")
+        .bind(token_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // Invalidate all active sessions for this user (OWASP password-recovery practice)
+    sqlx::query("DELETE FROM ats_v2.sessions WHERE user_id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // Delete any other unused reset tokens for this user
+    sqlx::query("DELETE FROM ats_v2.password_reset_tokens WHERE user_id = $1 AND used_at IS NULL")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+
+    Ok(Json(json!({
+        "status": "success",
+        "message": "Your password has been reset successfully. Please sign in with your new password."
+    })))
+}
+
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct VerifyEmailInput {
+    pub token: String,
+}
+
+pub async fn verify_email_confirm(
+    State(state): State<AppState>,
+    Json(input): Json<VerifyEmailInput>,
+) -> Result<Json<Value>> {
+    let raw_token = input.token.trim();
+    if raw_token.is_empty() {
+        return Err(bad("Verification token is required."));
+    }
+    let token_hash = hash(raw_token.as_bytes());
+    let mut tx = state.db.begin().await?;
+
+    let row = sqlx::query("SELECT id, user_id, expires_at, used_at FROM ats_v2.email_verification_tokens WHERE token_hash = $1 FOR UPDATE")
+        .bind(&token_hash)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+    let row = row.ok_or_else(|| bad("Invalid or expired verification token."))?;
+    let token_id: Uuid = row.get("id");
+    let user_id: Uuid = row.get("user_id");
+    let expires_at: chrono::DateTime<chrono::Utc> = row.get("expires_at");
+    let used_at: Option<chrono::DateTime<chrono::Utc>> = row.get("used_at");
+
+    if used_at.is_some() {
+        return Err(bad("This verification token has already been used and cannot be reused."));
+    }
+    if expires_at < chrono::Utc::now() {
+        return Err(bad("This verification token has expired."));
+    }
+
+    sqlx::query("UPDATE ats_v2.email_verification_tokens SET used_at = now() WHERE id = $1")
+        .bind(token_id)
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query("UPDATE ats_v2.users SET email_verified = true WHERE id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+
+    Ok(Json(json!({
+        "status": "verified",
+        "message": "Email verified successfully."
+    })))
+}
+
+pub async fn list_email_tasks(
+    State(state): State<AppState>,
+) -> Result<Json<Value>> {
+    let rows = sqlx::query(
+        "SELECT id, tenant_id, recipient_email, template, payload, status, attempts, available_at, sent_at, created_at \
+         FROM ats_v2.email_tasks \
+         ORDER BY created_at DESC \
+         LIMIT 50"
+    )
+    .fetch_all(&state.db)
+    .await?;
+
+    Ok(Json(json!(rows.iter().map(|r| json!({
+        "id": r.get::<Uuid, _>("id"),
+        "tenant_id": r.get::<Option<Uuid>, _>("tenant_id"),
+        "recipient_email": r.get::<String, _>("recipient_email"),
+        "template": r.get::<String, _>("template"),
+        "payload": r.get::<serde_json::Value, _>("payload"),
+        "status": r.get::<String, _>("status"),
+        "attempts": r.get::<i32, _>("attempts"),
+        "created_at": r.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
+    })).collect::<Vec<_>>())))
 }

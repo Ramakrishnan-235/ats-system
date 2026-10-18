@@ -266,25 +266,241 @@ pub async fn add_member(
 ) -> Result<Json<Value>> {
     user.admin()?;
     let email = text(&v, "email").trim().to_lowercase();
+    if email.is_empty() || !email.contains('@') {
+        return Err(bad("Use a valid email address."));
+    }
     let role = text(&v, "role");
     if !["admin", "recruiter", "viewer", "interviewer", "compliance"].contains(&role.as_str()) {
         return Err(bad("Invalid member role."));
     }
-    let target: Uuid = sqlx::query_scalar("SELECT id FROM ats_v2.users WHERE email=$1")
-        .bind(email)
-        .fetch_optional(&state.db)
-        .await?
-        .ok_or_else(|| bad("This user must first create an account."))?;
+
+    let already_member: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM ats_v2.memberships m JOIN ats_v2.users u ON u.id = m.user_id WHERE m.tenant_id = $1 AND u.email = $2)"
+    )
+    .bind(user.tenant_id)
+    .bind(&email)
+    .fetch_one(&state.db)
+    .await?;
+
+    if already_member {
+        return Err(bad("This user is already a member of this workspace."));
+    }
+
+    let inv_id = Uuid::new_v4();
+    let raw_token = format!("inv_{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+    let token_hash = crate::hash(raw_token.as_bytes());
+    let email_task_id = Uuid::new_v4();
+
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
-    sqlx::query("INSERT INTO ats_v2.memberships(tenant_id,user_id,role) VALUES($1,$2,$3)")
+
+    // Revoke any previous pending invitation for this email in this workspace
+    sqlx::query("UPDATE ats_v2.invitations SET status = 'revoked', updated_at = now() WHERE tenant_id = $1 AND email = $2 AND status = 'pending'")
         .bind(user.tenant_id)
-        .bind(target)
-        .bind(role)
+        .bind(&email)
         .execute(&mut *tx)
         .await?;
-    audit(&mut tx, &user, "ADD_MEMBER", "membership", target).await?;
+
+    // Save invitation record
+    sqlx::query(
+        "INSERT INTO ats_v2.invitations(id, tenant_id, email, role, inviter_id, token_hash, expires_at, status) \
+         VALUES($1, $2, $3, $4, $5, $6, now() + interval '7 days', 'pending')"
+    )
+    .bind(inv_id)
+    .bind(user.tenant_id)
+    .bind(&email)
+    .bind(&role)
+    .bind(user.user_id)
+    .bind(&token_hash)
+    .execute(&mut *tx)
+    .await?;
+
+    let workspace_name: String = sqlx::query_scalar("SELECT name FROM ats_v2.tenants WHERE id = $1")
+        .bind(user.tenant_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+    let email_payload = json!({
+        "invitation_id": inv_id,
+        "email": email,
+        "role": role,
+        "token": raw_token,
+        "inviter_name": user.name,
+        "inviter_email": user.email,
+        "workspace_id": user.tenant_id,
+        "workspace_name": workspace_name
+    });
+
+    sqlx::query(
+        "INSERT INTO ats_v2.email_tasks(id, tenant_id, recipient_email, template, payload, status) \
+         VALUES($1, $2, $3, 'invitation', $4, 'queued')"
+    )
+    .bind(email_task_id)
+    .bind(user.tenant_id)
+    .bind(&email)
+    .bind(email_payload)
+    .execute(&mut *tx)
+    .await?;
+
+    audit(&mut tx, &user, "INVITE_MEMBER", "invitation", inv_id).await?;
     tx.commit().await?;
-    Ok(Json(json!({"status":"added"})))
+
+    Ok(Json(json!({
+        "status": "invited",
+        "invitation_id": inv_id,
+        "email": email,
+        "role": role,
+        "token": raw_token
+    })))
+}
+
+pub async fn update_member_role(
+    State(state): State<AppState>,
+    Extension(user): Extension<Identity>,
+    axum::extract::Path(target_id): axum::extract::Path<Uuid>,
+    Json(v): Json<Value>,
+) -> Result<Json<Value>> {
+    user.admin()?;
+    let role = text(&v, "role");
+    if !["admin", "recruiter", "viewer", "interviewer", "compliance"].contains(&role.as_str()) {
+        return Err(bad("Invalid member role."));
+    }
+
+    let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
+
+    let current_role: Option<String> = sqlx::query_scalar(
+        "SELECT role FROM ats_v2.memberships WHERE tenant_id = $1 AND user_id = $2"
+    )
+    .bind(user.tenant_id)
+    .bind(target_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let current_role = current_role.ok_or_else(missing)?;
+
+    if current_role == "admin" && role != "admin" {
+        let admin_count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM ats_v2.memberships WHERE tenant_id = $1 AND role = 'admin'"
+        )
+        .bind(user.tenant_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        if admin_count <= 1 {
+            return Err(bad("Cannot demote the last administrator in this workspace."));
+        }
+    }
+
+    sqlx::query("UPDATE ats_v2.memberships SET role = $1 WHERE tenant_id = $2 AND user_id = $3")
+        .bind(&role)
+        .bind(user.tenant_id)
+        .bind(target_id)
+        .execute(&mut *tx)
+        .await?;
+
+    audit(&mut tx, &user, "UPDATE_MEMBER_ROLE", "membership", target_id).await?;
+    tx.commit().await?;
+
+    Ok(Json(json!({"status": "updated", "id": target_id, "role": role})))
+}
+
+pub async fn remove_member(
+    State(state): State<AppState>,
+    Extension(user): Extension<Identity>,
+    axum::extract::Path(target_id): axum::extract::Path<Uuid>,
+) -> Result<Json<Value>> {
+    user.admin()?;
+
+    let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
+
+    let current_role: Option<String> = sqlx::query_scalar(
+        "SELECT role FROM ats_v2.memberships WHERE tenant_id = $1 AND user_id = $2"
+    )
+    .bind(user.tenant_id)
+    .bind(target_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let current_role = current_role.ok_or_else(missing)?;
+
+    if current_role == "admin" {
+        let admin_count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM ats_v2.memberships WHERE tenant_id = $1 AND role = 'admin'"
+        )
+        .bind(user.tenant_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        if admin_count <= 1 {
+            return Err(bad("Cannot remove the last administrator in this workspace."));
+        }
+    }
+
+    sqlx::query("DELETE FROM ats_v2.memberships WHERE tenant_id = $1 AND user_id = $2")
+        .bind(user.tenant_id)
+        .bind(target_id)
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query("DELETE FROM ats_v2.sessions WHERE tenant_id = $1 AND user_id = $2")
+        .bind(user.tenant_id)
+        .bind(target_id)
+        .execute(&mut *tx)
+        .await?;
+
+    audit(&mut tx, &user, "REMOVE_MEMBER", "membership", target_id).await?;
+    tx.commit().await?;
+
+    Ok(Json(json!({"status": "removed", "id": target_id})))
+}
+
+pub async fn list_invitations(
+    State(state): State<AppState>,
+    Extension(user): Extension<Identity>,
+) -> Result<Json<Value>> {
+    user.admin()?;
+    let rows = sqlx::query(
+        "SELECT i.id, i.email, i.role, \
+         CASE WHEN i.status = 'pending' AND i.expires_at < now() THEN 'expired' ELSE i.status END as status, \
+         i.expires_at, i.created_at, u.name as inviter_name \
+         FROM ats_v2.invitations i \
+         JOIN ats_v2.users u ON u.id = i.inviter_id \
+         WHERE i.tenant_id = $1 \
+         ORDER BY i.created_at DESC"
+    )
+    .bind(user.tenant_id)
+    .fetch_all(&state.db)
+    .await?;
+
+    Ok(Json(json!(rows.iter().map(|r| json!({
+        "id": r.get::<Uuid, _>("id"),
+        "email": r.get::<String, _>("email"),
+        "role": r.get::<String, _>("role"),
+        "status": r.get::<String, _>("status"),
+        "expires_at": r.get::<chrono::DateTime<chrono::Utc>, _>("expires_at"),
+        "created_at": r.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
+        "inviter_name": r.get::<String, _>("inviter_name"),
+    })).collect::<Vec<_>>())))
+}
+
+pub async fn revoke_invitation(
+    State(state): State<AppState>,
+    Extension(user): Extension<Identity>,
+    axum::extract::Path(id): axum::extract::Path<Uuid>,
+) -> Result<Json<Value>> {
+    user.admin()?;
+    let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
+    let affected = sqlx::query("UPDATE ats_v2.invitations SET status = 'revoked', updated_at = now() WHERE id = $1 AND tenant_id = $2 AND status = 'pending'")
+        .bind(id)
+        .bind(user.tenant_id)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+    if affected == 0 {
+        return Err(bad("Invitation not found or cannot be revoked."));
+    }
+    audit(&mut tx, &user, "REVOKE_INVITATION", "invitation", id).await?;
+    tx.commit().await?;
+    Ok(Json(json!({"status": "revoked", "id": id})))
 }
 async fn agency(state: &AppState, user: &Identity) -> Result<()> {
     let kind: String = sqlx::query_scalar("SELECT kind FROM ats_v2.tenants WHERE id=$1")

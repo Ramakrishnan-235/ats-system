@@ -10,8 +10,13 @@ import {
   updateWorkspace,
   fetchMembers,
   addMember,
+  updateMemberRole,
+  removeMember,
+  fetchInvitations,
+  revokeInvitation,
   getErrorMessage,
   WorkspaceMember,
+  WorkspaceInvitation,
 } from "@/lib/api";
 import {
   Building2,
@@ -37,6 +42,9 @@ import {
   RefreshCw,
   Globe,
   Calendar,
+  Trash2,
+  Mail,
+  XCircle,
 } from "lucide-react";
 import {
   Dialog,
@@ -60,6 +68,9 @@ export default function SettingsPage() {
   const [inviting, setInviting] = useState<boolean>(false);
   const [savingWorkspace, setSavingWorkspace] = useState<boolean>(false);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [invitations, setInvitations] = useState<WorkspaceInvitation[]>([]);
+  const [isRemovingMember, setIsRemovingMember] = useState<string | null>(null);
+  const [isRevokingInvitation, setIsRevokingInvitation] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastType, setToastType] = useState<"success" | "error">("success");
 
@@ -79,7 +90,8 @@ export default function SettingsPage() {
     Promise.all([
       fetchSession().catch(() => null),
       fetchMembers().catch(() => [] as WorkspaceMember[]),
-    ]).then(([sess, mems]) => {
+      fetchInvitations().catch(() => [] as WorkspaceInvitation[]),
+    ]).then(([sess, mems, invs]) => {
       if (!active) return;
       if (sess) {
         const currentWs =
@@ -92,6 +104,9 @@ export default function SettingsPage() {
       }
       if (mems) {
         setMembers(mems);
+      }
+      if (invs) {
+        setInvitations(invs);
       }
     });
     return () => {
@@ -139,11 +154,15 @@ export default function SettingsPage() {
     setInviting(true);
     try {
       await addMember(inviteEmail.trim().toLowerCase(), inviteRole.toLowerCase());
-      showToast(`Member invitation added for ${inviteEmail.trim()}`, "success");
+      showToast(`Member invitation sent to ${inviteEmail.trim()}`, "success");
       setIsInviteModalOpen(false);
       setInviteEmail("");
-      const updated = await fetchMembers();
-      setMembers(updated);
+      const [updatedMems, updatedInvs] = await Promise.all([
+        fetchMembers().catch(() => members),
+        fetchInvitations().catch(() => invitations),
+      ]);
+      setMembers(updatedMems);
+      setInvitations(updatedInvs);
     } catch (err) {
       showToast(getErrorMessage(err), "error");
     } finally {
@@ -614,8 +633,29 @@ export default function SettingsPage() {
                               </td>
 
                               <td className="py-3.5 px-4">
-                                <div className="flex flex-col">
-                                  <span className="font-semibold text-xs text-[#141c27]">{roleName}</span>
+                                <div className="flex flex-col gap-1">
+                                  <select
+                                    value={m.role}
+                                    disabled={isYou && m.role === "admin"}
+                                    onChange={async (e) => {
+                                      const newRole = e.target.value;
+                                      try {
+                                        await updateMemberRole(m.id, newRole);
+                                        showToast(`Role updated to ${newRole} for ${m.name}`, "success");
+                                        const updated = await fetchMembers();
+                                        setMembers(updated);
+                                      } catch (err) {
+                                        showToast(getErrorMessage(err), "error");
+                                      }
+                                    }}
+                                    className="bg-white border border-[#dee2ef] rounded-lg px-2.5 py-1 text-xs font-semibold text-[#141c27] focus:outline-none focus:ring-1 focus:ring-[#6137e0] cursor-pointer shadow-2xs max-w-[180px]"
+                                  >
+                                    <option value="admin">Lead Recruiter & Admin</option>
+                                    <option value="recruiter">Recruiter</option>
+                                    <option value="interviewer">Interviewer</option>
+                                    <option value="viewer">Viewer</option>
+                                    <option value="compliance">Compliance</option>
+                                  </select>
                                   <span className={`text-[11px] ${isYou ? "text-[#6137e0] font-medium" : "text-[#75777c]"}`}>
                                     {authority}
                                   </span>
@@ -639,10 +679,26 @@ export default function SettingsPage() {
                               <td className="py-3.5 px-4 text-right">
                                 <button
                                   type="button"
-                                  onClick={() => showToast(`Governance options for ${m.name}`)}
-                                  className="p-1 rounded-lg text-[#75777c] hover:text-[#141c27] hover:bg-[#eff4ff] transition-colors"
+                                  disabled={isRemovingMember === m.id}
+                                  onClick={async () => {
+                                    if (!confirm(`Are you sure you want to remove ${m.name} from this workspace? They will immediately lose access.`)) return;
+                                    setIsRemovingMember(m.id);
+                                    try {
+                                      await removeMember(m.id);
+                                      showToast(`${m.name} has been removed from this workspace.`, "success");
+                                      const updated = await fetchMembers();
+                                      setMembers(updated);
+                                    } catch (err) {
+                                      showToast(getErrorMessage(err), "error");
+                                    } finally {
+                                      setIsRemovingMember(null);
+                                    }
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-lg text-rose-600 hover:text-rose-700 hover:bg-rose-50 text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                  title="Remove from workspace"
                                 >
-                                  <MoreVertical className="w-4 h-4" />
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>{isRemovingMember === m.id ? "Removing..." : "Remove"}</span>
                                 </button>
                               </td>
                             </tr>
@@ -651,6 +707,90 @@ export default function SettingsPage() {
                       )}
                     </tbody>
                   </table>
+                </div>
+
+                {/* Pending Invitations Section */}
+                <div className="pt-4 flex flex-col gap-3">
+                  <div className="flex items-center justify-between pb-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-[#141c27]">
+                        Pending Invitations
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full bg-[#eff4ff] text-[#6137e0] text-xs font-semibold">
+                        {invitations.filter((i) => i.status === "pending").length} Pending
+                      </span>
+                    </div>
+                  </div>
+
+                  {invitations.length === 0 ? (
+                    <div className="p-4 rounded-xl bg-[#f8f9ff] border border-[#dee2ef]/60 text-xs text-[#75777c] text-center">
+                      No active invitations. Click &quot;Invite Team Member&quot; to send one.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border border-[#dee2ef]/60 bg-white">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="bg-[#f8f9ff] text-[#75777c] font-semibold uppercase tracking-wider text-[11px]">
+                            <th className="py-2.5 px-4">Invited Email</th>
+                            <th className="py-2.5 px-4">Role</th>
+                            <th className="py-2.5 px-4">Status</th>
+                            <th className="py-2.5 px-4">Expires</th>
+                            <th className="py-2.5 px-4 text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#eff4ff]">
+                          {invitations.map((inv) => (
+                            <tr key={inv.id} className="hover:bg-[#f8f9ff]/50">
+                              <td className="py-2.5 px-4 font-mono font-medium text-[#141c27]">
+                                {inv.email}
+                              </td>
+                              <td className="py-2.5 px-4 font-semibold capitalize text-[#141c27]">
+                                {inv.role}
+                              </td>
+                              <td className="py-2.5 px-4">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                  inv.status === "pending"
+                                    ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                    : inv.status === "accepted"
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                    : "bg-zinc-100 text-zinc-600 border border-zinc-200"
+                                }`}>
+                                  {inv.status}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-4 text-[#75777c] text-[11px]">
+                                {new Date(inv.expires_at).toLocaleDateString()}
+                              </td>
+                              <td className="py-2.5 px-4 text-right">
+                                {inv.status === "pending" && (
+                                  <button
+                                    type="button"
+                                    disabled={isRevokingInvitation === inv.id}
+                                    onClick={async () => {
+                                      setIsRevokingInvitation(inv.id);
+                                      try {
+                                        await revokeInvitation(inv.id);
+                                        showToast(`Invitation for ${inv.email} revoked.`, "success");
+                                        const updated = await fetchInvitations();
+                                        setInvitations(updated);
+                                      } catch (err) {
+                                        showToast(getErrorMessage(err), "error");
+                                      } finally {
+                                        setIsRevokingInvitation(null);
+                                      }
+                                    }}
+                                    className="px-2 py-1 rounded text-rose-600 hover:bg-rose-50 text-xs font-semibold cursor-pointer disabled:opacity-50"
+                                  >
+                                    {isRevokingInvitation === inv.id ? "Revoking..." : "Revoke"}
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
 
                 {/* Role Authority Reference Strip */}

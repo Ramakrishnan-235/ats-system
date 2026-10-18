@@ -362,12 +362,50 @@ export interface Session { user: SessionIdentity; workspaces: Workspace[]; devel
 export const fetchSession = () => json<Session>("/auth/me");
 export const fetchAuthConfig = () => json<{ registration_enabled: boolean }>("/auth/config");
 export const signIn = (email: string, password: string) => json("/auth/login", { method: "POST", ...body({ email, password }) });
-export const registerWorkspace = (payload: { email: string; password: string; name: string; workspace_name: string; workspace_kind: string }) => json("/auth/register", { method: "POST", ...body(payload) });
+export const registerWorkspace = (payload: { email: string; password: string; name: string; workspace_name: string; workspace_kind: string; invitation_token?: string }) => json("/auth/register", { method: "POST", ...body(payload) });
 export const signOut = () => json("/auth/logout", { method: "POST" });
 export const switchWorkspace = (tenantId: string) => json("/auth/workspace", { method: "POST", ...body({ tenant_id: tenantId }) });
 export interface WorkspaceMember { id: string; name: string; email: string; role: string }
+export interface WorkspaceInvitation {
+  id: string;
+  email: string;
+  role: string;
+  status: "pending" | "accepted" | "revoked" | "expired";
+  expires_at: string;
+  created_at: string;
+  inviter_name: string;
+}
+export interface EmailTask {
+  id: string;
+  tenant_id: string | null;
+  recipient_email: string;
+  template: string;
+  payload: Record<string, unknown>;
+  status: "queued" | "sent" | "failed";
+  attempts: number;
+  created_at: string;
+}
 export const fetchMembers = () => json<WorkspaceMember[]>("/settings/members");
-export const addMember = (email: string, role: string) => json("/settings/members", { method: "POST", ...body({ email, role }) });
+export const addMember = (email: string, role: string) =>
+  json<{ status: string; invitation_id: string; email: string; role: string; token: string }>("/settings/members", { method: "POST", ...body({ email, role }) });
+export const updateMemberRole = (memberId: string, role: string) =>
+  json<{ status: string; id: string; role: string }>(`/settings/members/${id(memberId)}`, { method: "PATCH", ...body({ role }) });
+export const removeMember = (memberId: string) =>
+  json<{ status: string; id: string }>(`/settings/members/${id(memberId)}`, { method: "DELETE" });
+export const fetchInvitations = () => json<WorkspaceInvitation[]>("/settings/invitations");
+export const revokeInvitation = (invitationId: string) =>
+  json<{ status: string; id: string }>(`/settings/invitations/${id(invitationId)}`, { method: "DELETE" });
+export const inspectInvitation = (token: string) =>
+  json<{ id: string; workspace_id: string; workspace_name: string; email: string; role: string; status: string; expires_at: string }>(`/auth/invitations/${id(token)}`);
+export const acceptInvitation = (token: string) =>
+  json<{ status: string; workspace_id: string; role: string; invitation_id: string }>("/auth/invitations/accept", { method: "POST", ...body({ token }) });
+export const requestPasswordReset = (email: string) =>
+  json<{ status: string; message: string }>("/auth/password/reset-request", { method: "POST", ...body({ email }) });
+export const confirmPasswordReset = (payload: { token: string; password: string }) =>
+  json<{ status: string; message: string }>("/auth/password/reset", { method: "POST", ...body(payload) });
+export const confirmEmailVerification = (token: string) =>
+  json<{ status: string; message: string }>("/auth/verify-email", { method: "POST", ...body({ token }) });
+export const fetchEmailTasks = () => json<EmailTask[]>("/auth/email-tasks");
 export const updateWorkspace = (name: string) => json<{ id: string; name: string }>("/settings/workspace", {method: "PATCH", ...body({name})});
 export interface AnalyticsData { stages: {stage: string; count: number; average_score: number | null}[]; processing: {state: string; count: number}[]; hires: number; average_days_to_hire: number | null; generated_at: string }
 export const fetchAnalytics = () => json<AnalyticsData>("/analytics");

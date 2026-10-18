@@ -179,11 +179,11 @@ async function main() {
   const emptyNameErr = emptyNameJson.detail || emptyNameJson.error || "";
   console.log(`  Verified server error response on empty workspace name: '${emptyNameErr}'`);
 
-  // 2. Invite non-existent user should fail with useful error
+  // 2. Invite with invalid email should fail with useful error
   const inviteFailRes = await request(jar, "/api/v1/settings/members", {
     method: "POST",
     body: JSON.stringify({
-      email: "nonexistent-user-123456@example.com",
+      email: "not-a-valid-email",
       role: "recruiter",
     }),
   });
@@ -192,7 +192,7 @@ async function main() {
   }
   const inviteErrJson = await inviteFailRes.json();
   const errMsg = inviteErrJson.detail || inviteErrJson.error || "";
-  if (!errMsg.includes("must first create an account")) {
+  if (!errMsg.toLowerCase().includes("valid email")) {
     throw new Error(`Unexpected error message: ${errMsg}`);
   }
   console.log(`  Verified server error response on member invite: '${errMsg}'`);
