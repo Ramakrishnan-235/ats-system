@@ -1,7 +1,7 @@
 import type {
   StatMetric, WeeklyData, AIMatchRate, PipelineCandidateItem,
   JobRequisition, CandidateDetail, RankedCandidate, NewCandidatePayload,
-  TeamNote, CitationLocation,
+  TeamNote, CitationLocation, InterviewRecord, OfferRecord, PaginatedResult,
 } from "@/types/ats";
 
 export const legacyBackend = process.env.NEXT_PUBLIC_ATS_BACKEND === "legacy";
@@ -79,14 +79,15 @@ export interface DashboardData {
   pipeline: Record<string, PipelineCandidateItem[]>;
 }
 export const fetchDashboardStats = () => json<DashboardData>("/dashboard/stats");
-export const fetchJobs = (params?: { status?: string; department?: string; search?: string }) => json<JobRequisition[]>(`/jobs${query(params)}`);
+export const fetchJobs = (params?: { status?: string; department?: string; search?: string; page?: number; limit?: number; offset?: number; envelope?: boolean }) => json<JobRequisition[]>(`/jobs${query(params)}`);
+export const fetchJobsPaginated = (params?: { status?: string; department?: string; search?: string; page?: number; limit?: number; offset?: number }) => json<PaginatedResult<JobRequisition>>(`/jobs${query({ ...params, envelope: true })}`);
 export const fetchJobDetail = (jobId: string) => json<JobRequisition>(`/jobs/${id(jobId)}`);
 export function createJobRequisition(payload: {
   title: string; department: string; location: string; job_description: string;
-  required_skills: string[]; min_years_experience?: number; run_ai_match?: boolean;
+  required_skills: string[]; min_years_experience?: number; run_ai_match?: boolean; status?: "OPEN" | "PAUSED" | "CLOSED";
 }) { return json<JobRequisition>("/jobs", { method: "POST", ...body(payload) }); }
 export function updateJobRequisition(jobId: string, payload: {
-  title: string; department: string; location: string; job_description: string; required_skills: string[]; min_years_experience?: number;
+  title?: string; department?: string; location?: string; job_description?: string; required_skills?: string[]; min_years_experience?: number; status?: "OPEN" | "PAUSED" | "CLOSED";
 }) { return json<JobRequisition>(`/jobs/${id(jobId)}`, { method: "PATCH", ...body(payload) }); }
 export const fetchJobCandidates = (jobId: string) => json<RankedCandidate[]>(`/jobs/${id(jobId)}/candidates`);
 export function addJobCandidate(jobId: string, payload: NewCandidatePayload) {
@@ -96,13 +97,50 @@ export function addJobCandidate(jobId: string, payload: NewCandidatePayload) {
 }
 export const removeJobCandidate = (jobId: string, candidateId: string) => json<RankedCandidate[]>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}`, { method: "DELETE" });
 export const updateJobCandidateStage = (jobId: string, candidateId: string, stage: string) => json<RankedCandidate>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}/stage${query({ new_stage: stage })}`, { method: "PATCH" });
-export const fetchCandidates = (params?: { search?: string; stage?: string; skill?: string; include_pii?: boolean }) => json<CandidateDetail[]>(`/candidates${query(params)}`);
-export const fetchCandidate = (candidateId: string, includePii = false) => json<CandidateDetail>(`/candidates/${id(candidateId)}?include_pii=${includePii}`);
+export const fetchCandidates = (params?: { search?: string; stage?: string; skill?: string; include_pii?: boolean; page?: number; limit?: number; offset?: number; envelope?: boolean; job_id?: string }) => json<CandidateDetail[]>(`/candidates${query(params)}`);
+export const fetchCandidatesPaginated = (params?: { search?: string; stage?: string; skill?: string; include_pii?: boolean; page?: number; limit?: number; offset?: number; job_id?: string }) => json<PaginatedResult<CandidateDetail>>(`/candidates${query({ ...params, envelope: true })}`);
+export const fetchCandidate = (candidateId: string, includePii = false, jobId?: string) => json<CandidateDetail>(`/candidates/${id(candidateId)}${query({ include_pii: includePii, job_id: jobId })}`);
 export const fetchCandidateScorecard = (candidateId: string, jobId: string) => json<CandidateDetail["scorecard"]>(`/candidates/${id(candidateId)}/scorecard${query({ job_id: jobId })}`);
 export const updateCandidateStage = (candidateId: string, stage: string, jobId?: string) => json<{ status: string; stage: string }>(`/candidates/${id(candidateId)}/stage${query({ new_stage: stage, job_id: jobId })}`, { method: "PATCH" });
-export const addCandidateNote = (candidateId: string, content: string, author = "Recruiter") => json<TeamNote>(`/candidates/${id(candidateId)}/notes`, { method: "POST", ...body({ content, author }) });
+export const addCandidateNote = (candidateId: string, content: string, author = "Recruiter", jobId?: string) => json<TeamNote>(`/candidates/${id(candidateId)}/notes${query({ job_id: jobId })}`, { method: "POST", ...body({ content, author }) });
 export const fetchResumePdf = async (candidateId: string, signal?: AbortSignal) => (await request(`/candidates/${id(candidateId)}/resume-pdf`, { signal })).blob();
 export const locateCandidateCitation = (candidateId: string, phrase: string) => json<{ found: boolean; location: CitationLocation | null }>(`/candidates/${id(candidateId)}/locate-citation`, { method: "POST", ...body({ search_phrase: phrase }) });
+
+export function editCandidate(candidateId: string, payload: {
+  name?: string; headline?: string; email?: string; phone?: string; location?: string;
+  skills?: string[]; experience_years?: number; education?: string;
+}) {
+  return json<CandidateDetail>(`/candidates/${id(candidateId)}`, { method: "PATCH", ...body(payload) });
+}
+
+export function fetchCandidateInterviews(jobId: string, candidateId: string) {
+  return json<InterviewRecord[]>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}/interviews`);
+}
+
+export function recordCandidateInterview(jobId: string, candidateId: string, payload: {
+  round?: string; round_name?: string; scheduled_at?: string; interviewer_name?: string;
+  notes?: string; feedback?: string; outcome?: string; rating?: number;
+}) {
+  return json<InterviewRecord[]>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}/interviews`, { method: "POST", ...body(payload) });
+}
+
+export function updateCandidateInterview(jobId: string, candidateId: string, interviewId: string, payload: {
+  round?: string; round_name?: string; scheduled_at?: string; interviewer_name?: string;
+  notes?: string; feedback?: string; outcome?: string; rating?: number;
+}) {
+  return json<InterviewRecord[]>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}/interviews/${id(interviewId)}`, { method: "PATCH", ...body(payload) });
+}
+
+export function fetchCandidateOffer(jobId: string, candidateId: string) {
+  return json<OfferRecord>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}/offer`);
+}
+
+export function recordCandidateOffer(jobId: string, candidateId: string, payload: {
+  status: string; salary?: number; base_salary?: number; currency?: string;
+  equity?: string; sign_on_bonus?: number; start_date?: string; notes?: string;
+}) {
+  return json<OfferRecord>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}/offer`, { method: "POST", ...body(payload) });
+}
 
 export interface UploadResponse {
   status: string; task_id: string; candidate_id: string; filename: string;

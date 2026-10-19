@@ -110,6 +110,30 @@ export interface TeamNote {
   content: string;
 }
 
+export interface InterviewRecord {
+  id: string;
+  round: string;
+  scheduled_at: string;
+  interviewer_name: string;
+  interviewer_email?: string;
+  notes?: string;
+  outcome: "SCHEDULED" | "PASSED" | "FAILED" | "CANCELLED" | "COMPLETED";
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface OfferRecord {
+  status: "NOT_STARTED" | "DRAFTED" | "EXTENDED" | "ACCEPTED" | "DECLINED" | "REVISED";
+  base_salary?: number;
+  currency: string;
+  equity?: string;
+  sign_on_bonus?: number;
+  start_date?: string;
+  notes?: string;
+  recorded_by?: string;
+  updated_at?: string;
+}
+
 export interface EnrichedSkillEntity {
   canonical_name: string;
   category?: string;
@@ -140,7 +164,19 @@ export interface CandidateDetail {
   applied_for_job_id?: string;
   revision?: number;
   processing_status?: string;
-  applications?: { id: string; job_id: string; job_title: string; stage: string; match_score: number | null }[];
+  error_message?: string;
+  interviews?: InterviewRecord[];
+  offer?: OfferRecord;
+  team_notes?: TeamNote[];
+  applications?: {
+    id: string;
+    job_id: string;
+    job_title: string;
+    stage: string;
+    match_score: number | null;
+    interviews?: InterviewRecord[];
+    offer?: OfferRecord;
+  }[];
   years_of_experience: number;
   highest_education: string;
   core_skills: string[];
@@ -248,4 +284,12 @@ export interface NewCandidatePayload {
   potentialGap?: string;
   suggestedImprovements?: string[];
   suggestedQuestions?: string[];
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+  has_more: boolean;
 }

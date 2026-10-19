@@ -127,17 +127,31 @@ pub async fn upload(
         if row.get::<String,_>("source_hash")!=fingerprint{return Err(ApiError(StatusCode::CONFLICT,"Idempotency key was used for different input."));}
         return Ok((StatusCode::ACCEPTED,Json(upload_response(row.get("id"),row.get("candidate_id"),&filename,job_id))));
     }
-    let job_revision = if let Some(id) = job_id {
-        Some(
-            sqlx::query_scalar::<_, i32>(
-                "SELECT revision FROM ats_v2.jobs WHERE id=$1 AND tenant_id=$2 AND status='OPEN'",
-            )
-            .bind(id)
-            .bind(user.tenant_id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .ok_or_else(missing)?,
+    let job_info: Option<(i32, String)> = if let Some(id) = job_id {
+        sqlx::query_as::<_, (i32, String)>(
+            "SELECT revision, status FROM ats_v2.jobs WHERE id=$1 AND tenant_id=$2",
         )
+        .bind(id)
+        .bind(user.tenant_id)
+        .fetch_optional(&mut *tx)
+        .await?
+    } else {
+        None
+    };
+    let job_revision = if let Some((rev, status)) = job_info {
+        if status == "CLOSED" {
+            return Err(bad(
+                "Job is closed. Cannot upload resumes for a closed job.",
+            ));
+        }
+        if status == "PAUSED" {
+            return Err(bad(
+                "Job is paused. Cannot upload resumes for a paused job.",
+            ));
+        }
+        Some(rev)
+    } else if job_id.is_some() {
+        return Err(missing());
     } else {
         None
     };
@@ -808,13 +822,24 @@ pub async fn evaluate_candidate(
 ) -> Result<(StatusCode, Json<Value>)> {
     user.write()?;
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
-    let job =
-        sqlx::query("SELECT * FROM ats_v2.jobs WHERE id=$1 AND tenant_id=$2 AND status='OPEN'")
-            .bind(job_id)
-            .bind(user.tenant_id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .ok_or_else(missing)?;
+    let job_row = sqlx::query("SELECT * FROM ats_v2.jobs WHERE id=$1 AND tenant_id=$2")
+        .bind(job_id)
+        .bind(user.tenant_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(missing)?;
+    let status: String = job_row.get("status");
+    if status == "CLOSED" {
+        return Err(bad(
+            "Job is closed. Cannot run evaluations for a closed job.",
+        ));
+    }
+    if status == "PAUSED" {
+        return Err(bad(
+            "Job is paused. Cannot run evaluations for a paused job.",
+        ));
+    }
+    let job = job_row;
     let row = sqlx::query("SELECT c.id,c.revision,c.sanitized_text,d.id document_id,d.version FROM ats_v2.candidates c JOIN ats_v2.applications a ON a.candidate_id=c.id AND a.tenant_id=c.tenant_id JOIN LATERAL(SELECT id,version FROM ats_v2.documents WHERE candidate_id=c.id AND tenant_id=c.tenant_id ORDER BY version DESC LIMIT 1)d ON true WHERE c.id=$1 AND c.tenant_id=$2 AND a.job_id=$3 AND a.stage NOT IN('Withdrawn','Rejected') AND c.deleted_at IS NULL AND c.processing_status='COMPLETED'")
         .bind(candidate).bind(user.tenant_id).bind(job_id).fetch_optional(&mut *tx).await?
         .ok_or_else(|| bad("Add this candidate to the job and upload/process a resume before calculating a score."))?;
@@ -871,13 +896,24 @@ pub async fn evaluate_job(
         return Err(bad("Invalid retrieval/evaluation limits."));
     }
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
-    let job =
-        sqlx::query("SELECT * FROM ats_v2.jobs WHERE id=$1 AND tenant_id=$2 AND status='OPEN'")
-            .bind(input.job_id)
-            .bind(user.tenant_id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .ok_or_else(missing)?;
+    let job_row = sqlx::query("SELECT * FROM ats_v2.jobs WHERE id=$1 AND tenant_id=$2")
+        .bind(input.job_id)
+        .bind(user.tenant_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(missing)?;
+    let status: String = job_row.get("status");
+    if status == "CLOSED" {
+        return Err(bad(
+            "Job is closed. Cannot run evaluations for a closed job.",
+        ));
+    }
+    if status == "PAUSED" {
+        return Err(bad(
+            "Job is paused. Cannot run evaluations for a paused job.",
+        ));
+    }
+    let job = job_row;
     let query = format!(
         "{} {}",
         job.get::<String, _>("title"),

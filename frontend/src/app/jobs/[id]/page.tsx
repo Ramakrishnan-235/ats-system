@@ -24,6 +24,8 @@ import {
   X,
   UserPlus,
   UserMinus,
+  ChevronDown,
+  Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -102,6 +104,7 @@ function JobDetail({ rawId }: { rawId: string }) {
   const [editDescription, setEditDescription] = useState("");
   const [editSkills, setEditSkills] = useState<string[]>([]);
   const [editMinYearsExperience, setEditMinYearsExperience] = useState(0);
+  const [editStatus, setEditStatus] = useState<"OPEN" | "PAUSED" | "CLOSED">("OPEN");
   const [newSkillText, setNewSkillText] = useState("");
 
   useEffect(() => {
@@ -115,11 +118,26 @@ function JobDetail({ rawId }: { rawId: string }) {
       setEditDescription(jobData.job_description);
       setEditSkills(jobData.required_skills);
       setEditMinYearsExperience(jobData.min_years_experience);
+      setEditStatus((jobData.status as "OPEN" | "PAUSED" | "CLOSED") || "OPEN");
       setCandidates(candidateData);
       setExpandedCand(candidateData[0]?.id || null);
     }).catch(reason => { if (active) setError(getErrorMessage(reason)); });
     return () => { active = false; };
   }, [rawId]);
+
+  const handleStatusChange = async (newStatus: "OPEN" | "PAUSED" | "CLOSED") => {
+    if (!job || job.status === newStatus) return;
+    try {
+      const updated = await updateJobRequisition(rawId, { status: newStatus });
+      setJob(updated);
+      setEditStatus(newStatus);
+      setError(null);
+      setReRunMessage(`Job status updated to ${newStatus}. ${newStatus === "CLOSED" ? "History preserved; new applications locked." : ""}`);
+      setTimeout(() => setReRunMessage(null), 5000);
+    } catch (reason) {
+      setError(getErrorMessage(reason));
+    }
+  };
 
   const handleReRunMatch = async () => {
     if (!job) return;
@@ -261,7 +279,15 @@ function JobDetail({ rawId }: { rawId: string }) {
   const handleSaveJobEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      setJob(await updateJobRequisition(rawId, { title: editTitle, department: editDepartment, location: editLocation, job_description: editDescription, required_skills: editSkills, min_years_experience: editMinYearsExperience }));
+      setJob(await updateJobRequisition(rawId, {
+        title: editTitle,
+        department: editDepartment,
+        location: editLocation,
+        job_description: editDescription,
+        required_skills: editSkills,
+        min_years_experience: editMinYearsExperience,
+        status: editStatus,
+      }));
       setIsEditOpen(false);
       setError(null);
     } catch (reason) { setError(getErrorMessage(reason)); }
@@ -332,16 +358,87 @@ function JobDetail({ rawId }: { rawId: string }) {
                 <h1 className="text-2xl font-bold tracking-tight text-zinc-950">
                   {job.title}
                 </h1>
-                <span className="bg-[#ede8dc] text-zinc-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                  {job.status}
-                </span>
+                
+                {/* Controlled Status Lifecycle Selector */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(
+                        "inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1 rounded-full uppercase tracking-wider cursor-pointer transition-all border",
+                        job.status === "OPEN"
+                          ? "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
+                          : job.status === "PAUSED"
+                          ? "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
+                          : "bg-zinc-100 text-zinc-800 border-zinc-300 hover:bg-zinc-200"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "w-2 h-2 rounded-full",
+                          job.status === "OPEN" ? "bg-emerald-500" : job.status === "PAUSED" ? "bg-amber-500" : "bg-zinc-500"
+                        )}
+                      />
+                      <span>{job.status}</span>
+                      <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-72 p-1.5 bg-white border border-zinc-200 shadow-xl rounded-xl z-30">
+                    <DropdownMenuItem
+                      onClick={() => handleStatusChange("OPEN")}
+                      className="flex flex-col items-start gap-0.5 text-xs py-2 px-3 rounded-lg cursor-pointer hover:bg-zinc-50"
+                    >
+                      <div className="flex items-center gap-1.5 font-bold text-emerald-700 w-full">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        <span>OPEN</span>
+                        {job.status === "OPEN" && <Check className="w-3.5 h-3.5 ml-auto text-emerald-600" />}
+                      </div>
+                      <span className="text-[10px] text-zinc-500">Active recruitment, new applications &amp; AI evaluation</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => handleStatusChange("PAUSED")}
+                      className="flex flex-col items-start gap-0.5 text-xs py-2 px-3 rounded-lg cursor-pointer hover:bg-zinc-50"
+                    >
+                      <div className="flex items-center gap-1.5 font-bold text-amber-700 w-full">
+                        <span className="w-2 h-2 rounded-full bg-amber-500" />
+                        <span>PAUSED</span>
+                        {job.status === "PAUSED" && <Check className="w-3.5 h-3.5 ml-auto text-amber-600" />}
+                      </div>
+                      <span className="text-[10px] text-zinc-500">Intake paused; current pipeline remains in review</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => handleStatusChange("CLOSED")}
+                      className="flex flex-col items-start gap-0.5 text-xs py-2 px-3 rounded-lg cursor-pointer hover:bg-zinc-50"
+                    >
+                      <div className="flex items-center gap-1.5 font-bold text-zinc-700 w-full">
+                        <span className="w-2 h-2 rounded-full bg-zinc-500" />
+                        <span>CLOSED</span>
+                        {job.status === "CLOSED" && <Check className="w-3.5 h-3.5 ml-auto text-zinc-600" />}
+                      </div>
+                      <span className="text-[10px] text-zinc-500">Preserves history &amp; scores; prevents new candidates &amp; AI runs</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
 
               <div className="flex items-center gap-2.5">
                 <Button
                   onClick={() => setIsAddCandidateOpen(true)}
+                  disabled={job.status === "CLOSED" || job.status === "PAUSED"}
+                  title={
+                    job.status === "CLOSED"
+                      ? "Cannot add candidates to a closed job. Re-open job first."
+                      : job.status === "PAUSED"
+                      ? "Cannot add candidates while job is paused."
+                      : "Add Candidate"
+                  }
                   size="sm"
-                  className="bg-black hover:bg-zinc-800 text-white hover:text-zinc-300 rounded-full px-4 text-xs font-semibold h-9 gap-1.5 shadow-none cursor-pointer transition-colors"
+                  className={cn(
+                    "rounded-full px-4 text-xs font-semibold h-9 gap-1.5 shadow-none transition-colors",
+                    job.status === "CLOSED" || job.status === "PAUSED"
+                      ? "bg-zinc-200 text-zinc-500 cursor-not-allowed hover:bg-zinc-200"
+                      : "bg-black hover:bg-zinc-800 text-white cursor-pointer"
+                  )}
                 >
                   <UserPlus className="w-3.5 h-3.5" />
                   <span>Add New Candidate</span>
@@ -349,7 +446,14 @@ function JobDetail({ rawId }: { rawId: string }) {
 
                 <Button
                   onClick={handleReRunMatch}
-                  disabled={isReRunning}
+                  disabled={isReRunning || job.status === "CLOSED" || job.status === "PAUSED"}
+                  title={
+                    job.status === "CLOSED"
+                      ? "AI evaluation is locked on closed jobs."
+                      : job.status === "PAUSED"
+                      ? "AI evaluation is paused while job is paused."
+                      : "Re-run AI Match"
+                  }
                   variant="outline"
                   size="sm"
                   className="rounded-full px-4 text-xs font-semibold h-9 border-zinc-200 hover:bg-zinc-50 gap-1.5 shadow-none cursor-pointer"
@@ -392,6 +496,24 @@ function JobDetail({ rawId }: { rawId: string }) {
                 <span>{candidates.length} Candidates</span>
               </div>
             </div>
+
+            {/* Status Policy Banner */}
+            {job.status === "CLOSED" && (
+              <div className="bg-zinc-100 border border-zinc-300 text-zinc-800 px-4 py-3 rounded-xl text-xs flex items-center gap-3">
+                <Lock className="w-4 h-4 text-zinc-600 shrink-0" />
+                <div>
+                  <span className="font-bold">Job Requisition Closed:</span> All candidate evaluation history, rubric scorecards, and notes are preserved. In accordance with policy, new candidate applications and AI matching runs are disabled.
+                </div>
+              </div>
+            )}
+            {job.status === "PAUSED" && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-xl text-xs flex items-center gap-3">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <div>
+                  <span className="font-bold">Job Requisition Paused:</span> Candidate intake is temporarily suspended. Active candidates in the pipeline remain available for recruiter review.
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Sub Navigation Tabs */}
@@ -998,6 +1120,26 @@ function JobDetail({ rawId }: { rawId: string }) {
                   className="h-10 text-xs rounded-xl"
                 />
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-zinc-600">
+                Job Status &amp; Policy Lifecycle
+              </label>
+              <select
+                value={editStatus}
+                onChange={(e) => setEditStatus(e.target.value as "OPEN" | "PAUSED" | "CLOSED")}
+                className="h-10 w-full text-xs rounded-xl border border-zinc-200 bg-white px-3 focus:outline-none focus:border-zinc-400"
+              >
+                <option value="OPEN">OPEN — Active recruitment, new applications &amp; AI evaluation</option>
+                <option value="PAUSED">PAUSED — Intake paused; current pipeline remains in review</option>
+                <option value="CLOSED">CLOSED — Preserves history &amp; scores; prevents new candidates &amp; AI runs</option>
+              </select>
+              {editStatus === "CLOSED" && (
+                <p className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200">
+                  Closing this job preserves its candidate ranking, scorecards, notes, and offer history, but rejects new candidate applications, uploads, and AI matching.
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">

@@ -117,17 +117,40 @@ export default function CandidateDirectoryPage() {
   // Toast state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [totalCandidates, setTotalCandidates] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+
   // Load live candidates and jobs from backend
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchCandidates(), fetchJobs()])
-      .then(([liveCandidates, liveJobs]) => {
+    setLoading(true);
+    Promise.all([
+      (fetchCandidates as (p?: unknown) => Promise<unknown>)({ page: currentPage, limit: pageSize, envelope: true }).catch(() => fetchCandidates()),
+      fetchJobs().catch(() => [] as JobRequisition[])
+    ])
+      .then(([rawCandidates, liveJobs]) => {
         if (!cancelled) {
           if (liveJobs) {
             setJobs(liveJobs);
           }
-          if (liveCandidates) {
-            const mapped: CandidateRosterItem[] = liveCandidates.map((c) => {
+          if (rawCandidates) {
+            const items: CandidateDetail[] = Array.isArray(rawCandidates)
+              ? (rawCandidates as CandidateDetail[])
+              : (((rawCandidates as { items?: CandidateDetail[] })?.items) || []);
+            const total = Array.isArray(rawCandidates)
+              ? rawCandidates.length
+              : (((rawCandidates as { total?: number })?.total) ?? items.length);
+            const more = Array.isArray(rawCandidates)
+              ? false
+              : (((rawCandidates as { has_more?: boolean })?.has_more) ?? false);
+
+            setTotalCandidates(total);
+            setHasMore(more);
+
+            const mapped: CandidateRosterItem[] = items.map((c) => {
               const actualStage = c.stage || "Applied";
               const stageColors = getStageBadgeColor(actualStage);
               const candObj = c as CandidateWithMeta;
@@ -184,7 +207,7 @@ export default function CandidateDirectoryPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currentPage, pageSize]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -1306,7 +1329,71 @@ export default function CandidateDirectoryPage() {
               )
             )}
 
+            {/* Pagination Controls Bar */}
+            {totalCandidates > 0 && (
+              <div className="bg-white rounded-xl border border-[#dee2ef] p-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#45474c] shadow-xs">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span>
+                    Showing{" "}
+                    <strong className="text-[#171c25]">
+                      {(currentPage - 1) * pageSize + 1}
+                    </strong>{" "}
+                    to{" "}
+                    <strong className="text-[#171c25]">
+                      {Math.min(currentPage * pageSize, totalCandidates)}
+                    </strong>{" "}
+                    of <strong className="text-[#171c25]">{totalCandidates}</strong> candidate records
+                  </span>
+                  {totalCandidates > 500 && (
+                    <span className="bg-purple-50 text-purple-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-purple-200">
+                      Server Paginated Beyond 500
+                    </span>
+                  )}
+                </div>
 
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                    <span>Per page:</span>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => {
+                        const newSize = Number(e.target.value);
+                        setPageSize(newSize);
+                        setCurrentPage(1);
+                      }}
+                      className="border border-[#dee2ef] rounded-lg px-2 py-1 bg-white text-xs text-[#171c25] focus:outline-none"
+                    >
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value={250}>250</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage <= 1 || loading}
+                      className="px-3 py-1.5 rounded-lg border border-[#dee2ef] bg-white text-[#171c25] font-semibold hover:bg-[#f0f3ff] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Previous
+                    </button>
+                    <span className="font-semibold text-[#171c25]">
+                      Page {currentPage} of {Math.max(1, Math.ceil(totalCandidates / pageSize))}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((p) => p + 1)}
+                      disabled={(!hasMore && currentPage >= Math.ceil(totalCandidates / pageSize)) || loading}
+                      className="px-3 py-1.5 rounded-lg border border-[#dee2ef] bg-white text-[#171c25] font-semibold hover:bg-[#f0f3ff] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </main>

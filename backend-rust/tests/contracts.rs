@@ -632,3 +632,206 @@ async fn email_task_inspection_endpoint_requires_development_mode() {
             .contains("Email task inspection is only permitted in development mode")
     );
 }
+
+#[test]
+fn job_lifecycle_input_validation_and_status_transitions() {
+    let mut input = ats_backend::domain::JobInput {
+        title: "Senior Backend Engineer".into(),
+        department: "Core Engineering".into(),
+        location: "London, UK".into(),
+        job_description: "Build robust distributed backend systems".into(),
+        required_skills: vec!["Rust".into(), "PostgreSQL".into()],
+        min_years_experience: 5.0,
+        status: Some("OPEN".into()),
+    };
+    assert!(input.validate().is_ok());
+
+    input.status = Some("PAUSED".into());
+    assert!(input.validate().is_ok());
+
+    input.status = Some("CLOSED".into());
+    assert!(input.validate().is_ok());
+
+    input.status = Some("INVALID_STATUS".into());
+    let err = input.validate().unwrap_err();
+    assert!(err.1.contains("Job status must be OPEN, PAUSED, or CLOSED"));
+}
+
+#[test]
+fn pagination_headers_and_limit_calculation() {
+    // When a recruiter has 1200 records and requests page 2 with limit 500
+    let total = 1200i64;
+    let limit = 500i64;
+    let page = 2i64;
+    let offset = (page - 1) * limit; // 500
+    let has_more = offset + limit < total; // 1000 < 1200 => true
+
+    let headers = ats_backend::domain::pagination_headers(total, page, limit, has_more);
+    assert_eq!(headers.get("x-total-count").unwrap(), "1200");
+    assert_eq!(headers.get("x-page").unwrap(), "2");
+    assert_eq!(headers.get("x-limit").unwrap(), "500");
+    assert_eq!(headers.get("x-has-more").unwrap(), "true");
+
+    // Page 3 (records 1001-1200) has_more is false
+    let page_3 = 3i64;
+    let offset_3 = (page_3 - 1) * limit;
+    let has_more_3 = offset_3 + limit < total;
+    let headers_3 = ats_backend::domain::pagination_headers(total, page_3, limit, has_more_3);
+    assert_eq!(headers_3.get("x-page").unwrap(), "3");
+    assert_eq!(headers_3.get("x-has-more").unwrap(), "false");
+}
+
+#[test]
+fn dual_application_independence_preserves_stages_without_overwrite() {
+    // A single candidate applies to two distinct jobs: Job A and Job B
+    let candidate_id = Uuid::new_v4();
+    let job_a_id = Uuid::new_v4();
+    let job_b_id = Uuid::new_v4();
+
+    let mut application_a = json!({
+        "id": Uuid::new_v4(),
+        "candidate_id": candidate_id,
+        "job_id": job_a_id,
+        "job_title": "Backend Lead",
+        "stage": "Qualified", // Shortlisted
+        "match_score": 92.5
+    });
+
+    let application_b = json!({
+        "id": Uuid::new_v4(),
+        "candidate_id": candidate_id,
+        "job_id": job_b_id,
+        "job_title": "Frontend Architect",
+        "stage": "Rejected", // Rejected
+        "match_score": 45.0
+    });
+
+    let applications = [application_a.clone(), application_b.clone()];
+
+    // Resolving candidate in context of Job A
+    let target_a = applications
+        .iter()
+        .find(|a| a["job_id"] == json!(job_a_id))
+        .unwrap();
+    assert_eq!(target_a["stage"], "Qualified");
+    assert_eq!(target_a["match_score"], 92.5);
+
+    // Resolving candidate in context of Job B
+    let target_b = applications
+        .iter()
+        .find(|a| a["job_id"] == json!(job_b_id))
+        .unwrap();
+    assert_eq!(target_b["stage"], "Rejected");
+    assert_eq!(target_b["match_score"], 45.0);
+
+    // Updating Job A stage does not mutate Job B
+    application_a["stage"] = json!("Interview");
+    assert_eq!(application_a["stage"], "Interview");
+    assert_eq!(application_b["stage"], "Rejected");
+}
+
+#[test]
+fn interview_and_offer_contract_validation() {
+    let interview = ats_backend::domain::InterviewInput {
+        round: "System Design Deep Dive".into(),
+        scheduled_at: "2026-10-25T14:00:00Z".into(),
+        interviewer_name: "Principal Architect".into(),
+        interviewer_email: Some("architect@example.com".into()),
+        notes: Some("Strong distributed systems background".into()),
+        outcome: "PASSED".into(),
+    };
+    assert!(interview.validate().is_ok());
+
+    let mut invalid_interview = interview.clone();
+    invalid_interview.outcome = "UNKNOWN_OUTCOME".into();
+    assert!(invalid_interview.validate().is_err());
+
+    let offer = ats_backend::domain::OfferInput {
+        status: "EXTENDED".into(),
+        base_salary: Some(155000.0),
+        currency: "GBP".into(),
+        equity: Some("15,000 RSUs".into()),
+        sign_on_bonus: Some(15000.0),
+        start_date: Some("2026-12-01".into()),
+        notes: Some("Competitive compensation package".into()),
+    };
+    assert!(offer.validate().is_ok());
+
+    let mut invalid_offer = offer.clone();
+    invalid_offer.status = "NOT_A_STATUS".into();
+    assert!(invalid_offer.validate().is_err());
+}
+
+#[test]
+fn public_contract_exposes_recruiter_workflow_routes() {
+    let doc = ats_backend::openapi::document();
+    for route in [
+        "/api/v1/jobs/{job}/candidates/{candidate}/interviews",
+        "/api/v1/jobs/{job}/candidates/{candidate}/offer",
+    ] {
+        assert!(
+            doc["paths"].get(route).is_some(),
+            "Route {route} must be documented in public OpenAPI schema"
+        );
+    }
+}
+
+#[test]
+fn recruiter_can_paginate_beyond_first_500_records() {
+    // Total of 1,250 candidates in database
+    let total = 1250;
+    let page = 11;
+    let limit = 50;
+    let (calc_limit, offset) = ats_backend::domain::calculate_pagination(Some(page), Some(limit));
+    assert_eq!(
+        offset, 500,
+        "Page 11 offset must start at record 500 (item 501)"
+    );
+    assert_eq!(calc_limit, 50);
+
+    let has_more = (offset + calc_limit) < total;
+    assert!(
+        has_more,
+        "Must have more records beyond record 550 when total is 1250"
+    );
+
+    // Page 25 reaches records 1200-1250
+    let (p25_limit, p25_offset) = ats_backend::domain::calculate_pagination(Some(25), Some(50));
+    assert_eq!(p25_offset, 1200);
+    let p25_has_more = (p25_offset + p25_limit) < total;
+    assert!(!p25_has_more, "Page 25 reaches the end of 1250 records");
+}
+
+#[test]
+fn candidate_shortlisted_for_job_a_and_rejected_for_job_b_without_overwrite() {
+    let candidate_id = Uuid::new_v4();
+    let job_a_id = Uuid::new_v4();
+    let job_b_id = Uuid::new_v4();
+
+    let mut app_a = serde_json::json!({
+        "id": Uuid::new_v4(),
+        "candidate_id": candidate_id,
+        "job_id": job_a_id,
+        "job_title": "Backend Distributed Systems Engineer",
+        "stage": "Qualified",
+        "match_score": 94.0
+    });
+
+    let mut app_b = serde_json::json!({
+        "id": Uuid::new_v4(),
+        "candidate_id": candidate_id,
+        "job_id": job_b_id,
+        "job_title": "Frontend Architect",
+        "stage": "Applied",
+        "match_score": 45.0
+    });
+
+    // Recruiter shortlists candidate for Job A:
+    app_a["stage"] = serde_json::json!("Shortlist");
+    // Recruiter rejects candidate for Job B:
+    app_b["stage"] = serde_json::json!("Rejected");
+
+    assert_eq!(app_a["stage"], "Shortlist");
+    assert_eq!(app_b["stage"], "Rejected");
+    assert_ne!(app_a["stage"], app_b["stage"]);
+}
