@@ -34,9 +34,24 @@ pub fn document() -> Value {
         ("/auth/me", "get", None, 200),
         ("/auth/workspace", "post", Some("workspace"), 200),
         ("/auth/invitations/{token}", "get", None, 200),
-        ("/auth/invitations/accept", "post", Some("AcceptInvitationInput"), 200),
-        ("/auth/password/reset-request", "post", Some("PasswordResetRequest"), 200),
-        ("/auth/password/reset", "post", Some("PasswordResetConfirm"), 200),
+        (
+            "/auth/invitations/accept",
+            "post",
+            Some("AcceptInvitationInput"),
+            200,
+        ),
+        (
+            "/auth/password/reset-request",
+            "post",
+            Some("PasswordResetRequest"),
+            200,
+        ),
+        (
+            "/auth/password/reset",
+            "post",
+            Some("PasswordResetConfirm"),
+            200,
+        ),
         ("/auth/verify-email", "post", Some("VerifyEmailInput"), 200),
         ("/auth/email-tasks", "get", None, 200),
         ("/jobs", "get", None, 200),
@@ -102,7 +117,18 @@ pub fn document() -> Value {
     ];
     for (path, method, body, status) in routes {
         let mut operation = json!({"responses":{status.to_string():{"description":"Success","content":{"application/json":{"schema":{}}}},"400":{"description":"Invalid request"},"401":{"description":"Session required"},"403":{"description":"Permission denied"},"404":{"description":"Resource not found in this workspace"},"409":{"description":"Stale revision or conflicting request"}},"security":[{"session":[]}]});
-        if ["/auth/config", "/auth/register", "/auth/login", "/auth/invitations/{token}", "/auth/password/reset-request", "/auth/password/reset", "/auth/verify-email", "/auth/email-tasks"].contains(&path) {
+        if [
+            "/auth/config",
+            "/auth/register",
+            "/auth/login",
+            "/auth/invitations/{token}",
+            "/auth/password/reset-request",
+            "/auth/password/reset",
+            "/auth/verify-email",
+            "/auth/email-tasks",
+        ]
+        .contains(&path)
+        {
             operation["security"] = json!([]);
         }
         let mut params = vec![];

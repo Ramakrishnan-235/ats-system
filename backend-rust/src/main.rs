@@ -9,6 +9,7 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     let cfg = config::Config::load()?;
+    cfg.validate_production_settings()?;
     anyhow::ensure!(
         cfg.max_upload > 0 && cfg.max_attempts > 0 && cfg.lease_seconds >= 30,
         "Invalid resource limits"
@@ -23,6 +24,7 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(20)
         .connect(&cfg.database_url)
         .await?;
+    config::validate_database_role(&db, cfg.is_production()).await?;
     let listener = tokio::net::TcpListener::bind(&cfg.bind).await?;
     if cfg.development_mode {
         ats_backend::auth::initialize_development(&db)

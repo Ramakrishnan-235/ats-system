@@ -486,6 +486,16 @@ pub async fn add_note(
         return Err(bad("Invalid note."));
     }
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
+    let cand_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM ats_v2.candidates WHERE id=$1 AND tenant_id=$2 AND deleted_at IS NULL)"
+    )
+    .bind(id)
+    .bind(user.tenant_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !cand_exists {
+        return Err(missing());
+    }
     let nid = Uuid::new_v4();
     sqlx::query("INSERT INTO ats_v2.notes(id,tenant_id,candidate_id,actor_id,content) VALUES($1,$2,$3,$4,$5)").bind(nid).bind(user.tenant_id).bind(id).bind(user.user_id).bind(input.content.trim()).execute(&mut *tx).await?;
     audit(&mut tx, &user, "ADD_NOTE", "candidate", id).await?;
@@ -602,8 +612,28 @@ pub async fn add_job_candidate(
 ) -> Result<Json<Value>> {
     user.write()?;
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
+    let job_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM ats_v2.jobs WHERE id=$1 AND tenant_id=$2)")
+            .bind(job)
+            .bind(user.tenant_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    if !job_exists {
+        return Err(missing());
+    }
     let candidate = if let Some(id) = input.get("id").and_then(Value::as_str) {
-        Uuid::parse_str(id).map_err(|_| bad("Invalid candidate ID."))?
+        let cid = Uuid::parse_str(id).map_err(|_| bad("Invalid candidate ID."))?;
+        let cand_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM ats_v2.candidates WHERE id=$1 AND tenant_id=$2 AND deleted_at IS NULL)"
+        )
+        .bind(cid)
+        .bind(user.tenant_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !cand_exists {
+            return Err(missing());
+        }
+        cid
     } else {
         let name = text(&input, "name");
         if name.trim().is_empty() || name.len() > 200 {

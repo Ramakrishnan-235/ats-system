@@ -288,6 +288,152 @@ async fn durable_tenant_workflow() {
         .0,
         StatusCode::NOT_FOUND
     );
+    // Cross-workspace read: another tenant cannot read candidate profile or scorecard
+    assert_eq!(
+        request(
+            &restarted,
+            "GET",
+            &format!("/api/v1/candidates/{candidate}"),
+            Some(&sessions[1]),
+            json!({})
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        request(
+            &restarted,
+            "GET",
+            &format!("/api/v1/candidates/{candidate}/scorecard"),
+            Some(&sessions[1]),
+            json!({})
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    // Cross-workspace download: another tenant cannot download candidate's original resume PDF
+    assert_eq!(
+        request(
+            &restarted,
+            "GET",
+            &format!("/api/v1/candidates/{candidate}/resume-pdf"),
+            Some(&sessions[1]),
+            json!({})
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    // Cross-workspace citation: another tenant cannot locate citations
+    assert_eq!(
+        request(
+            &restarted,
+            "POST",
+            &format!("/api/v1/candidates/{candidate}/locate-citation"),
+            Some(&sessions[1]),
+            json!({"search_phrase": "Python"})
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    // Cross-workspace edit: another tenant cannot edit job, candidate profile, stage, or add notes
+    assert_eq!(
+        request(
+            &restarted,
+            "PATCH",
+            &format!("/api/v1/jobs/{jobid}"),
+            Some(&sessions[1]),
+            json!({"title": "Hijacked job", "job_description": "Cross tenant edit"})
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        request(
+            &restarted,
+            "POST",
+            &format!("/api/v1/candidates/{candidate}/notes"),
+            Some(&sessions[1]),
+            json!({"content": "Injected malicious note"})
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        request(
+            &restarted,
+            "PATCH",
+            &format!("/api/v1/jobs/{jobid}/candidates/{candidate}/stage?new_stage=Interview"),
+            Some(&sessions[1]),
+            json!({})
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        request(
+            &restarted,
+            "DELETE",
+            &format!("/api/v1/jobs/{jobid}/candidates/{candidate}"),
+            Some(&sessions[1]),
+            json!({})
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    // Cross-workspace submit: another tenant cannot submit candidates to another workspace's job
+    assert_eq!(
+        request(
+            &restarted,
+            "POST",
+            &format!("/api/v1/jobs/{jobid}/candidates"),
+            Some(&sessions[1]),
+            json!({"name": "Unauthorized applicant"})
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    // Cross-workspace candidate attachment: another tenant cannot link Workspace A's candidate into Workspace B's job
+    let (status, job_b, _) = request(
+        &restarted,
+        "POST",
+        "/api/v1/jobs",
+        Some(&sessions[1]),
+        json!({"title": "Tenant B Engineer", "job_description": "Tenant B requirements"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let job_b_id = job_b["id"].as_str().unwrap();
+    assert_eq!(
+        request(
+            &restarted,
+            "POST",
+            &format!("/api/v1/jobs/{job_b_id}/candidates"),
+            Some(&sessions[1]),
+            json!({"id": candidate})
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    // Cross-workspace reveal contacts: searching PII never returns another customer's candidate
+    let (_, search_results, _) = request(
+        &restarted,
+        "GET",
+        "/api/v1/candidates?search=Synthetic&include_pii=true",
+        Some(&sessions[1]),
+        json!({}),
+    )
+    .await;
+    assert_eq!(search_results.as_array().unwrap().len(), 0);
     // RLS also protects a query that accidentally omits the tenant predicate.
     let count: i64 = sqlx::query_scalar("SELECT count(*) FROM ats_v2.candidates")
         .fetch_one(&db)

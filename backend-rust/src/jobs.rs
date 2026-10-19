@@ -202,10 +202,11 @@ pub async fn task_status(
     Extension(user): Extension<Identity>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Value>> {
+    let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
     let row = sqlx::query("SELECT * FROM ats_v2.processing_jobs WHERE id=$1 AND tenant_id=$2")
         .bind(id)
         .bind(user.tenant_id)
-        .fetch_optional(&state.db)
+        .fetch_optional(&mut *tx)
         .await?
         .ok_or_else(missing)?;
     let status: String = row.get("state");

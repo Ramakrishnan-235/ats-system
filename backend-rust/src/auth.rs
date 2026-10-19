@@ -97,6 +97,26 @@ impl Identity {
         }
         Ok(())
     }
+
+    pub fn can_manage_team(&self) -> bool {
+        self.role == "admin"
+    }
+
+    pub fn can_create_jobs_and_edit_applications(&self) -> bool {
+        ["admin", "recruiter"].contains(&self.role.as_str())
+    }
+
+    pub fn can_reveal_contacts(&self) -> bool {
+        ["admin", "recruiter", "compliance"].contains(&self.role.as_str())
+    }
+
+    pub fn can_download_original_resumes(&self) -> bool {
+        ["admin", "recruiter", "compliance"].contains(&self.role.as_str())
+    }
+
+    pub fn can_read_candidate_evaluations(&self) -> bool {
+        ["admin", "recruiter", "interviewer", "viewer", "compliance"].contains(&self.role.as_str())
+    }
 }
 
 pub fn token(headers: &HeaderMap) -> Option<String> {
@@ -126,7 +146,7 @@ pub async fn authenticated(
              FROM ats_v2.sessions s \
              JOIN ats_v2.memberships m ON m.user_id = s.user_id AND m.tenant_id = s.tenant_id \
              JOIN ats_v2.users u ON u.id = s.user_id \
-             WHERE s.token_hash = $1 AND s.expires_at > now()"
+             WHERE s.token_hash = $1 AND s.expires_at > now()",
         )
         .bind(&tok_hash)
         .fetch_optional(&state.db)
@@ -284,10 +304,11 @@ pub async fn register(
     let email = input.email.trim().to_lowercase();
     auth_limit(&state, &format!("register:{email}")).await?;
 
-    let existing: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM ats_v2.users WHERE email = $1)")
-        .bind(&email)
-        .fetch_one(&state.db)
-        .await?;
+    let existing: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM ats_v2.users WHERE email = $1)")
+            .bind(&email)
+            .fetch_one(&state.db)
+            .await?;
     if existing {
         return Err(bad("An account with this email already exists."));
     }
@@ -304,7 +325,12 @@ pub async fn register(
     let user = Uuid::new_v4();
 
     // Check if registering via an invitation token
-    if let Some(inv_tok) = input.invitation_token.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    if let Some(inv_tok) = input
+        .invitation_token
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
         let inv_hash = hash(inv_tok.as_bytes());
         let mut tx = state.db.begin().await?;
 
@@ -322,7 +348,9 @@ pub async fn register(
         let expires_at: chrono::DateTime<chrono::Utc> = inv.get("expires_at");
 
         if inv_status == "accepted" {
-            return Err(bad("Invitation has already been accepted and cannot be reused."));
+            return Err(bad(
+                "Invitation has already been accepted and cannot be reused.",
+            ));
         }
         if inv_status == "revoked" {
             return Err(bad("Invitation has been revoked."));
@@ -559,7 +587,9 @@ pub async fn accept_invitation(
     let expires_at: chrono::DateTime<chrono::Utc> = inv.get("expires_at");
 
     if status == "accepted" {
-        return Err(bad("Invitation has already been accepted and cannot be reused."));
+        return Err(bad(
+            "Invitation has already been accepted and cannot be reused.",
+        ));
     }
     if status == "revoked" {
         return Err(bad("Invitation has been revoked."));
@@ -596,12 +626,14 @@ pub async fn accept_invitation(
 
     // Update current session's tenant_id if available
     if let Some(tok) = token(&headers) {
-        sqlx::query("UPDATE ats_v2.sessions SET tenant_id = $1 WHERE token_hash = $2 AND user_id = $3")
-            .bind(tenant_id)
-            .bind(hash(tok.as_bytes()))
-            .bind(user.user_id)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(
+            "UPDATE ats_v2.sessions SET tenant_id = $1 WHERE token_hash = $2 AND user_id = $3",
+        )
+        .bind(tenant_id)
+        .bind(hash(tok.as_bytes()))
+        .bind(user.user_id)
+        .execute(&mut *tx)
+        .await?;
     }
 
     tx.commit().await?;
@@ -629,12 +661,14 @@ pub async fn inspect_invitation(
     .fetch_optional(&state.db)
     .await?;
 
-    let row = row.ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "Invitation not found."))?;
+    let row = row.ok_or(ApiError(StatusCode::NOT_FOUND, "Invitation not found."))?;
     let status: String = row.get("status");
     let expires_at: chrono::DateTime<chrono::Utc> = row.get("expires_at");
 
     if status == "accepted" {
-        return Err(bad("Invitation has already been accepted and cannot be reused."));
+        return Err(bad(
+            "Invitation has already been accepted and cannot be reused.",
+        ));
     }
     if status == "revoked" {
         return Err(bad("Invitation has been revoked."));
@@ -684,10 +718,12 @@ pub async fn password_reset_request(
         let mut tx = state.db.begin().await?;
 
         // Invalidate prior unused tokens
-        sqlx::query("DELETE FROM ats_v2.password_reset_tokens WHERE user_id = $1 AND used_at IS NULL")
-            .bind(user_id)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(
+            "DELETE FROM ats_v2.password_reset_tokens WHERE user_id = $1 AND used_at IS NULL",
+        )
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
 
         // Insert new reset token (1 hour expiry)
         sqlx::query("INSERT INTO ats_v2.password_reset_tokens(id, user_id, token_hash, expires_at) VALUES($1, $2, $3, now() + interval '1 hour')")
@@ -716,7 +752,8 @@ pub async fn password_reset_request(
     } else {
         // OWASP timing defense: perform dummy Argon2 operation
         tokio::task::spawn_blocking(|| {
-            let _ = Argon2::default().hash_password(b"dummy-timing-password", &SaltString::generate(&mut OsRng));
+            let _ = Argon2::default()
+                .hash_password(b"dummy-timing-password", &SaltString::generate(&mut OsRng));
         })
         .await
         .ok();
@@ -763,7 +800,9 @@ pub async fn password_reset_confirm(
     let used_at: Option<chrono::DateTime<chrono::Utc>> = row.get("used_at");
 
     if used_at.is_some() {
-        return Err(bad("This password reset token has already been used and cannot be reused."));
+        return Err(bad(
+            "This password reset token has already been used and cannot be reused.",
+        ));
     }
     if expires_at < chrono::Utc::now() {
         return Err(bad("This password reset token has expired."));
@@ -840,7 +879,9 @@ pub async fn verify_email_confirm(
     let used_at: Option<chrono::DateTime<chrono::Utc>> = row.get("used_at");
 
     if used_at.is_some() {
-        return Err(bad("This verification token has already been used and cannot be reused."));
+        return Err(bad(
+            "This verification token has already been used and cannot be reused.",
+        ));
     }
     if expires_at < chrono::Utc::now() {
         return Err(bad("This verification token has expired."));
@@ -864,9 +905,13 @@ pub async fn verify_email_confirm(
     })))
 }
 
-pub async fn list_email_tasks(
-    State(state): State<AppState>,
-) -> Result<Json<Value>> {
+pub async fn list_email_tasks(State(state): State<AppState>) -> Result<Json<Value>> {
+    if !state.config.development_mode {
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "Email task inspection is only permitted in development mode.",
+        ));
+    }
     let rows = sqlx::query(
         "SELECT id, tenant_id, recipient_email, template, payload, status, attempts, available_at, sent_at, created_at \
          FROM ats_v2.email_tasks \
@@ -876,14 +921,18 @@ pub async fn list_email_tasks(
     .fetch_all(&state.db)
     .await?;
 
-    Ok(Json(json!(rows.iter().map(|r| json!({
-        "id": r.get::<Uuid, _>("id"),
-        "tenant_id": r.get::<Option<Uuid>, _>("tenant_id"),
-        "recipient_email": r.get::<String, _>("recipient_email"),
-        "template": r.get::<String, _>("template"),
-        "payload": r.get::<serde_json::Value, _>("payload"),
-        "status": r.get::<String, _>("status"),
-        "attempts": r.get::<i32, _>("attempts"),
-        "created_at": r.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
-    })).collect::<Vec<_>>())))
+    Ok(Json(json!(
+        rows.iter()
+            .map(|r| json!({
+                "id": r.get::<Uuid, _>("id"),
+                "tenant_id": r.get::<Option<Uuid>, _>("tenant_id"),
+                "recipient_email": r.get::<String, _>("recipient_email"),
+                "template": r.get::<String, _>("template"),
+                "payload": r.get::<serde_json::Value, _>("payload"),
+                "status": r.get::<String, _>("status"),
+                "attempts": r.get::<i32, _>("attempts"),
+                "created_at": r.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
+            }))
+            .collect::<Vec<_>>()
+    )))
 }

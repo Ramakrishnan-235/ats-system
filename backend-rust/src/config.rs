@@ -50,6 +50,126 @@ impl Config {
                 .parse()?,
         })
     }
+
+    pub fn is_production(&self) -> bool {
+        let env_mode = env::var("ATS_ENV")
+            .or_else(|_| env::var("ENVIRONMENT"))
+            .or_else(|_| env::var("APP_ENV"))
+            .or_else(|_| env::var("NODE_ENV"))
+            .unwrap_or_default()
+            .to_lowercase();
+        if matches!(env_mode.as_str(), "production" | "prod") {
+            return true;
+        }
+        !self.development_mode
+            && !matches!(env_mode.as_str(), "development" | "dev" | "test" | "local")
+    }
+
+    pub fn validate_production_settings(&self) -> anyhow::Result<()> {
+        self.validate_security_in_mode(self.is_production())
+    }
+
+    pub fn validate_security_in_mode(&self, is_prod: bool) -> anyhow::Result<()> {
+        if is_prod {
+            if self.development_mode {
+                anyhow::bail!(
+                    "Production startup check failed: development login bypass (ATS_DEVELOPMENT_MODE=true) \
+                     is strictly prohibited in production mode."
+                );
+            }
+            if !self.secure_cookie {
+                anyhow::bail!(
+                    "Production startup check failed: ATS_SECURE_COOKIE must be enabled (true) in production mode \
+                     to ensure session tokens are only transmitted over TLS."
+                );
+            }
+            let key_lower = self.service_key.to_lowercase();
+            let distinct_chars = key_lower
+                .chars()
+                .collect::<std::collections::HashSet<_>>()
+                .len();
+            if key_lower.contains("test")
+                || key_lower.contains("example")
+                || key_lower.contains("change-me")
+                || key_lower.contains("placeholder")
+                || distinct_chars < 8
+            {
+                anyhow::bail!(
+                    "Production startup check failed: ATS_SERVICE_KEY uses a known test or weak placeholder value. \
+                     A high-entropy secret of at least 32 characters is required in production."
+                );
+            }
+            if self.origins.iter().any(|o| o == "*") {
+                anyhow::bail!(
+                    "Production startup check failed: Wildcard CORS origin ('*') is prohibited in production mode."
+                );
+            }
+            if self
+                .origins
+                .iter()
+                .any(|o| o.starts_with("http://localhost") || o.starts_with("http://127.0.0.1"))
+            {
+                anyhow::bail!(
+                    "Production startup check failed: Localhost CORS origins are prohibited in production mode."
+                );
+            }
+            if env::var("ATS_S3_ALLOW_HTTP").unwrap_or_default() == "true" {
+                anyhow::bail!(
+                    "Production startup check failed: Plaintext HTTP for S3 storage (ATS_S3_ALLOW_HTTP=true) \
+                     is prohibited in production mode. Object storage must use HTTPS."
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
+pub async fn validate_database_role(db: &sqlx::PgPool, is_production: bool) -> anyhow::Result<()> {
+    let row = sqlx::query(
+        "SELECT current_user as role_name, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user"
+    )
+    .fetch_optional(db)
+    .await?;
+
+    if let Some(r) = row {
+        let role_name: String = sqlx::Row::get(&r, "role_name");
+        let rolsuper: bool = sqlx::Row::get(&r, "rolsuper");
+        let rolbypassrls: bool = sqlx::Row::get(&r, "rolbypassrls");
+
+        check_database_role_safety(&role_name, rolsuper, rolbypassrls, is_production)?;
+    }
+    Ok(())
+}
+
+pub fn check_database_role_safety(
+    role_name: &str,
+    rolsuper: bool,
+    rolbypassrls: bool,
+    is_production: bool,
+) -> anyhow::Result<()> {
+    if rolsuper || rolbypassrls {
+        let mut reasons = Vec::new();
+        if rolsuper {
+            reasons.push("SUPERUSER");
+        }
+        if rolbypassrls {
+            reasons.push("BYPASSRLS");
+        }
+        let msg = format!(
+            "Unsuitable database security configuration: application role '{}' has {} privilege. \
+             PostgreSQL superusers and roles with BYPASSRLS bypass row-level security (RLS), defeating tenant isolation \
+             (see https://www.postgresql.org/docs/current/ddl-rowsecurity.html). \
+             The application connection MUST use a restricted runtime role (such as ats_runtime) without SUPERUSER or BYPASSRLS.",
+            role_name,
+            reasons.join(" and ")
+        );
+        if is_production {
+            anyhow::bail!("Production startup check failed: {}", msg);
+        } else {
+            tracing::warn!("{}", msg);
+        }
+    }
+    Ok(())
 }
 pub fn object_store() -> anyhow::Result<Arc<dyn object_store::ObjectStore>> {
     if env::var("ATS_STORAGE_BACKEND").unwrap_or("s3".into()) == "local" {

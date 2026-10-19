@@ -78,8 +78,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/settings/members/{id}",
-            axum::routing::patch(platform::update_member_role)
-                .delete(platform::remove_member),
+            axum::routing::patch(platform::update_member_role).delete(platform::remove_member),
         )
         .route("/settings/invitations", get(platform::list_invitations))
         .route(

@@ -256,7 +256,9 @@ pub async fn members(
     Extension(user): Extension<Identity>,
 ) -> Result<Json<Value>> {
     user.admin()?;
-    let rows=sqlx::query("SELECT u.id,u.name,u.email,m.role FROM ats_v2.memberships m JOIN ats_v2.users u ON u.id=m.user_id WHERE m.tenant_id=$1 ORDER BY u.name").bind(user.tenant_id).fetch_all(&state.db).await?;
+    let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
+    let rows=sqlx::query("SELECT u.id,u.name,u.email,m.role FROM ats_v2.memberships m JOIN ats_v2.users u ON u.id=m.user_id WHERE m.tenant_id=$1 ORDER BY u.name").bind(user.tenant_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
     Ok(Json(json!(rows.iter().map(|r|json!({"id":r.get::<Uuid,_>("id"),"name":r.get::<String,_>("name"),"email":r.get::<String,_>("email"),"role":r.get::<String,_>("role")})).collect::<Vec<_>>())))
 }
 pub async fn add_member(
@@ -314,10 +316,11 @@ pub async fn add_member(
     .execute(&mut *tx)
     .await?;
 
-    let workspace_name: String = sqlx::query_scalar("SELECT name FROM ats_v2.tenants WHERE id = $1")
-        .bind(user.tenant_id)
-        .fetch_one(&mut *tx)
-        .await?;
+    let workspace_name: String =
+        sqlx::query_scalar("SELECT name FROM ats_v2.tenants WHERE id = $1")
+            .bind(user.tenant_id)
+            .fetch_one(&mut *tx)
+            .await?;
 
     let email_payload = json!({
         "invitation_id": inv_id,
@@ -332,7 +335,7 @@ pub async fn add_member(
 
     sqlx::query(
         "INSERT INTO ats_v2.email_tasks(id, tenant_id, recipient_email, template, payload, status) \
-         VALUES($1, $2, $3, 'invitation', $4, 'queued')"
+         VALUES($1, $2, $3, 'invitation', $4, 'queued')",
     )
     .bind(email_task_id)
     .bind(user.tenant_id)
@@ -368,7 +371,7 @@ pub async fn update_member_role(
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
 
     let current_role: Option<String> = sqlx::query_scalar(
-        "SELECT role FROM ats_v2.memberships WHERE tenant_id = $1 AND user_id = $2"
+        "SELECT role FROM ats_v2.memberships WHERE tenant_id = $1 AND user_id = $2",
     )
     .bind(user.tenant_id)
     .bind(target_id)
@@ -379,14 +382,16 @@ pub async fn update_member_role(
 
     if current_role == "admin" && role != "admin" {
         let admin_count: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM ats_v2.memberships WHERE tenant_id = $1 AND role = 'admin'"
+            "SELECT count(*) FROM ats_v2.memberships WHERE tenant_id = $1 AND role = 'admin'",
         )
         .bind(user.tenant_id)
         .fetch_one(&mut *tx)
         .await?;
 
         if admin_count <= 1 {
-            return Err(bad("Cannot demote the last administrator in this workspace."));
+            return Err(bad(
+                "Cannot demote the last administrator in this workspace.",
+            ));
         }
     }
 
@@ -397,10 +402,19 @@ pub async fn update_member_role(
         .execute(&mut *tx)
         .await?;
 
-    audit(&mut tx, &user, "UPDATE_MEMBER_ROLE", "membership", target_id).await?;
+    audit(
+        &mut tx,
+        &user,
+        "UPDATE_MEMBER_ROLE",
+        "membership",
+        target_id,
+    )
+    .await?;
     tx.commit().await?;
 
-    Ok(Json(json!({"status": "updated", "id": target_id, "role": role})))
+    Ok(Json(
+        json!({"status": "updated", "id": target_id, "role": role}),
+    ))
 }
 
 pub async fn remove_member(
@@ -413,7 +427,7 @@ pub async fn remove_member(
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
 
     let current_role: Option<String> = sqlx::query_scalar(
-        "SELECT role FROM ats_v2.memberships WHERE tenant_id = $1 AND user_id = $2"
+        "SELECT role FROM ats_v2.memberships WHERE tenant_id = $1 AND user_id = $2",
     )
     .bind(user.tenant_id)
     .bind(target_id)
@@ -424,14 +438,16 @@ pub async fn remove_member(
 
     if current_role == "admin" {
         let admin_count: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM ats_v2.memberships WHERE tenant_id = $1 AND role = 'admin'"
+            "SELECT count(*) FROM ats_v2.memberships WHERE tenant_id = $1 AND role = 'admin'",
         )
         .bind(user.tenant_id)
         .fetch_one(&mut *tx)
         .await?;
 
         if admin_count <= 1 {
-            return Err(bad("Cannot remove the last administrator in this workspace."));
+            return Err(bad(
+                "Cannot remove the last administrator in this workspace.",
+            ));
         }
     }
 
@@ -458,6 +474,7 @@ pub async fn list_invitations(
     Extension(user): Extension<Identity>,
 ) -> Result<Json<Value>> {
     user.admin()?;
+    let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
     let rows = sqlx::query(
         "SELECT i.id, i.email, i.role, \
          CASE WHEN i.status = 'pending' AND i.expires_at < now() THEN 'expired' ELSE i.status END as status, \
@@ -468,18 +485,23 @@ pub async fn list_invitations(
          ORDER BY i.created_at DESC"
     )
     .bind(user.tenant_id)
-    .fetch_all(&state.db)
+    .fetch_all(&mut *tx)
     .await?;
+    tx.commit().await?;
 
-    Ok(Json(json!(rows.iter().map(|r| json!({
-        "id": r.get::<Uuid, _>("id"),
-        "email": r.get::<String, _>("email"),
-        "role": r.get::<String, _>("role"),
-        "status": r.get::<String, _>("status"),
-        "expires_at": r.get::<chrono::DateTime<chrono::Utc>, _>("expires_at"),
-        "created_at": r.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
-        "inviter_name": r.get::<String, _>("inviter_name"),
-    })).collect::<Vec<_>>())))
+    Ok(Json(json!(
+        rows.iter()
+            .map(|r| json!({
+                "id": r.get::<Uuid, _>("id"),
+                "email": r.get::<String, _>("email"),
+                "role": r.get::<String, _>("role"),
+                "status": r.get::<String, _>("status"),
+                "expires_at": r.get::<chrono::DateTime<chrono::Utc>, _>("expires_at"),
+                "created_at": r.get::<chrono::DateTime<chrono::Utc>, _>("created_at"),
+                "inviter_name": r.get::<String, _>("inviter_name"),
+            }))
+            .collect::<Vec<_>>()
+    )))
 }
 
 pub async fn revoke_invitation(
@@ -561,6 +583,16 @@ pub async fn create_submission(
     user.write()?;
     agency(&state, &user).await?;
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
+    let client_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM ats_v2.clients WHERE id=$1 AND tenant_id=$2)",
+    )
+    .bind(v.client_id)
+    .bind(user.tenant_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !client_exists {
+        return Err(missing());
+    }
     let row=sqlx::query("SELECT c.profile,c.contact FROM ats_v2.applications a JOIN ats_v2.candidates c ON c.id=a.candidate_id AND c.tenant_id=a.tenant_id WHERE a.id=$1 AND a.tenant_id=$2 AND c.deleted_at IS NULL AND a.stage NOT IN ('Withdrawn','Rejected')").bind(v.application_id).bind(user.tenant_id).fetch_optional(&mut *tx).await?.ok_or_else(missing)?;
     let mut p: Value = row.get("profile");
     crate::domain::redact_profile(&mut p, &row.get::<Value, _>("contact"));

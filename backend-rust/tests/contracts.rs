@@ -1,4 +1,9 @@
-use ats_backend::{auth::Identity, hash, jobs::AIResult};
+use ats_backend::{
+    auth::Identity,
+    config::{Config, check_database_role_safety},
+    hash,
+    jobs::AIResult,
+};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -373,5 +378,257 @@ fn scorecard_preserves_and_redacts_recruiter_team_notes() {
     assert_eq!(
         team_notes[1]["content"],
         "Strong technical skills in Python and distributed systems."
+    );
+}
+
+#[test]
+fn permission_matrix_promises_for_all_customer_roles() {
+    let tenant_id = Uuid::new_v4();
+
+    let admin = Identity {
+        user_id: Uuid::new_v4(),
+        tenant_id,
+        role: "admin".into(),
+        name: "Workspace Admin".into(),
+        email: "admin@corp.test".into(),
+    };
+    let recruiter = Identity {
+        user_id: Uuid::new_v4(),
+        tenant_id,
+        role: "recruiter".into(),
+        name: "Talent Recruiter".into(),
+        email: "recruiter@corp.test".into(),
+    };
+    let interviewer = Identity {
+        user_id: Uuid::new_v4(),
+        tenant_id,
+        role: "interviewer".into(),
+        name: "Engineering Interviewer".into(),
+        email: "interviewer@corp.test".into(),
+    };
+    let viewer = Identity {
+        user_id: Uuid::new_v4(),
+        tenant_id,
+        role: "viewer".into(),
+        name: "Hiring Observer".into(),
+        email: "viewer@corp.test".into(),
+    };
+    let compliance = Identity {
+        user_id: Uuid::new_v4(),
+        tenant_id,
+        role: "compliance".into(),
+        name: "Compliance Officer".into(),
+        email: "compliance@corp.test".into(),
+    };
+
+    // 1. Manage team and billing
+    // Administrator: Allowed | Recruiter: Restricted/Denied | Interviewer/Viewer: Denied
+    assert!(admin.can_manage_team());
+    assert!(admin.admin().is_ok());
+    assert!(!recruiter.can_manage_team());
+    assert!(recruiter.admin().is_err());
+    assert!(!interviewer.can_manage_team());
+    assert!(interviewer.admin().is_err());
+    assert!(!viewer.can_manage_team());
+    assert!(viewer.admin().is_err());
+    assert!(!compliance.can_manage_team());
+    assert!(compliance.admin().is_err());
+
+    // 2. Create jobs and edit applications
+    // Administrator: Allowed | Recruiter: Allowed | Interviewer/Viewer: Restricted/Denied
+    assert!(admin.can_create_jobs_and_edit_applications());
+    assert!(admin.write().is_ok());
+    assert!(recruiter.can_create_jobs_and_edit_applications());
+    assert!(recruiter.write().is_ok());
+    assert!(!interviewer.can_create_jobs_and_edit_applications());
+    assert!(interviewer.write().is_err());
+    assert!(!viewer.can_create_jobs_and_edit_applications());
+    assert!(viewer.write().is_err());
+    assert!(!compliance.can_create_jobs_and_edit_applications());
+    assert!(compliance.write().is_err());
+
+    // 3. Reveal candidate contacts (PII)
+    // Administrator: Allowed | Recruiter: Allowed | Interviewer/Viewer: Denied
+    assert!(admin.can_reveal_contacts());
+    assert!(admin.pii().is_ok());
+    assert!(recruiter.can_reveal_contacts());
+    assert!(recruiter.pii().is_ok());
+    assert!(!interviewer.can_reveal_contacts());
+    assert!(interviewer.pii().is_err());
+    assert!(!viewer.can_reveal_contacts());
+    assert!(viewer.pii().is_err());
+    assert!(compliance.can_reveal_contacts());
+    assert!(compliance.pii().is_ok());
+
+    // 4. Download original resumes
+    // According to role policy: requires PII authorization
+    // Administrator: Allowed | Recruiter: Allowed | Interviewer/Viewer: Restricted/Denied
+    assert!(admin.can_download_original_resumes());
+    assert!(recruiter.can_download_original_resumes());
+    assert!(!interviewer.can_download_original_resumes());
+    assert!(!viewer.can_download_original_resumes());
+    assert!(compliance.can_download_original_resumes());
+
+    // 5. Read assigned interview information / candidate evaluation
+    // Administrator: Allowed | Recruiter: Allowed | Interviewer/Viewer: According to assignment / Masked
+    assert!(admin.can_read_candidate_evaluations());
+    assert!(recruiter.can_read_candidate_evaluations());
+    assert!(interviewer.can_read_candidate_evaluations());
+    assert!(viewer.can_read_candidate_evaluations());
+    assert!(compliance.can_read_candidate_evaluations());
+}
+
+#[test]
+fn production_startup_checks_reject_development_login_bypass() {
+    let mut cfg = Config {
+        bind: "0.0.0.0:8080".into(),
+        database_url: "postgresql://ats_runtime:pass@postgres:5432/ats".into(),
+        migration_url: "postgresql://ats_migrator:pass@postgres:5432/ats".into(),
+        service_key: "strong-random-production-service-key-32-chars".into(),
+        ai_url: "http://ai:8100".into(),
+        origins: vec!["https://ats.example.com".into()],
+        secure_cookie: true,
+        allow_signup: false,
+        development_mode: true, // Bypass enabled!
+        max_upload: 10485760,
+        lease_seconds: 300,
+        max_attempts: 5,
+    };
+
+    let result = cfg.validate_security_in_mode(true);
+    assert!(
+        result.is_err(),
+        "Must reject development_mode in production"
+    );
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("development login bypass"),
+        "Expected error to mention development login bypass, got: {err_msg}"
+    );
+
+    // Disable development mode
+    cfg.development_mode = false;
+    assert!(cfg.validate_security_in_mode(true).is_ok());
+}
+
+#[test]
+fn production_startup_checks_reject_unsuitable_security_settings() {
+    let base_cfg = Config {
+        bind: "0.0.0.0:8080".into(),
+        database_url: "postgresql://ats_runtime:pass@postgres:5432/ats".into(),
+        migration_url: "postgresql://ats_migrator:pass@postgres:5432/ats".into(),
+        service_key: "production-strong-entropy-secret-key-99281".into(),
+        ai_url: "http://ai:8100".into(),
+        origins: vec!["https://recruitment.corporate.com".into()],
+        secure_cookie: true,
+        allow_signup: false,
+        development_mode: false,
+        max_upload: 10485760,
+        lease_seconds: 300,
+        max_attempts: 5,
+    };
+
+    // Valid production config passes
+    assert!(base_cfg.validate_security_in_mode(true).is_ok());
+
+    // 1. Rejects insecure cookies
+    let mut cfg = base_cfg.clone();
+    cfg.secure_cookie = false;
+    let err = cfg.validate_security_in_mode(true).unwrap_err().to_string();
+    assert!(err.contains("ATS_SECURE_COOKIE"), "Got: {err}");
+
+    // 2. Rejects test/placeholder service key
+    let mut cfg = base_cfg.clone();
+    cfg.service_key = "test-service-key-with-at-least-32-characters".into();
+    let err = cfg.validate_security_in_mode(true).unwrap_err().to_string();
+    assert!(err.contains("ATS_SERVICE_KEY"), "Got: {err}");
+
+    // 3. Rejects wildcard CORS origin
+    let mut cfg = base_cfg.clone();
+    cfg.origins = vec!["*".into()];
+    let err = cfg.validate_security_in_mode(true).unwrap_err().to_string();
+    assert!(err.contains("Wildcard CORS origin"), "Got: {err}");
+
+    // 4. Rejects localhost CORS origin in production
+    let mut cfg = base_cfg.clone();
+    cfg.origins = vec!["http://localhost:3000".into()];
+    let err = cfg.validate_security_in_mode(true).unwrap_err().to_string();
+    assert!(err.contains("Localhost CORS origins"), "Got: {err}");
+
+    // 5. Rejects S3 over plaintext HTTP in production
+    unsafe {
+        std::env::set_var("ATS_S3_ALLOW_HTTP", "true");
+    }
+    let err = base_cfg
+        .validate_security_in_mode(true)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("Plaintext HTTP for S3 storage"), "Got: {err}");
+    unsafe {
+        std::env::remove_var("ATS_S3_ALLOW_HTTP");
+    }
+}
+
+#[test]
+fn database_role_safety_distinguishes_superusers_and_bypassrls() {
+    // PostgreSQL documentation: https://www.postgresql.org/docs/current/ddl-rowsecurity.html
+    // "Superusers and roles with the BYPASSRLS attribute always bypass the row security system."
+    // Production startup must reject superusers and BYPASSRLS roles.
+
+    // Superuser rejected
+    let err = check_database_role_safety("postgres", true, false, true)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("SUPERUSER"));
+    assert!(err.contains("bypass row-level security"));
+
+    // Role with BYPASSRLS rejected
+    let err = check_database_role_safety("rls_bypass_role", false, true, true)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("BYPASSRLS"));
+    assert!(err.contains("bypass row-level security"));
+
+    // Role with both rejected
+    let err = check_database_role_safety("root", true, true, true)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("SUPERUSER and BYPASSRLS"));
+
+    // Dedicated restricted application role (ats_runtime) accepted
+    assert!(check_database_role_safety("ats_runtime", false, false, true).is_ok());
+}
+
+#[tokio::test]
+async fn email_task_inspection_endpoint_requires_development_mode() {
+    let cfg = Config {
+        bind: "0.0.0.0:8080".into(),
+        database_url: "postgresql://localhost/ats".into(),
+        migration_url: "postgresql://localhost/ats".into(),
+        service_key: "strong-random-production-service-key-32-chars".into(),
+        ai_url: "http://ai:8100".into(),
+        origins: vec!["https://ats.example.com".into()],
+        secure_cookie: true,
+        allow_signup: false,
+        development_mode: false, // In production / non-dev mode
+        max_upload: 10485760,
+        lease_seconds: 300,
+        max_attempts: 5,
+    };
+    let state = ats_backend::AppState {
+        db: sqlx::postgres::PgPoolOptions::new()
+            .connect_lazy("postgresql://localhost/ats")
+            .unwrap(),
+        objects: std::sync::Arc::new(object_store::memory::InMemory::new()),
+        http: reqwest::Client::new(),
+        config: std::sync::Arc::new(cfg),
+    };
+    let result = ats_backend::auth::list_email_tasks(axum::extract::State(state)).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert_eq!(err.0, axum::http::StatusCode::FORBIDDEN);
+    assert!(
+        err.1
+            .contains("Email task inspection is only permitted in development mode")
     );
 }
