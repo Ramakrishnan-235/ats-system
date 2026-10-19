@@ -654,19 +654,10 @@ async def _process_resume_pipeline(
                         "evaluated_at": datetime.now(UTC).isoformat(),
                         "evaluation_status": "COMPLETED",
                         "categories": categories if categories else parsed_candidate["scorecard"]["categories"],
-                        "risk_flags": report.risks_and_skill_gaps or [],
-                        "suggested_improvements": report.suggested_improvements if getattr(report, "suggested_improvements", None) else parsed_candidate["scorecard"].get("suggested_improvements", []),
-                        "suggested_questions": [f"{i+1}. {q.question}" if hasattr(q, "question") else f"{i+1}. {q!s}" for i, q in enumerate(report.suggested_interview_questions)] if report.suggested_interview_questions else parsed_candidate["scorecard"]["suggested_questions"],
-                        "team_notes": [
-                            {
-                                "id": f"note-eval-{uuid.uuid4().hex[:4]}",
-                                "author": "Ollama Deep Evaluator",
-                                "initials": "AI",
-                                "role": "AI Evaluator",
-                                "timestamp": "Just now",
-                                "content": report.executive_verdict or f"Evaluated candidate against {job_title_eval} requisition requirements."
-                            }
-                        ]
+                        "risk_flags": [],
+                        "suggested_improvements": [],
+                        "suggested_questions": [],
+                        "team_notes": []
                     }
                     if eval_result.get("telemetry"):
                         parsed_candidate["scorecard"]["telemetry"] = eval_result["telemetry"]
@@ -723,8 +714,8 @@ async def _process_resume_pipeline(
                     "systemDesignScore": cats.get("System Design", 7.5),
                     "quote": parsed_candidate.get("summary", "Resume uploaded for requisition"),
                     "sourceResumeLink": f"/candidates/{candidate_id}",
-                    "potentialGap": (scorecard.get("risk_flags") or [None])[0],
-                    "suggestedQuestions": scorecard.get("suggested_questions", []),
+                    "potentialGap": None,
+                    "suggestedQuestions": [],
                 }
                 c_list = [c for c in JOB_CANDIDATES_STORE.get(target_job_id, []) if c.get("id") != candidate_id]
                 c_list.append(job_cand)

@@ -34,8 +34,10 @@ from ats_core.schema.evaluation import (
 logger = logging.getLogger("ats.evaluator.deep")
 
 SYSTEM_EVALUATION_MESSAGE = (
-    "You are a rigorous technical evaluator. Output strictly validated JSON "
-    "satisfying the provided schema without any introductory text or markdown wrappers.\n"
+    "You are a fast, concise technical scoring engine. Output strictly validated JSON "
+    "satisfying the provided schema without any introductory text, markdown wrappers, or explanations.\n"
+    "CRITICAL REQUIREMENT: Rate the candidate with numerical scores only. "
+    "Do NOT generate risk flags, explanations, interview questions, or improvement recommendations.\n"
     "ANONYMIZATION POLICY: The service replaces personal information with placeholders such as "
     "[CANDIDATE_NAME], [EMAIL_ADDRESS], [PHONE_NUMBER], [LOCATION] and [REDACTED]. "
     "These are privacy protections inserted by the service, not text authored by the candidate. "
@@ -171,15 +173,16 @@ class LocalDeepEvaluator:
 You are a Staff Technical Hiring Committee Lead and Principal Architect.
 Your task is to conduct an uncompromising, objective technical evaluation of a candidate against a specific Job Description.
 
-### EVALUATION RULES:
-1. Ground every claim in verifiable evidence. If quoting from the resume, populate `verbatim_citation` with the exact snippet.
+### SCORING RULES:
+1. Ground scores in verifiable technical evidence from the candidate dossier.
 2. Differentiate between active technical ownership (e.g., "architected", "designed", "optimized") and passive participation (e.g., "assisted", "used", "monitored").
 3. Penalize buzzword stuffing that lacks quantifiable metrics or technical depth.
 4. Calibrate the overall score:
    - 80-100 (Strong Fit): Exceeds core requirements with proven high-scale impact.
    - 60-79 (Potential Fit): Solid foundational skills with minor gaps in specific frameworks or domain depth.
    - 0-59 (Low Match): Missing core prerequisites, insufficient experience, or level mismatch.
-5. Identify 2-3 specific, actionable `suggested_improvements`: Analyze the candidate's resume against this specific job role requisition and state concrete actions they need to take to bridge their skill gaps, deepen required framework experience, or enhance their resume presentation (e.g., missing specific tools required in the JD, lacking production scale metrics, need deeper architectural exposure).
+5. Keep the executive verdict and category assessments ultra-brief (3-7 words) to minimize latency and token consumption.
+6. Strictly do NOT provide explanations, risk flags, suggested improvements, or interview questions.
 
 --- TARGET JOB REQUISITION ---
 <job_requisition>
@@ -254,6 +257,8 @@ Generate the complete structured evaluation report adhering strictly to the sche
 
                 if isinstance(raw_report, DeepCandidateEvaluationReport):
                     report = raw_report
+                elif hasattr(raw_report, "model_dump"):
+                    report = DeepCandidateEvaluationReport.model_validate(raw_report.model_dump())
                 elif isinstance(raw_report, dict):
                     report = DeepCandidateEvaluationReport.model_validate(raw_report)
                 else:
@@ -280,6 +285,9 @@ Generate the complete structured evaluation report adhering strictly to the sche
                 else QualificationTier.POTENTIAL_FIT if report.overall_match_score >= 60
                 else QualificationTier.LOW_MATCH
             )
+            report.risks_and_skill_gaps = []
+            report.suggested_improvements = []
+            report.suggested_interview_questions = []
 
             # Compute anti-hallucination citation fidelity stats
             citation_stats = compute_citation_validity(

@@ -132,9 +132,7 @@ fn unscored_task_status(state: &str, result: Option<&Value>, error: Option<&str>
     card["evaluation_status"] = json!(status);
     if status == "FAILED" {
         card["error_code"] = json!(error.unwrap_or("EVALUATION_UNAVAILABLE"));
-        card["risk_flags"] = json!([
-            "Evaluation did not complete. Retry the evaluation or review the resume manually."
-        ]);
+        card["risk_flags"] = json!([]);
     }
     card
 }

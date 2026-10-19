@@ -1,23 +1,17 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   Sparkles,
-  AlertTriangle,
-  MessageSquareCode,
   MoreVertical,
   ArrowUpRight,
-  Send,
-  Bold,
-  Paperclip,
   Code2,
   Workflow,
   Users2,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import { Button } from "@/components/ui/button";
-import { CandidateDetail, TeamNote, CitationLocation } from "@/types/ats";
-import { addCandidateNote, locateCandidateCitation, getErrorMessage } from "@/lib/api";
+import { CandidateDetail, CitationLocation } from "@/types/ats";
+import { locateCandidateCitation, getErrorMessage } from "@/lib/api";
 
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
   "Technical Depth": Code2,
@@ -33,54 +27,20 @@ interface AIScorecardTabProps {
 export function AIScorecardTab({ candidate, onSelectCitation }: AIScorecardTabProps) {
   const { scorecard } = candidate;
   const [error, setError] = useState<string | null>(null);
-  const [notes, setNotes] = useState<TeamNote[]>(scorecard.team_notes || []);
-  const [newNoteText, setNewNoteText] = useState("");
-  const [isSubmittingNote, setIsSubmittingNote] = useState(false);
   const scopeVersion = useRef(0);
-
-  useEffect(() => {
-    // Synchronize the editable note list with newly fetched scorecard data.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setNotes(scorecard.team_notes || []);
-  }, [candidate.id, candidate.applied_for_job_id, scorecard.team_notes]);
-
-  useEffect(() => {
-    scopeVersion.current += 1;
-    // A new candidate/application starts a fresh draft and request state.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setNewNoteText("");
-    setError(null);
-    setIsSubmittingNote(false);
-    return () => { scopeVersion.current += 1; };
-  }, [candidate.id, candidate.applied_for_job_id]);
-
-  const handleSendNote = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newNoteText.trim() || isSubmittingNote) return;
-
-    const version = scopeVersion.current;
-    setIsSubmittingNote(true);
-    setError(null);
-    try {
-      const added = await addCandidateNote(candidate.id, newNoteText);
-      if (version !== scopeVersion.current) return;
-      setNotes(previous => previous.some(note => note.id === added.id) ? previous : [...previous, added]);
-      setError(null);
-      setNewNoteText("");
-    } catch (reason) {
-      if (version === scopeVersion.current) setError(getErrorMessage(reason));
-    } finally {
-      if (version === scopeVersion.current) setIsSubmittingNote(false);
-    }
-  };
 
   const handleCitationClick = async (cat: typeof scorecard.categories[0]) => {
     if (!onSelectCitation || !cat.quote) return;
     const version = scopeVersion.current;
     try {
-      const result = cat.citation_location ? { found: true, location: cat.citation_location } : await locateCandidateCitation(candidate.id, cat.quote);
+      const result = cat.citation_location
+        ? { found: true, location: cat.citation_location }
+        : await locateCandidateCitation(candidate.id, cat.quote);
       if (version !== scopeVersion.current) return;
-      if (!result.found || !result.location) { setError("This quote could not be located in the original resume."); return; }
+      if (!result.found || !result.location) {
+        setError("This quote could not be located in the original resume.");
+        return;
+      }
       setError(null);
       onSelectCitation({ ...result.location, category_name: cat.name });
     } catch (reason) {
@@ -128,7 +88,9 @@ export function AIScorecardTab({ candidate, onSelectCitation }: AIScorecardTabPr
           {/* Title & Telemetry */}
           <div>
             <h3 className="text-lg font-bold text-zinc-950">
-              {scorecard.overall_match_score === null ? `Evaluation ${scorecard.evaluation_status || "pending"}` : scorecard.match_tier}
+              {scorecard.overall_match_score === null
+                ? `Evaluation ${scorecard.evaluation_status || "pending"}`
+                : scorecard.match_tier}
             </h3>
             <div className="flex items-center gap-2 text-xs text-zinc-500 font-medium mt-1">
               <span className="flex items-center gap-1 font-mono">
@@ -202,151 +164,6 @@ export function AIScorecardTab({ candidate, onSelectCitation }: AIScorecardTabPr
             </div>
           );
         })}
-      </div>
-
-      {/* 3. Risks, Improvements & Interview Questions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Risk Flags */}
-        <div className="bg-[#fff7f7] rounded-2xl border border-red-200/80 p-5 shadow-xs space-y-3">
-          <div className="flex items-center gap-2 text-[11px] font-bold tracking-wider text-red-600 uppercase">
-            <AlertTriangle className="w-4 h-4" />
-            <span>RISK FLAGS</span>
-          </div>
-          <div className="space-y-2">
-            {scorecard.risk_flags.map((risk, i) => (
-              <p
-                key={i}
-                className="text-xs text-zinc-800 leading-relaxed font-normal"
-              >
-                • {risk}
-              </p>
-            ))}
-          </div>
-        </div>
-
-        {/* Suggested Improvements */}
-        {!!scorecard.suggested_improvements?.length && (
-        <section aria-label="Areas for improvement" className="bg-white rounded-2xl border border-zinc-200/80 p-5 shadow-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[11px] font-bold tracking-wider text-zinc-800 uppercase">
-              <Sparkles className="w-4 h-4 text-amber-600" />
-              <span>AREAS FOR IMPROVEMENT</span>
-            </div>
-            <span className="text-[10px] text-zinc-500 font-medium bg-zinc-100 px-2 py-0.5 rounded-full border border-zinc-200/60">
-              Role & Resume Gap
-            </span>
-          </div>
-          <div className="space-y-2.5">
-            {scorecard.suggested_improvements.map((item, i) => (
-              <div
-                key={i}
-                className="text-xs text-zinc-700 leading-relaxed font-normal flex items-start gap-2 p-2 bg-zinc-50/60 rounded-lg border border-zinc-100"
-              >
-                <span className="font-semibold text-zinc-900 shrink-0 select-none">
-                  {item.match(/^\d+\./) ? "" : `${i + 1}.`}
-                </span>
-                <span className="flex-1">{item}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-        )}
-
-        {!!scorecard.suggested_questions?.length && (
-          <section aria-label="Suggested interview questions" className="bg-white rounded-2xl border border-zinc-200/80 p-5 shadow-xs space-y-3">
-            <div className="flex items-center gap-2 text-[11px] font-bold tracking-wider text-zinc-800 uppercase">
-              <MessageSquareCode className="w-4 h-4 text-zinc-600" />
-              <span>SUGGESTED INTERVIEW QUESTIONS</span>
-            </div>
-            <div className="space-y-2.5">
-              {scorecard.suggested_questions.map((question, i) => (
-                <div key={i} className="text-xs text-zinc-700 leading-relaxed flex items-start gap-2 p-2 bg-zinc-50/60 rounded-lg border border-zinc-100">
-                  <span className="font-semibold text-zinc-900 shrink-0 select-none">{question.match(/^\d+\./) ? "" : `${i + 1}.`}</span>
-                  <span className="flex-1">{question}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-      </div>
-
-      {/* 4. Team Notes Section */}
-      <div className="bg-white rounded-2xl border border-zinc-200/80 p-6 shadow-xs space-y-5">
-        <span className="text-[11px] font-bold text-zinc-500 tracking-wider uppercase block">
-          TEAM NOTES
-        </span>
-
-        {/* Existing Comments */}
-        <div className="space-y-4">
-          {notes.map((note) => (
-            <div key={note.id} className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-bold text-xs shrink-0">
-                {note.initials}
-              </div>
-              <div className="space-y-1 flex-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="font-bold text-xs text-zinc-950">
-                    {note.author}
-                  </span>
-                  <span className="text-[11px] text-zinc-400 font-medium">
-                    {note.timestamp}
-                  </span>
-                </div>
-                <p className="text-xs text-zinc-700 leading-relaxed">
-                  {note.content.split("@Sarah").map((part, i, arr) => (
-                    <React.Fragment key={i}>
-                      {part}
-                      {i < arr.length - 1 && (
-                        <span className="bg-zinc-100 font-semibold px-1 py-0.5 rounded text-zinc-950">
-                          @Sarah
-                        </span>
-                      )}
-                    </React.Fragment>
-                  ))}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Rich Note Input Form */}
-        <form onSubmit={handleSendNote} className="space-y-2 pt-2">
-          <div className="border border-zinc-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-zinc-950">
-            <textarea
-              value={newNoteText}
-              disabled={isSubmittingNote}
-              onChange={(e) => setNewNoteText(e.target.value)}
-              placeholder="Add a note or @mention someone..."
-              rows={2}
-              className="w-full p-3 text-xs text-zinc-900 focus:outline-none resize-none leading-relaxed placeholder:text-zinc-400"
-            />
-            <div className="flex items-center justify-between px-3 py-2 bg-zinc-50/60 border-t border-zinc-100">
-              <div className="flex items-center gap-2 text-zinc-400">
-                <button
-                  type="button"
-                  className="hover:text-zinc-800 p-1 rounded transition-colors"
-                >
-                  <Bold className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  className="hover:text-zinc-800 p-1 rounded transition-colors"
-                >
-                  <Paperclip className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              <Button
-                type="submit"
-                size="sm"
-                disabled={!newNoteText.trim() || isSubmittingNote}
-                className="h-7 px-3 text-xs font-semibold rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white hover:text-zinc-300 transition-colors"
-              >
-                <Send className="w-3 h-3 mr-1" />
-                <span>Post Note</span>
-              </Button>
-            </div>
-          </div>
-        </form>
       </div>
     </div>
   );

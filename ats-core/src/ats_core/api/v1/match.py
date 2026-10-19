@@ -438,9 +438,10 @@ async def match_and_evaluate_candidates(
                 })
             if cats:
                 scorecard["categories"] = cats
-            scorecard["risk_flags"] = eval_data.get("cons_or_risks", [])
-            scorecard["suggested_improvements"] = eval_data.get("cons", []) or eval_data.get("cons_or_risks", []) or eval_data.get("suggested_improvements", [])
-            scorecard["suggested_questions"] = eval_data.get("recommended_interview_questions", [])
+            scorecard["risk_flags"] = []
+            scorecard["suggested_improvements"] = []
+            scorecard["suggested_questions"] = []
+            scorecard["team_notes"] = []
 
         # Build JobCandidate item
         cand_rec = get_candidate_from_store(cid) or {}
@@ -471,8 +472,8 @@ async def match_and_evaluate_candidates(
             "systemDesignScore": sys_score,
             "quote": cat_list[0].get("rationale", "") if cat_list else eval_data.get("recruiter_summary", ""),
             "sourceResumeLink": f"/candidates/{cid}",
-            "potentialGap": eval_data.get("cons_or_risks", [None])[0] if eval_data.get("cons_or_risks") else None,
-            "suggestedQuestions": eval_data.get("recommended_interview_questions", []),
+            "potentialGap": None,
+            "suggestedQuestions": [],
             "jobId": target_job_id,
         }
         updated_job_candidates.append(job_cand_obj)

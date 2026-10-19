@@ -147,7 +147,9 @@ def compute_result(payload: dict, document: bytes | None) -> AIResult:
             )
             if not evaluation.get("success") or not evaluation.get("report"):
                 raise ValueError("EVALUATION_UNAVAILABLE")
-            report = VerifiedReport.model_validate(evaluation["report"].model_dump())
+            raw_rep = evaluation["report"]
+            rep_dict = raw_rep.model_dump() if hasattr(raw_rep, "model_dump") else raw_rep
+            report = VerifiedReport.model_validate(rep_dict)
             result.scorecard = {
                 "overall_match_score": report.overall_match_score,
                 "evaluation_status": "COMPLETED",
@@ -161,14 +163,14 @@ def compute_result(payload: dict, document: bytes | None) -> AIResult:
                         "name": str(getattr(c.category, "value", c.category)),
                         "score": c.score,
                         "max_score": 5,
-                        "quote": c.verbatim_citation,
+                        "quote": getattr(c, "verbatim_citation", None),
                         "assessment": c.assessment,
                     }
                     for c in report.criteria_breakdown
                 ],
-                "risk_flags": report.risks_and_skill_gaps,
-                "suggested_improvements": report.suggested_improvements,
-                "suggested_questions": [q.question for q in report.suggested_interview_questions],
+                "risk_flags": [],
+                "suggested_improvements": [],
+                "suggested_questions": [],
                 "team_notes": [],
             }
             result.evaluation_status = "COMPLETED"
