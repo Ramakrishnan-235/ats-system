@@ -40,6 +40,32 @@ NAME_DISQUALIFY_WORDS = {
     "university", "college", "institute", "bachelor", "master", "phd",
 }
 
+# Statistical NER often labels these technologies as people or places. Known
+# candidate identifiers are still scrubbed afterwards, even if a name collides.
+TECHNICAL_ENTITY_TERMS = {
+    "python", "java", "javascript", "typescript", "golang", "go", "rust",
+    "react", "react native", "django", "flask", "fastapi", "angular", "vue",
+    "node.js", "express.js", "kotlin", "scala", "swift", "perl", "ruby",
+    "postgresql", "mysql", "mongodb", "neo4j", "sqlite", "redis", "docker",
+    "kubernetes", "terraform", "kafka", "pytorch", "tensorflow", "pandas",
+    "numpy", "linux", "git", "graphql", "grpc", "spring", "spring boot",
+}
+TECHNICAL_CONTEXT = re.compile(
+    r"\b(?:using|built|develop\w*|programming|frameworks?|languages?|skills?|stack|tools?|"
+    r"proficient|server|client|implemented|technolog\w*)\b", re.IGNORECASE,
+)
+
+
+def _technical_ner_span(text: str, result: RecognizerResult) -> bool:
+    if result.entity_type not in {"PERSON", "LOCATION"}:
+        return False
+    if text[result.start:result.end].strip().casefold() not in TECHNICAL_ENTITY_TERMS:
+        return False
+    line_start = text.rfind("\n", 0, result.start) + 1
+    line_end = text.find("\n", result.end)
+    context = text[max(0, line_start - 60):line_end if line_end >= 0 else len(text)]
+    return bool(TECHNICAL_CONTEXT.search(context))
+
 
 import threading
 
@@ -192,7 +218,12 @@ class ResumeAnonymizer:
         if not text:
             return ""
 
-        redacted = text
+        # Remove complete identifiers before replacing name tokens inside them
+        # (for example Alice in alice@example.test or a profile URL).
+        redacted = EMAIL_PATTERN.sub("[EMAIL_ADDRESS]", text)
+        if email and email.strip() and email.strip().upper() != "N/A":
+            redacted = re.sub(re.escape(email.strip()), "[EMAIL_ADDRESS]", redacted, flags=re.IGNORECASE)
+        redacted = URL_PATTERN.sub("[PROFILE_URL]", redacted)
 
         # 1. Scrub candidate name (full name and distinct name tokens)
         if name and name.strip() and name.strip().lower() != "candidate":
@@ -360,6 +391,10 @@ class ResumeAnonymizer:
             entities=entities,
             score_threshold=score_threshold
         )
+        analyzer_results = [
+            result for result in analyzer_results
+            if not _technical_ner_span(text, result)
+        ]
 
         presidio_text = text
         if analyzer_results:

@@ -31,6 +31,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, ConfigDict, Field
 
 from ats_core.llm.client import get_llm_config, get_openrouter_chat_model, get_structured_llm
+from ats_core.llm.deadline import invoke_with_deadline
 from ats_core.llm.sanitizer import sanitize_prompt_text
 from ats_core.parsers.pdf_parser import HybridPDFParser
 from ats_core.parsers.skill_aggregator import merge_date_intervals, parse_date_to_datetime
@@ -486,18 +487,24 @@ def parse_resume_with_llm_and_embeddings(
     normalized_text = unicodedata.normalize("NFKC", raw_text)
     safe_markdown = sanitize_prompt_text(normalized_text)
 
-    # Privacy guard: if configured LLM is remote OpenRouter (not local Ollama),
-    # scrub PII before sending text over the network
+    # Contacts belong to the local private document, never to the redacted model
+    # response. This also makes remote and local model profiles consistent.
+    from ats_core.parsers.resume_parser import extract_contact_details
+    contact = LLMContactInfo(**extract_contact_details(raw_text, filename, file_bytes))
     llm_cfg = get_llm_config()
-    if llm_cfg["is_openrouter"]:
-        from ats_core.parsers.anonymizer import get_shared_anonymizer
-        safe_markdown = get_shared_anonymizer().anonymize(safe_markdown)
+    from ats_core.parsers.anonymizer import get_shared_anonymizer
+    safe_markdown = get_shared_anonymizer().anonymize(
+        safe_markdown, known_entities=contact.model_dump(),
+    )
 
     # 3. Execute single-pass structured LLM extraction
     chat_model = get_openrouter_chat_model(
         temperature=0.0,
-        request_timeout=float(os.getenv("ATS_EXTRACTION_TIMEOUT", "120")),
-        max_retries=1,
+        request_timeout=float(os.getenv("ATS_EXTRACTION_TIMEOUT", "60")),
+        max_retries=0,
+        max_tokens=6000,
+        **({"extra_body": {"reasoning": {"enabled": False}}} if llm_cfg["is_openrouter"]
+           else {"reasoning_effort": "none"} if "api.nvidia.com" not in llm_cfg["base_url"] else {}),
     )
     structured_llm = get_structured_llm(schema=FullLLMResumeExtraction, chat_model=chat_model)
     prompt = ChatPromptTemplate.from_messages([
@@ -506,22 +513,31 @@ def parse_resume_with_llm_and_embeddings(
     ])
     chain = prompt | structured_llm
     try:
-        extracted: FullLLMResumeExtraction = chain.invoke({"resume_markdown": safe_markdown})
+        extracted = invoke_with_deadline(
+            chain, {"resume_markdown": safe_markdown},
+            timeout=float(os.getenv("ATS_EXTRACTION_TIMEOUT", "60")),
+        )
+        if not isinstance(extracted, FullLLMResumeExtraction):
+            raise ValueError("Extraction did not return a structured profile")
+        extracted.contact = contact
     except Exception as llm_err:
         logger.warning(
-            "LLM extraction failed or timed out (%s); falling back to local deterministic parser",
-            llm_err,
+            "LLM extraction failed (%s); using local deterministic parser",
+            type(llm_err).__name__,
         )
         from ats_core.parsers.resume_parser import parse_resume_to_candidate as legacy_parse
 
-        return legacy_parse(
+        fallback = legacy_parse(
             file_bytes,
             filename=filename,
             target_job=target_job,
             taxonomy_rows=taxonomy_rows,
             allow_llm=False,
+            extracted_document=(raw_text, engine_used),
             **kwargs,
         )
+        fallback["extraction_warnings"] = ["LLM_EXTRACTION_FALLBACK"]
+        return fallback
 
     # 4. Normalize and ground skills using EmbeddingGemma 2 (768-d cosine similarity)
     normalizer = (

@@ -210,7 +210,7 @@ async fn durable_tenant_workflow() {
             .0,
         StatusCode::CONFLICT
     );
-    let result = json!({"contract_version":1,"attempt_id":lease["attempt_id"],"document_id":lease["document_id"],"document_version":1,"input_revision":1,"job_revision":lease["job_revision"],"extraction_status":"COMPLETED","evaluation_status":"SKIPPED","profile":{"target_headline":"Python developer","core_skills":["Python"]},"contact":{"name":"Synthetic Candidate","email":"synthetic@example.test"},"sanitized_text":"Python developer with API experience","error_code":null});
+    let result = json!({"contract_version":1,"attempt_id":lease["attempt_id"],"document_id":lease["document_id"],"document_version":1,"input_revision":1,"job_revision":lease["job_revision"],"extraction_status":"COMPLETED","evaluation_status":"FAILED","profile":{"target_headline":"Python developer","core_skills":["Python"]},"contact":{"name":"Synthetic Candidate","email":"synthetic@example.test"},"sanitized_text":"Python developer with API experience","warnings":["EVALUATION_UNAVAILABLE"],"error_code":null});
     assert_eq!(
         internal(
             &app,
@@ -265,6 +265,17 @@ async fn durable_tenant_workflow() {
     assert_eq!(status, StatusCode::OK);
     assert_ne!(profile["name"], "Synthetic Candidate");
     assert_eq!(profile["applications"][0]["stage"], "Recruiter Review");
+    assert_eq!(profile["scorecard"]["evaluation_status"], "FAILED");
+    let (_, failed_score, _) = request(
+        &restarted,
+        "GET",
+        &format!("/api/v1/candidates/{candidate}/scorecard?job_id={jobid}"),
+        Some(&sessions[0]),
+        json!({}),
+    )
+    .await;
+    assert_eq!(failed_score["evaluation_status"], "FAILED");
+    assert_eq!(failed_score["overall_match_score"], Value::Null);
     assert_eq!(
         request(
             &restarted,

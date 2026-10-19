@@ -48,6 +48,7 @@ export default function RequisitionStudioPage() {
   const [employmentType, setEmploymentType] = useState("Full-time · Permanent");
   const [locationPolicy, setLocationPolicy] = useState("London, UK · Hybrid (3d on-site)");
   const [salaryRange, setSalaryRange] = useState("£135,000 - £160,000 + Equity");
+  const [minYearsExperience, setMinYearsExperience] = useState(0);
 
   // Description format toggle
   const [descFormat, setDescFormat] = useState<"structured" | "raw">("structured");
@@ -125,6 +126,11 @@ export default function RequisitionStudioPage() {
     setIsPublishing(true);
     setPublishError(null);
     setToastMessage(null);
+    if (!Number.isFinite(minYearsExperience) || minYearsExperience < 0 || minYearsExperience > 100) {
+      setPublishError("Minimum experience must be between 0 and 100 years.");
+      setIsPublishing(false);
+      return;
+    }
     try {
       await createJobRequisition({
         title: jobTitle,
@@ -132,6 +138,7 @@ export default function RequisitionStudioPage() {
         location: locationPolicy,
         job_description: missionNarrative,
         required_skills: preferredSkills,
+        min_years_experience: minYearsExperience,
       });
       showToast(`✓ Requisition Published: ${jobTitle} (${reqCode})`);
       setTimeout(() => {
@@ -437,6 +444,12 @@ export default function RequisitionStudioPage() {
                     </div>
 
                     {/* Employment Type */}
+                    <div className="flex flex-col gap-1.5">
+                      <label htmlFor="minimum-experience" className="text-xs text-[#141c27] font-bold">Minimum experience (years)</label>
+                      <input id="minimum-experience" type="number" min="0" max="100" step="0.5"
+                        value={minYearsExperience} onChange={e => setMinYearsExperience(Number(e.target.value))}
+                        className="w-full h-10 px-3 bg-[#eff4ff] text-[#141c27] text-xs font-medium rounded-lg focus:outline-none focus:bg-white transition-colors" />
+                    </div>
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs text-[#141c27] font-bold">Employment Type</label>
                       <input

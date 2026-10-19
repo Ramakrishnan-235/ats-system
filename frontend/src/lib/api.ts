@@ -86,7 +86,7 @@ export function createJobRequisition(payload: {
   required_skills: string[]; min_years_experience?: number; run_ai_match?: boolean;
 }) { return json<JobRequisition>("/jobs", { method: "POST", ...body(payload) }); }
 export function updateJobRequisition(jobId: string, payload: {
-  title: string; department: string; location: string; job_description: string; required_skills: string[];
+  title: string; department: string; location: string; job_description: string; required_skills: string[]; min_years_experience?: number;
 }) { return json<JobRequisition>(`/jobs/${id(jobId)}`, { method: "PATCH", ...body(payload) }); }
 export const fetchJobCandidates = (jobId: string) => json<RankedCandidate[]>(`/jobs/${id(jobId)}/candidates`);
 export function addJobCandidate(jobId: string, payload: NewCandidatePayload) {

@@ -86,9 +86,12 @@ services:
       ATS_FLYWHEEL_AUTO_REGISTER: "false"
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:e2b}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      NVIDIA_MODEL: ${NVIDIA_MODEL:-deepseek-ai/deepseek-v4.1-flash}
+      NVIDIA_BASE_URL: ${NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-poolside/laguna-xs-2.1:free}
-      LLM_MODEL: ${LLM_MODEL:-poolside/laguna-xs-2.1:free}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-nvidia/nemotron-3-super-120b-a12b:free}
+      LLM_MODEL: ${LLM_MODEL:-nvidia/nemotron-3-super-120b-a12b:free}
       OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://openrouter.ai/api/v1}
     volumes: ["architecture_models:/models"]

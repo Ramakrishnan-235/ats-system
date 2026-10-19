@@ -111,6 +111,18 @@ test('studio failure displays the server error, preserves edits, and never redir
   assert.equal(nodes(app.render(), node => node.type === 'button' && text(node).includes('Publish Requisition'))[0].props.disabled, false);
 });
 
+test('studio stores an explicit minimum and refuses invalid experience without publishing', async () => {
+  const calls = [];
+  const app = mount('app/jobs/new/page.tsx', 'default', { createJobRequisition: async input => calls.push(input) });
+  field(app, 'minimum-experience').props.onChange({ target: { value: '3.5' } });
+  await publish(app);
+  assert.equal(calls[0].min_years_experience, 3.5);
+  field(app, 'minimum-experience').props.onChange({ target: { value: '-1' } });
+  await publish(app);
+  assert.equal(calls.length, 1);
+  assert.match(text(app.render()), /Minimum experience must be between/);
+});
+
 test('modal follows changed preset props, keeps edits on ordinary renders, and clears custom drafts', () => {
   const app = modal({}, { preset: presets[0] });
   assert.equal(field(app, 'job-title').props.value, presets[0].title);

@@ -93,6 +93,7 @@ def compute_result(payload: dict, document: bytes | None) -> AIResult:
             allow_llm=llm_enabled,
         )
         raw_text = profile.pop("raw_text", "")
+        extraction_warnings = profile.pop("extraction_warnings", [])
         if len(raw_text.strip()) < 10:
             raise ValueError("DOCUMENT_TEXT_EMPTY")
         contact = {
@@ -109,6 +110,7 @@ def compute_result(payload: dict, document: bytes | None) -> AIResult:
             profile=profile,
             contact=contact,
             sanitized_text=safe_text,
+            warnings=extraction_warnings,
         )
     else:
         result = AIResult(

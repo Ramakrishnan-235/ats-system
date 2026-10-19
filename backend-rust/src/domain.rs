@@ -118,6 +118,44 @@ pub async fn update_job(
 pub fn empty_scorecard() -> Value {
     json!({"overall_match_score":null,"evaluation_status":"PENDING","match_tier":"Not Evaluated","model_version":"","evaluated_at":"","categories":[],"risk_flags":[],"suggested_improvements":[],"suggested_questions":[],"team_notes":[]})
 }
+fn unscored_task_status(state: &str, result: Option<&Value>, error: Option<&str>) -> Value {
+    let mut card = empty_scorecard();
+    let status = match state {
+        "QUEUED" | "RUNNING" => "PROCESSING",
+        "FAILED" | "CANCELLED" | "STALE" => "FAILED",
+        "SUCCEEDED" => match result.and_then(|r| r["evaluation_status"].as_str()) {
+            Some("SKIPPED") => "SKIPPED",
+            _ => "FAILED",
+        },
+        _ => "PENDING",
+    };
+    card["evaluation_status"] = json!(status);
+    if status == "FAILED" {
+        card["error_code"] = json!(error.unwrap_or("EVALUATION_UNAVAILABLE"));
+        card["risk_flags"] = json!([
+            "Evaluation did not complete. Retry the evaluation or review the resume manually."
+        ]);
+    }
+    card
+}
+
+async fn unscored_candidate_status(
+    tx: &mut Transaction<'_, Postgres>,
+    tenant: Uuid,
+    candidate: Uuid,
+    job: Option<Uuid>,
+) -> Result<Value> {
+    let task = sqlx::query("SELECT p.state,p.result,p.error_code FROM ats_v2.processing_jobs p JOIN ats_v2.candidates c ON c.id=p.candidate_id AND c.tenant_id=p.tenant_id LEFT JOIN ats_v2.applications a ON a.id=p.application_id AND a.tenant_id=p.tenant_id LEFT JOIN ats_v2.jobs j ON j.id=a.job_id AND j.tenant_id=a.tenant_id WHERE p.tenant_id=$1 AND p.candidate_id=$2 AND p.input_revision=c.revision AND ($3::uuid IS NULL OR a.job_id=$3) AND (p.job_revision IS NULL OR p.job_revision=j.revision) ORDER BY p.created_at DESC,p.id DESC LIMIT 1")
+        .bind(tenant).bind(candidate).bind(job).fetch_optional(&mut **tx).await?;
+    Ok(match task {
+        Some(row) => unscored_task_status(
+            &row.get::<String, _>("state"),
+            row.get::<Option<Value>, _>("result").as_ref(),
+            row.get::<Option<String>, _>("error_code").as_deref(),
+        ),
+        None => empty_scorecard(),
+    })
+}
 pub async fn candidate_json(
     tx: &mut Transaction<'_, Postgres>,
     user: &Identity,
@@ -181,7 +219,18 @@ pub async fn candidate_json(
     p["applied_for_job_id"] = json!(apps.first().map(|a| a.get::<Uuid, _>("job_id")));
     let selected_application = apps.first().map(|a| a.get::<Uuid, _>("id"));
     let score: Option<Value> = sqlx::query_scalar("SELECT e.scorecard FROM ats_v2.evaluations e JOIN ats_v2.applications a ON a.id=e.application_id AND a.tenant_id=e.tenant_id JOIN ats_v2.jobs j ON j.id=a.job_id AND j.tenant_id=a.tenant_id JOIN ats_v2.processing_jobs p ON p.id=e.processing_job_id WHERE e.application_id=$1 AND e.tenant_id=$2 AND p.input_revision=$3 AND e.job_revision=j.revision ORDER BY e.created_at DESC LIMIT 1").bind(selected_application).bind(user.tenant_id).bind(row.get::<i32,_>("revision")).fetch_optional(&mut **tx).await?;
-    p["scorecard"] = score.unwrap_or_else(empty_scorecard);
+    p["scorecard"] = match score {
+        Some(score) => score,
+        None => {
+            unscored_candidate_status(
+                tx,
+                user.tenant_id,
+                id,
+                apps.first().map(|a| a.get::<Uuid, _>("job_id")),
+            )
+            .await?
+        }
+    };
     let notes=sqlx::query("SELECT n.*,u.name FROM ats_v2.notes n JOIN ats_v2.users u ON u.id=n.actor_id WHERE n.candidate_id=$1 AND n.tenant_id=$2 ORDER BY n.created_at").bind(id).bind(user.tenant_id).fetch_all(&mut **tx).await?;
     p["scorecard"]["team_notes"] = json!(notes.iter().map(note_json).collect::<Vec<_>>());
     // Raw text/contact fields are intentionally never embedded in the public profile.
@@ -412,7 +461,10 @@ pub async fn get_scorecard(
     .await?
     .ok_or_else(missing)?;
     let score: Option<Value> = sqlx::query_scalar("SELECT e.scorecard FROM ats_v2.evaluations e JOIN ats_v2.applications a ON a.id=e.application_id AND a.tenant_id=e.tenant_id JOIN ats_v2.jobs j ON j.id=a.job_id AND j.tenant_id=a.tenant_id JOIN ats_v2.candidates c ON c.id=a.candidate_id AND c.tenant_id=a.tenant_id JOIN ats_v2.processing_jobs p ON p.id=e.processing_job_id WHERE a.candidate_id=$1 AND e.tenant_id=$2 AND p.input_revision=c.revision AND e.job_revision=j.revision AND ($3::uuid IS NULL OR a.job_id=$3) ORDER BY e.created_at DESC LIMIT 1").bind(id).bind(user.tenant_id).bind(f.job_id).fetch_optional(&mut *tx).await?;
-    let mut score = score.unwrap_or_else(empty_scorecard);
+    let mut score = match score {
+        Some(score) => score,
+        None => unscored_candidate_status(&mut tx, user.tenant_id, id, f.job_id).await?,
+    };
     let notes = sqlx::query("SELECT n.*,u.name FROM ats_v2.notes n JOIN ats_v2.users u ON u.id=n.actor_id WHERE n.candidate_id=$1 AND n.tenant_id=$2 ORDER BY n.created_at").bind(id).bind(user.tenant_id).fetch_all(&mut *tx).await?;
     score["team_notes"] = json!(notes.iter().map(note_json).collect::<Vec<_>>());
     redact_profile(&mut score, &contact);

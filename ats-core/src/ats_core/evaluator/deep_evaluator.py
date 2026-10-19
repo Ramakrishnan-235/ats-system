@@ -18,6 +18,7 @@ from ats_core.evaluator.langsmith_tracker import (
 )
 from ats_core.evidence import is_grounded_quote
 from ats_core.llm.client import get_llm_config, get_openrouter_chat_model, get_structured_llm
+from ats_core.llm.deadline import invoke_with_deadline
 from ats_core.llm.sanitizer import (
     ADVERSARIAL_DIRECTIVES_PATTERN,
     CONTROL_TOKENS_PATTERN,
@@ -96,6 +97,7 @@ class LocalDeepEvaluator:
         report_schema=DeepCandidateEvaluationReport,
         structured_method: str | None = None,
         model_options: dict[str, Any] | None = None,
+        request_deadline: float | None = None,
     ):
         config = get_llm_config(base_url=base_url, model_name=model_name, api_key=api_key)
         self.base_url = config["base_url"]
@@ -103,6 +105,7 @@ class LocalDeepEvaluator:
         self.api_key = config["api_key"]
         self.is_openrouter = config["is_openrouter"]
         self.temperature = temperature
+        self.request_deadline = request_deadline
         if max_retries is None:
             max_retries = int(os.getenv("ATS_LLM_MAX_RETRIES", "1"))
         self.max_retries = max_retries
@@ -239,7 +242,13 @@ Generate the complete structured evaluation report adhering strictly to the sche
                 )
             else:
                 with collect_runs() as cb:
-                    raw_report = self.chain.invoke({"eval_prompt": prompt}, config=run_config)
+                    if self.request_deadline is None:
+                        raw_report = self.chain.invoke({"eval_prompt": prompt}, config=run_config)
+                    else:
+                        raw_report = invoke_with_deadline(
+                            self.chain, {"eval_prompt": prompt},
+                            timeout=self.request_deadline, config=run_config,
+                        )
                     if cb.traced_runs:
                         run_id = str(cb.traced_runs[0].id)
 

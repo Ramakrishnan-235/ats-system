@@ -10,8 +10,10 @@ logger = logging.getLogger("ats.llm.client")
 
 T = TypeVar("T", bound=BaseModel)
 
+DEFAULT_NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
+DEFAULT_NVIDIA_MODEL = "deepseek-ai/deepseek-v4.1-flash"
 DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_OPENROUTER_MODEL = "poolside/laguna-xs-2.1:free"
+DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
 DEFAULT_OLLAMA_MODEL = "qwen3.5:2b"
 
@@ -22,32 +24,60 @@ def get_llm_config(
     api_key: str | None = None,
 ) -> dict[str, Any]:
     """
-    Resolves configuration for OpenRouter with automatic local Ollama fallback.
+    Resolves configuration for NVIDIA NIM / OpenRouter with automatic local Ollama fallback.
     """
-    openrouter_key = (
+    nvidia_key = os.getenv("NVIDIA_API_KEY", "").strip()
+    if nvidia_key.startswith("nvapi-your-") or "your-" in nvidia_key:
+        nvidia_key = ""
+    openrouter_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    generic_key = os.getenv("LLM_API_KEY", "").strip()
+
+    cloud_key = (
         api_key
-        or os.getenv("OPENROUTER_API_KEY", "").strip()
-        or os.getenv("LLM_API_KEY", "").strip()
+        or nvidia_key
+        or openrouter_key
+        or generic_key
     )
 
-    if openrouter_key:
-        resolved_base_url = (
-            base_url
-            or os.getenv("OPENROUTER_BASE_URL", "").strip()
-            or os.getenv("LLM_BASE_URL", "").strip()
-            or DEFAULT_OPENROUTER_BASE_URL
+    if cloud_key:
+        is_nvidia_target = bool(
+            (base_url and "api.nvidia.com" in base_url)
+            or (nvidia_key and not ("openrouter.ai" in (base_url or os.getenv("OPENROUTER_BASE_URL", "") or os.getenv("LLM_BASE_URL", ""))))
+            or ("api.nvidia.com" in os.getenv("LLM_BASE_URL", "") and not openrouter_key)
         )
-        resolved_model = (
-            model_name
-            or os.getenv("OPENROUTER_MODEL", "").strip()
-            or os.getenv("LLM_MODEL", "").strip()
-            or DEFAULT_OPENROUTER_MODEL
-        )
-        resolved_api_key = openrouter_key
-        is_openrouter = "openrouter.ai" in resolved_base_url
+        if is_nvidia_target:
+            resolved_base_url = (
+                base_url
+                or os.getenv("NVIDIA_BASE_URL", "").strip()
+                or os.getenv("LLM_BASE_URL", "").strip()
+                or DEFAULT_NVIDIA_BASE_URL
+            )
+            resolved_model = (
+                model_name
+                or os.getenv("NVIDIA_MODEL", "").strip()
+                or os.getenv("LLM_MODEL", "").strip()
+                or DEFAULT_NVIDIA_MODEL
+            )
+            resolved_api_key = api_key or nvidia_key or generic_key
+            is_openrouter = False
+        else:
+            resolved_base_url = (
+                base_url
+                or os.getenv("OPENROUTER_BASE_URL", "").strip()
+                or os.getenv("LLM_BASE_URL", "").strip()
+                or DEFAULT_OPENROUTER_BASE_URL
+            )
+            resolved_model = (
+                model_name
+                or os.getenv("OPENROUTER_MODEL", "").strip()
+                or os.getenv("LLM_MODEL", "").strip()
+                or DEFAULT_OPENROUTER_MODEL
+            )
+            resolved_api_key = api_key or openrouter_key or generic_key
+            is_openrouter = "openrouter.ai" in resolved_base_url
     else:
         fallback_llm_url = os.getenv("LLM_BASE_URL", "").strip()
-        if "openrouter.ai" in fallback_llm_url:
+        if "openrouter.ai" in fallback_llm_url or "api.nvidia.com" in fallback_llm_url:
             fallback_llm_url = ""
         resolved_base_url = (
             base_url
@@ -137,7 +167,7 @@ def get_structured_llm(
     # Determine structured output extraction method if not specified
     if method is None:
         target_base_url = str(getattr(model, "openai_api_base", "") or getattr(model, "base_url", ""))
-        if "openrouter.ai" in target_base_url:
+        if "openrouter.ai" in target_base_url or "api.nvidia.com" in target_base_url:
             method = "function_calling"
         else:
             method = "json_mode"

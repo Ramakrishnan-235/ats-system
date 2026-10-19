@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock
 
+import pytest
+
 from pydantic import BaseModel, Field
 
 from ats_core.evaluator.deep_evaluator import LocalDeepEvaluator
@@ -21,6 +23,15 @@ class DummySchema(BaseModel):
     summary: str = Field(description="Summary")
 
 
+@pytest.fixture(autouse=True)
+def isolated_provider_environment(monkeypatch):
+    # Worker imports load local .env settings; unit tests must not depend on
+    # whichever provider happens to be configured on the developer's machine.
+    for prefix in ("NVIDIA", "OPENROUTER", "LLM", "OLLAMA"):
+        for suffix in ("API_KEY", "BASE_URL", "MODEL"):
+            monkeypatch.delenv(f"{prefix}_{suffix}", raising=False)
+
+
 def test_get_llm_config_openrouter(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-mock-test-key-12345")
     monkeypatch.setenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
@@ -33,7 +44,20 @@ def test_get_llm_config_openrouter(monkeypatch):
     assert config["model_name"] == "nvidia/nemotron-3.5-lightning:free"
 
 
+def test_get_llm_config_nvidia_nim(monkeypatch):
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-mock-key-12345")
+    monkeypatch.setenv("LLM_BASE_URL", "https://integrate.api.nvidia.com/v1")
+    monkeypatch.setenv("LLM_MODEL", "deepseek-ai/deepseek-v4.1-flash")
+
+    config = get_llm_config()
+    assert config["is_openrouter"] is False
+    assert config["api_key"] == "nvapi-mock-key-12345"
+    assert config["base_url"] == "https://integrate.api.nvidia.com/v1"
+    assert config["model_name"] == "deepseek-ai/deepseek-v4.1-flash"
+
+
 def test_get_llm_config_ollama_fallback(monkeypatch):
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")

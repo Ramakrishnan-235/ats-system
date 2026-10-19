@@ -509,30 +509,64 @@ def calculate_candidate_experience_years(
     return round(days / 365.25, 1)
 
 
+def extract_contact_details(raw_text: str, filename: str, file_bytes: bytes) -> dict[str, str]:
+    """Recover private contacts locally, including PDF mailto/profile links."""
+    from urllib.parse import unquote
+
+    links = []
+    pdf_header = []
+    try:
+        import pymupdf
+
+        with pymupdf.open(stream=file_bytes, filetype="pdf") as pdf:
+            if len(pdf):
+                pdf_header = [line.strip() for line in pdf[0].get_text().splitlines() if line.strip()]
+            links = [unquote(link["uri"]) for page in pdf for link in page.get_links()
+                     if isinstance(link.get("uri"), str)]
+    except (RuntimeError, ValueError):
+        # Text extraction remains usable for supported parser/test inputs even
+        # when the optional annotation reader cannot decode the original.
+        pass
+    contact_text = raw_text + "\n" + "\n".join(links)
+    email = extract_email_address(contact_text)
+    name = extract_candidate_name(
+        (pdf_header or [line.strip() for line in raw_text.splitlines() if line.strip()]),
+        filename=filename, email=email if email != "N/A" else "",
+    )
+    return {"name": name, "email": email, "phone": extract_phone_number(contact_text),
+            "linkedin": extract_linkedin(contact_text),
+            "location": extract_location(raw_text, candidate_name=name)}
+
+
 def parse_resume_to_candidate(
     file_bytes: bytes,
     filename: str = "resume.pdf",
     target_job: dict[str, Any] | None = None,
     *, taxonomy_rows=None, allow_llm: bool = True,
+    extracted_document: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
     """
     Parses a PDF resume with high-precision extractors for candidate name,
     complete phone numbers, location, education, skills, and work experience.
     """
-    raw_text, engine_used, doc_format = extract_text_from_document(file_bytes, filename=filename)
+    if extracted_document is None:
+        raw_text, _engine_used, _ = extract_text_from_document(file_bytes, filename=filename)
+    else:
+        raw_text, _engine_used = extracted_document
     lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
 
     # 1. Email extraction (handles numbers, mailto, labeled lines, or returns N/A)
-    email = extract_email_address(raw_text)
+    contact = extract_contact_details(raw_text, filename, file_bytes)
+    email = contact["email"]
 
     # 2. Name extraction
-    name = extract_candidate_name(lines, filename=filename, email=email if email != "N/A" else "")
+    name = contact["name"]
 
     # 3. Complete Phone extraction (E.164 formatted or N/A)
-    phone = extract_phone_number(raw_text)
+    phone = contact["phone"]
 
     # 4. Clean Location extraction (with candidate name stripped, or N/A)
-    location = extract_location(raw_text, candidate_name=name if name != "Candidate" else "")
+    location = contact["location"]
 
     # 5. Target Headline / Role
     target_headline = target_job.get("title", "Software Engineer") if target_job else "Software Engineer"
@@ -548,7 +582,7 @@ def parse_resume_to_candidate(
                     break
 
     # 6. LinkedIn extraction (or N/A)
-    linkedin = extract_linkedin(raw_text)
+    linkedin = contact["linkedin"]
 
     # 7. Verified Skills extraction
     found_skills = extract_skills_from_text(raw_text, taxonomy_rows=taxonomy_rows, allow_llm=allow_llm)

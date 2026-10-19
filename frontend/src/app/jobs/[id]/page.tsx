@@ -101,6 +101,7 @@ function JobDetail({ rawId }: { rawId: string }) {
   const [editLocation, setEditLocation] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editSkills, setEditSkills] = useState<string[]>([]);
+  const [editMinYearsExperience, setEditMinYearsExperience] = useState(0);
   const [newSkillText, setNewSkillText] = useState("");
 
   useEffect(() => {
@@ -113,6 +114,7 @@ function JobDetail({ rawId }: { rawId: string }) {
       setEditLocation(jobData.location);
       setEditDescription(jobData.job_description);
       setEditSkills(jobData.required_skills);
+      setEditMinYearsExperience(jobData.min_years_experience);
       setCandidates(candidateData);
       setExpandedCand(candidateData[0]?.id || null);
     }).catch(reason => { if (active) setError(getErrorMessage(reason)); });
@@ -259,7 +261,7 @@ function JobDetail({ rawId }: { rawId: string }) {
   const handleSaveJobEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      setJob(await updateJobRequisition(rawId, { title: editTitle, department: editDepartment, location: editLocation, job_description: editDescription, required_skills: editSkills }));
+      setJob(await updateJobRequisition(rawId, { title: editTitle, department: editDepartment, location: editLocation, job_description: editDescription, required_skills: editSkills, min_years_experience: editMinYearsExperience }));
       setIsEditOpen(false);
       setError(null);
     } catch (reason) { setError(getErrorMessage(reason)); }
@@ -519,7 +521,7 @@ function JobDetail({ rawId }: { rawId: string }) {
                             <span className="text-base font-bold text-zinc-950">
                               {typeof cand.matchScore === "number" && !isNaN(cand.matchScore)
                                 ? `${cand.matchScore}%`
-                                : "Pending"}
+                                : "Unscored"}
                             </span>
                             <span className="text-[11px] font-semibold text-zinc-600">
                               {cand.matchLabel}
@@ -826,7 +828,7 @@ function JobDetail({ rawId }: { rawId: string }) {
                             <span className="bg-zinc-100 text-zinc-900 font-bold text-[11px] px-2 py-0.5 rounded-md">
                               {typeof cand.matchScore === "number" && !isNaN(cand.matchScore)
                                 ? `${cand.matchScore}%`
-                                : "Pending"}
+                                : "Unscored"}
                             </span>
                           </div>
 
@@ -998,6 +1000,12 @@ function JobDetail({ rawId }: { rawId: string }) {
               </div>
             </div>
 
+            <div className="space-y-1.5">
+              <label htmlFor="edit-minimum-experience" className="text-xs font-semibold text-zinc-600">Minimum experience (years)</label>
+              <Input id="edit-minimum-experience" type="number" min="0" max="100" step="0.5"
+                value={editMinYearsExperience} onChange={e => setEditMinYearsExperience(Number(e.target.value))}
+                className="h-10 text-xs rounded-xl" />
+            </div>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-zinc-600">
                 Job Description

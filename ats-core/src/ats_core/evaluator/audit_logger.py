@@ -95,7 +95,7 @@ class AuditLogger:
             cons_or_risks=cons,
             recommended_interview_questions=questions,
             recruiter_summary=recruiter_summary,
-            llm_model=telemetry.get("model", os.getenv("LLM_MODEL", "nvidia/nemotron-3.5-lightning:free")),
+            llm_model=telemetry.get("model", os.getenv("LLM_MODEL", "nvidia/nemotron-3-super-120b-a12b:free")),
             latency_ms=telemetry.get("latency_ms", 0),
             raw_prompt=sanitized_prompt,
         )
