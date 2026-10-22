@@ -558,7 +558,7 @@ async fn durable_tenant_workflow() {
     let (_, stale_lease) =
         internal(&app, &format!("/internal/jobs/{pending}/lease"), json!({})).await;
     assert_eq!(request(&app,"PATCH",&format!("/api/v1/candidates/{candidate}"),Some(&sessions[0]),json!({"revision":1,"profile":{"target_headline":"Edited synthetic@example.test"},"contact":{}})).await.0,StatusCode::OK);
-    let stale_result = json!({"contract_version":1,"attempt_id":stale_lease["attempt_id"],"document_id":stale_lease["document_id"],"document_version":1,"input_revision":1,"job_revision":stale_lease["job_revision"],"extraction_status":"SKIPPED","evaluation_status":"COMPLETED","scorecard":{"overall_match_score":80,"categories":[{"name":"Tech Stack Alignment","score":4,"max_score":5,"assessment":"Synthetic evidence"}],"model_version":"synthetic-test"},"error_code":null});
+    let stale_result = json!({"contract_version":1,"attempt_id":stale_lease["attempt_id"],"document_id":stale_lease["document_id"],"document_version":1,"input_revision":1,"job_revision":stale_lease["job_revision"],"extraction_status":"SKIPPED","evaluation_status":"COMPLETED","scorecard":{"screening_decision":"ACCEPT","decision_explanation":"Synthetic job requirements are demonstrated.","overall_match_score":80,"categories":[{"name":"Tech Stack Alignment","score":4,"max_score":5,"assessment":"Synthetic evidence"}],"model_version":"synthetic-test"},"error_code":null});
     assert_eq!(
         internal(
             &app,

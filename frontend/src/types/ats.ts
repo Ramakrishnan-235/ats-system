@@ -96,6 +96,7 @@ export interface ScorecardCategory {
   name: string;
   score: number;
   max_score: number;
+  assessment?: string;
   quote?: string;
   source_ref?: string;
   citation_location?: CitationLocation;
@@ -185,6 +186,9 @@ export interface CandidateDetail {
   scorecard: {
     overall_match_score: number | null;
     evaluation_status?: string;
+    screening_decision?: "ACCEPT" | "REJECT" | "REVIEW" | null;
+    decision_explanation?: string | null;
+    executive_verdict?: string;
     match_tier: string;
     model_version: string;
     evaluated_at: string;

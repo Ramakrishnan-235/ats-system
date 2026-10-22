@@ -71,6 +71,18 @@ def scoring_dossier(text: str, profile: dict) -> str:
     return clean
 
 
+def scoring_job_description(job: dict) -> str:
+    """Include requirements saved separately from the free-form job description."""
+    parts = [job["job_description"]]
+    skills = job.get("required_skills", [])
+    if skills:
+        parts.append("Required skills: " + ", ".join(skills))
+    minimum = job.get("min_years_experience")
+    if minimum is not None:
+        parts.append(f"Minimum relevant experience: {minimum} years")
+    return "\n\n".join(parts)
+
+
 def compute_result(payload: dict, document: bytes | None) -> AIResult:
     """Reuse the existing parser/evaluator, while keeping contact data separate."""
     base = {
@@ -143,7 +155,7 @@ def compute_result(payload: dict, document: bytes | None) -> AIResult:
                 candidate_profile_text=scoring_dossier(result.sanitized_text, result.profile),
                 citation_source_text=result.sanitized_text,
                 job_title=payload["job"]["title"],
-                job_description=payload["job"]["job_description"],
+                job_description=scoring_job_description(payload["job"]),
             )
             if not evaluation.get("success") or not evaluation.get("report"):
                 raise ValueError("EVALUATION_UNAVAILABLE")
@@ -153,6 +165,9 @@ def compute_result(payload: dict, document: bytes | None) -> AIResult:
             result.scorecard = {
                 "overall_match_score": report.overall_match_score,
                 "evaluation_status": "COMPLETED",
+                "screening_decision": str(getattr(report.screening_decision, "value", report.screening_decision)),
+                "decision_explanation": report.decision_explanation,
+                "executive_verdict": report.executive_verdict,
                 "match_tier": str(
                     getattr(report.qualification_tier, "value", report.qualification_tier)
                 ),

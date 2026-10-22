@@ -422,6 +422,18 @@ impl AIResult {
                 .scorecard
                 .as_ref()
                 .ok_or_else(|| bad("Completed evaluations require a scorecard."))?;
+            if !matches!(
+                s.get("screening_decision").and_then(Value::as_str),
+                Some("ACCEPT" | "REJECT" | "REVIEW")
+            ) || !s
+                .get("decision_explanation")
+                .and_then(Value::as_str)
+                .is_some_and(|v| !v.trim().is_empty() && v.chars().count() <= 4000)
+            {
+                return Err(bad(
+                    "Completed evaluations require an LLM screening decision and explanation.",
+                ));
+            }
             if !s
                 .get("overall_match_score")
                 .and_then(Value::as_f64)

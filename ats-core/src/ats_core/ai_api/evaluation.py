@@ -1,7 +1,6 @@
 """Required model evidence for evaluations saved by the private worker."""
 
 import json
-import math
 import os
 import re
 from functools import lru_cache
@@ -10,14 +9,17 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ats_core.schema._normalization import normalization_input
-from ats_core.schema.evaluation import CriterionCategory, DeepCandidateEvaluationReport, QualificationTier
+from ats_core.schema.evaluation import (
+    CriterionCategory, DecisionExplanation, DeepCandidateEvaluationReport,
+    QualificationTier, ScreeningDecision,
+)
 
 
 class VerifiedCriterion(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
     category: CriterionCategory = Field(description="The dimension being evaluated.")
     score: int = Field(ge=1, le=5, description="Rating from 1 to 5.")
-    assessment: str = Field(default="Evaluated", min_length=1, description="Brief 1-5 word assessment.")
+    assessment: str = Field(default="Evaluated", min_length=1, description="One sentence explaining the score against the job requirements.")
     verbatim_citation: str | None = None
     citation_location: None = None
 
@@ -61,18 +63,24 @@ class VerifiedCriterion(BaseModel):
 
 
 class FastScoringReport(BaseModel):
-    """Lean schema: only overall score, qualification tier, executive verdict, and criteria scores."""
-    overall_match_score: float = Field(ge=0.0, le=100.0, description="Overall match score from 0 to 100.")
+    """Job-specific screening decision and reasons supplied by the configured LLM."""
+    screening_decision: ScreeningDecision = Field(
+        description="ACCEPT: proceed to screening; REJECT: clear job-related mismatch; REVIEW: insufficient or conflicting evidence. Choose from the resume and job, not a score threshold."
+    )
+    decision_explanation: DecisionExplanation = Field(
+        description="2-4 sentences explaining why this candidate should be accepted, rejected, or reviewed for this job. Cite demonstrated requirements and decisive gaps; distinguish missing evidence from proven lack of ability."
+    )
+    overall_match_score: float = Field(strict=True, allow_inf_nan=False, ge=0.0, le=100.0, description="Overall match score from 0 to 100.")
     qualification_tier: QualificationTier = Field(
         default=QualificationTier.POTENTIAL_FIT,
         description="Strong Fit (80-100), Potential Fit (60-79), or Low Match (0-59)."
     )
     executive_verdict: str = Field(
-        default="Score evaluated.",
+        min_length=1,
         description="Brief 1-sentence verdict summarizing the score."
     )
     criteria_breakdown: list[VerifiedCriterion] = Field(
-        default_factory=list,
+        min_length=1,
         description="Scores for the 5 evaluation criteria."
     )
 
@@ -92,25 +100,13 @@ class FastScoringReport(BaseModel):
             else:
                 data["qualification_tier"] = QualificationTier.POTENTIAL_FIT.value
 
-        score = data.get("overall_match_score")
-        if score is not None:
-            try:
-                s_flt = float(score)
-            except (ValueError, TypeError):
-                s_flt = 50.0
-            if not math.isfinite(s_flt):
-                s_flt = 50.0
-            data["overall_match_score"] = max(0.0, min(100.0, s_flt))
-        else:
-            data["overall_match_score"] = 50.0
-
-        if not data.get("executive_verdict"):
-            data["executive_verdict"] = f"Candidate evaluated: score {data['overall_match_score']}/100."
         return data
 
 
 class VerifiedReport(DeepCandidateEvaluationReport):
-    overall_match_score: float = Field(ge=0, le=100)
+    screening_decision: ScreeningDecision
+    decision_explanation: DecisionExplanation
+    overall_match_score: float = Field(strict=True, allow_inf_nan=False, ge=0, le=100)
     executive_verdict: str = Field(min_length=1)
     criteria_breakdown: list[VerifiedCriterion] = Field(min_length=1)
 
@@ -131,17 +127,8 @@ class VerifiedReport(DeepCandidateEvaluationReport):
     @model_validator(mode="before")
     @classmethod
     def coerce_tier_and_scores(cls, data):
-        data = normalization_input(cls, data)
-        score = data.get("overall_match_score") if isinstance(data, dict) else None
-        if score is not None:
-            try:
-                s_flt = float(score)
-            except (ValueError, TypeError):
-                s_flt = 50.0
-            if not math.isfinite(s_flt):
-                raise ValueError("Explicit finite overall score is required")
-            data["overall_match_score"] = max(0.0, min(100.0, s_flt))
-        return data
+        # Preserve explicit model output; never fabricate a score on parse failure.
+        return normalization_input(cls, data)
 
 
 @lru_cache(maxsize=1)

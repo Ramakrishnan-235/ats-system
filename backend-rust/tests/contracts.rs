@@ -69,6 +69,48 @@ fn completed_evaluation_requires_real_score() {
             .is_err()
     );
 }
+
+#[test]
+fn completed_screening_requires_model_decision_and_explanation() {
+    let mut value = result();
+    value["evaluation_status"] = json!("COMPLETED");
+    value["scorecard"] = json!({
+        "overall_match_score":85,"model_version":"test-llm",
+        "screening_decision":"REJECT",
+        "decision_explanation":"Essential Rust ownership is not demonstrated in the resume.",
+        "categories":[{"name":"Tech Stack Alignment","score":4,"max_score":5,"assessment":"Python APIs are demonstrated."}]
+    });
+    // A model decision is preserved independently of score thresholds.
+    assert!(
+        serde_json::from_value::<AIResult>(value.clone())
+            .unwrap()
+            .validate()
+            .is_ok()
+    );
+    for field in ["screening_decision", "decision_explanation"] {
+        let mut missing = value.clone();
+        missing["scorecard"].as_object_mut().unwrap().remove(field);
+        assert!(
+            serde_json::from_value::<AIResult>(missing)
+                .unwrap()
+                .validate()
+                .is_err()
+        );
+    }
+    for (field, invalid) in [
+        ("screening_decision", "HIRED"),
+        ("decision_explanation", "   "),
+    ] {
+        let mut bad = value.clone();
+        bad["scorecard"][field] = json!(invalid);
+        assert!(
+            serde_json::from_value::<AIResult>(bad)
+                .unwrap()
+                .validate()
+                .is_err()
+        );
+    }
+}
 #[test]
 fn unknown_contract_fields_are_rejected() {
     let mut v = result();

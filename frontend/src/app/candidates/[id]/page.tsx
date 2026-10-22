@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { CoreHeader } from "@/components/layout/core-header";
@@ -8,6 +8,7 @@ import { CoreFooter } from "@/components/layout/core-footer";
 import { CandidateHeader } from "@/components/candidate/candidate-header";
 import { CandidateLeftPanel } from "@/components/candidate/candidate-left-panel";
 import { AIScorecardTab } from "@/components/candidate/ai-scorecard-tab";
+import { AIScreeningDecision } from "@/components/candidate/ai-screening-decision";
 import { ResumeTab } from "@/components/candidate/resume-tab";
 import { TimelineTab } from "@/components/candidate/timeline-tab";
 import { AuditTrailTab } from "@/components/candidate/audit-trail-tab";
@@ -24,7 +25,6 @@ import { Input } from "@/components/ui/input";
 import {
   ApiError,
   fetchCandidate,
-  fetchCandidateScorecard,
   updateCandidateStage,
   getErrorMessage,
   editCandidate,
@@ -67,6 +67,7 @@ export default function CandidateAssessmentPage() {
   const [activeTab, setActiveTab] = useState("ai-scorecard");
   const [activeCitation, setActiveCitation] = useState<CitationLocation | null>(null);
   const [splitView, setSplitView] = useState(false);
+  const applicationRequest = useRef(0);
 
   // Manual Profile Edit Dialog State
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -491,8 +492,10 @@ export default function CandidateAssessmentPage() {
                       onChange={async (e) => {
                         const app = candidate.applications?.find((a) => a.job_id === e.target.value);
                         if (!app) return;
+                        const requestVersion = ++applicationRequest.current;
                         try {
-                          const sc = await fetchCandidateScorecard(candidateId, app.job_id);
+                          const selected = await fetchCandidate(candidateId, !candidate.is_pii_masked, app.job_id);
+                          if (requestVersion !== applicationRequest.current) return;
                           setCandidate((prev) =>
                             prev
                               ? {
@@ -501,7 +504,7 @@ export default function CandidateAssessmentPage() {
                                   applied_for_job: app.job_title,
                                   stage: app.stage,
                                   status: app.stage,
-                                  scorecard: sc,
+                                  scorecard: selected.scorecard,
                                   interviews: app.interviews || [],
                                   offer: app.offer,
                                 }
@@ -509,7 +512,7 @@ export default function CandidateAssessmentPage() {
                           );
                           setActiveCitation(null);
                         } catch (err) {
-                          setError(getErrorMessage(err));
+                          if (requestVersion === applicationRequest.current) setError(getErrorMessage(err));
                         }
                       }}
                     >
@@ -527,6 +530,15 @@ export default function CandidateAssessmentPage() {
               <CandidateHeader
                 candidate={candidate}
                 onStageChange={handleStageChange}
+              />
+
+              <AIScreeningDecision
+                key={`${candidate.id}:${candidate.applied_for_job_id || "unassigned"}`}
+                candidate={candidate}
+                onScorecardUpdated={(scorecard) => setCandidate((current) =>
+                  current?.id === candidate.id && current.applied_for_job_id === candidate.applied_for_job_id
+                    ? { ...current, scorecard } : current
+                )}
               />
 
               {/* Split-View Mode */}

@@ -1,8 +1,8 @@
 import math
 from enum import Enum
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from ats_core.schema._normalization import normalization_input
 
@@ -11,6 +11,17 @@ class QualificationTier(str, Enum):
     STRONG_FIT = "Strong Fit"        # 80 - 100: Meets all hard criteria & core stack
     POTENTIAL_FIT = "Potential Fit"  # 60 - 79: Meets most criteria, slight skill/domain gaps
     LOW_MATCH = "Low Match"          # 0 - 59: Missing essential prerequisites or seniority
+
+
+class ScreeningDecision(str, Enum):
+    ACCEPT = "ACCEPT"
+    REJECT = "REJECT"
+    REVIEW = "REVIEW"
+
+
+DecisionExplanation = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)
+]
 
 
 class CriterionCategory(str, Enum):
@@ -154,6 +165,10 @@ class DeepCandidateEvaluationReport(BaseModel):
     """Structured master evaluation report produced by the LLM."""
     candidate_id: str = Field(default="", description="Identifier of the evaluated candidate.")
     job_title: str = Field(default="", description="Target role title.")
+    # Optional only for compatibility with historical/legacy evaluation reports.
+    # The active private worker schemas require both fields explicitly.
+    screening_decision: ScreeningDecision | None = None
+    decision_explanation: DecisionExplanation | None = None
     overall_match_score: float = Field(
         default=50.0,
         ge=0.0, le=100.0,

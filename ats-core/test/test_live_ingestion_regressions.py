@@ -13,6 +13,7 @@ from ats_core.llm.deadline import invoke_with_deadline
 
 def report(**changes):
     return {"overall_match_score": 40, "executive_verdict": "Insufficient backend evidence.",
+            "screening_decision": "REVIEW", "decision_explanation": "Python is listed, but backend experience is not evidenced in this resume.",
             "criteria_breakdown": [{"category": "Tech Stack Alignment", "score": 2,
                                     "assessment": "Python is listed."}], **changes}
 

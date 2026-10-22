@@ -86,6 +86,7 @@ def test_incomplete_evaluation_cannot_become_a_default_score():
         with pytest.raises(ValidationError):
             VerifiedReport.model_validate(report)
     report = VerifiedReport.model_validate({
+        "screening_decision": "REVIEW", "decision_explanation": "Python API experience is relevant, but other requirements need verification.",
         "overall_match_score": 65, "executive_verdict": "Some relevant API experience.",
         "criteria_breakdown": [{"category": "Tech Stack Alignment", "score": 3,
                                 "assessment": "Python API experience is stated."}],
@@ -152,6 +153,7 @@ def test_citations_crossing_privacy_markers_remain_grounded(marker):
     model = LocalDeepEvaluator(api_key="test-key", base_url="https://openrouter.ai/api/v1")
     model.chain = Mock()
     model.chain.invoke.return_value = VerifiedReport.model_validate({
+        "screening_decision": "ACCEPT", "decision_explanation": "Python and SQL evidence meets the stated requirements.",
         "overall_match_score": 75, "executive_verdict": "Relevant Python evidence.",
         "criteria_breakdown": [{"category": "Tech Stack Alignment", "score": 4,
             "assessment": "Python and SQL are demonstrated.", "verbatim_citation": quote}],
@@ -224,6 +226,7 @@ def test_added_skill_summary_cannot_become_a_verbatim_resume_quote():
     model = LocalDeepEvaluator(api_key="test-key", base_url="https://openrouter.ai/api/v1")
     model.chain = Mock()
     model.chain.invoke.return_value = VerifiedReport.model_validate({
+        "screening_decision": "REVIEW", "decision_explanation": "Python APIs are relevant; Docker requires verification in the original resume.",
         "overall_match_score": 75, "executive_verdict": "Relevant Python evidence.",
         "criteria_breakdown": [{"category": "Tech Stack Alignment", "score": 4,
             "assessment": "Python and Docker are extracted skills.",

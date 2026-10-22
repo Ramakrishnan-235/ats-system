@@ -84,6 +84,10 @@ Imported profiles are marked `LEGACY_REVIEW`. Historical scores/vectors/raw text
 
 ## Verification and operations
 
+Candidate review pages show a job-specific **AI screening decision** (`ACCEPT`, `REJECT`, or `REVIEW`) and the configured LLM's saved explanation, model name, and evaluation time. The model receives the job description, required skills, minimum experience, and sanitized resume evidence. Each rubric assessment is visible alongside its source quote. Decisions are model outputs, not labels calculated from match-score thresholds; recruiters record pipeline/hiring decisions separately.
+
+New uploads associated with a job include these fields automatically. For older active applications, open **Candidates → Review Evidence → Generate AI decision**. The button runs the existing durable evaluation workflow and reloads the saved scorecard for the selected job. Historical evaluations without reasons are identified explicitly. Failed model calls produce no acceptance/rejection; rejected/withdrawn applications retain their existing workflow restrictions.
+
 Verified locally on 2026-10-09:
 
 - 45 Python parser/privacy/private-contract checks, including an import boundary that blocks legacy business database adapters.

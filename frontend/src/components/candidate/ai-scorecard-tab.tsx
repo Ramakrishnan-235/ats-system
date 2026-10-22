@@ -140,6 +140,9 @@ export function AIScorecardTab({ candidate, onSelectCitation }: AIScorecardTabPr
               </div>
 
               {/* Verbatim quote or description with interactive highlighting */}
+              {cat.assessment && (
+                <p className="text-sm text-zinc-700 leading-relaxed">{cat.assessment}</p>
+              )}
               {cat.quote && (
                 <div className="bg-zinc-50/80 rounded-xl p-3.5 border border-zinc-200/80 space-y-2.5">
                   <p className="text-xs text-zinc-700 italic leading-relaxed font-normal">

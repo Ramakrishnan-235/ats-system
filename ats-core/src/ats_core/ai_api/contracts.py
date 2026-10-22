@@ -2,7 +2,9 @@ import math
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
+
+from ats_core.schema.evaluation import DecisionExplanation, ScreeningDecision
 
 
 class Dispatch(BaseModel):
@@ -49,6 +51,10 @@ class AIResult(BaseModel):
             raise ValueError("Incompatible embedding version")
         if self.evaluation_status == "COMPLETED":
             card = self.scorecard or {}
+            # New completed artifacts must carry an actual model decision and reason.
+            # Historical database scorecards are read without passing this write contract.
+            TypeAdapter(ScreeningDecision).validate_python(card.get("screening_decision"))
+            TypeAdapter(DecisionExplanation).validate_python(card.get("decision_explanation"))
             score = card.get("overall_match_score")
             if (
                 type(score) not in (int, float)

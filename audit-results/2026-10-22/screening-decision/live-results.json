@@ -1,0 +1,189 @@
+{
+  "job_id": "84c0ecae-8a2a-4ebb-8e4a-3caa93203bdb",
+  "cases": {
+    "backend": {
+      "upload": {
+        "applied_for_job_id": "84c0ecae-8a2a-4ebb-8e4a-3caa93203bdb",
+        "candidate_id": "76d50024-afdf-477a-bd3e-d7defa0ba104",
+        "evaluation_status": "PROCESSING",
+        "execution_mode": "durable_queue",
+        "filename": "synthetic-backend.pdf",
+        "job_id": "84c0ecae-8a2a-4ebb-8e4a-3caa93203bdb",
+        "match_score": null,
+        "message": "Resume stored and queued for processing.",
+        "status": "ACCEPTED",
+        "task_id": "05706cc7-8040-4fd6-8930-17c11cf352ea"
+      },
+      "task": {
+        "error": null,
+        "execution_mode": "durable_queue",
+        "processing_state": "SUCCEEDED",
+        "progress": 100,
+        "result": {
+          "candidate_id": "76d50024-afdf-477a-bd3e-d7defa0ba104",
+          "evaluation_status": "COMPLETED",
+          "match_score": 85.0,
+          "status": "COMPLETED",
+          "warnings": [
+            "LLM_EXTRACTION_FALLBACK"
+          ]
+        },
+        "state": "SUCCESS",
+        "step": "Completed",
+        "task_id": "05706cc7-8040-4fd6-8930-17c11cf352ea"
+      },
+      "candidate_id": "76d50024-afdf-477a-bd3e-d7defa0ba104",
+      "stage": "Recruiter Review",
+      "scorecard": {
+        "categories": [
+          {
+            "assessment": "Candidate explicitly lists and describes using Python, FastAPI, PostgreSQL, and Docker, matching all required skills.",
+            "max_score": 5,
+            "name": "Tech Stack Alignment",
+            "quote": "Designed and operated Python FastAPI REST APIs with  for a retail SaaS platform. Owned schema design, migrations, query tuning, API authentication and automated pytest tests. Designed a Docker-based service architecture with Redis queues and retry-safe background jobs.",
+            "score": 5
+          },
+          {
+            "assessment": "Six years of professional experience (2020-2026) exceeds the 3-year minimum and includes senior ownership activities such as leading design reviews and CI/CD releases.",
+            "max_score": 5,
+            "name": "Experience & Seniority Level",
+            "quote": null,
+            "score": 5
+          },
+          {
+            "assessment": "Candidate designed Docker-based service architecture with Redis queues, retry-safe background jobs, and observability, showing solid [REDACTED] systems depth.",
+            "max_score": 5,
+            "name": "Architecture & Systems Depth",
+            "quote": null,
+            "score": 4
+          },
+          {
+            "assessment": "Provides one clear metric (p95 API latency reduced from 800ms to 150ms) and describes production API releases, indicating measurable impact.",
+            "max_score": 5,
+            "name": "Quantified Impact & Scope",
+            "quote": "Optimized database queries and caching to reduce p95 API latency from 800ms to 150ms.",
+            "score": 4
+          },
+          {
+            "assessment": "Experience is in a retail SaaS platform, which is relevant but lacks specific domain depth beyond general SaaS [REDACTED] work.",
+            "max_score": 5,
+            "name": "Domain / Industry Knowledge",
+            "quote": "Designed and operated Python FastAPI REST APIs with  for a retail SaaS platform.",
+            "score": 3
+          }
+        ],
+        "decision_explanation": "The candidate demonstrates direct ownership of Python FastAPI REST APIs, PostgreSQL schema design, migrations, query tuning, and Docker-based service architecture, meeting all required skills. They report six years of relevant experience, exceeding the 3-year minimum, and provide a quantifiable latency improvement from 800ms to 150ms. Evidence supports proceeding to screening.",
+        "evaluated_at": "2026-10-22T17:45:17.032663+05:30",
+        "evaluation_status": "COMPLETED",
+        "executive_verdict": "Strong Fit: candidate meets all required skills and experience with measurable [REDACTED] impact.",
+        "match_tier": "Strong Fit",
+        "model_version": "nvidia/nemotron-3.5-super-vl:free",
+        "overall_match_score": 85.0,
+        "risk_flags": [],
+        "screening_decision": "ACCEPT",
+        "suggested_improvements": [],
+        "suggested_questions": [],
+        "team_notes": []
+      }
+    },
+    "retail": {
+      "upload": {
+        "applied_for_job_id": "84c0ecae-8a2a-4ebb-8e4a-3caa93203bdb",
+        "candidate_id": "5f675519-ff40-499b-8bda-fb6224ecc323",
+        "evaluation_status": "PROCESSING",
+        "execution_mode": "durable_queue",
+        "filename": "synthetic-retail.pdf",
+        "job_id": "84c0ecae-8a2a-4ebb-8e4a-3caa93203bdb",
+        "match_score": null,
+        "message": "Resume stored and queued for processing.",
+        "status": "ACCEPTED",
+        "task_id": "c977e520-b5d9-4020-9c78-12cc05799fab"
+      },
+      "task": {
+        "error": null,
+        "execution_mode": "durable_queue",
+        "processing_state": "SUCCEEDED",
+        "progress": 100,
+        "result": {
+          "candidate_id": "5f675519-ff40-499b-8bda-fb6224ecc323",
+          "evaluation_status": "COMPLETED",
+          "match_score": 10.0,
+          "status": "COMPLETED",
+          "warnings": []
+        },
+        "state": "SUCCESS",
+        "step": "Completed",
+        "task_id": "c977e520-b5d9-4020-9c78-12cc05799fab"
+      },
+      "candidate_id": "5f675519-ff40-499b-8bda-fb6224ecc323",
+      "stage": "Recruiter Review",
+      "scorecard": {
+        "categories": [
+          {
+            "assessment": "Candidate has no experience with Python, FastAPI, PostgreSQL, or Docker.",
+            "max_score": 5,
+            "name": "Tech Stack Alignment",
+            "quote": "I have never built software applications, APIs, databases, or deployment systems.",
+            "score": 1
+          },
+          {
+            "assessment": "Candidate has six years of sales experience but zero years of backend or software development experience.",
+            "max_score": 5,
+            "name": "Experience & Seniority Level",
+            "quote": "My professional work is sales; I have no programming or software development experience.",
+            "score": 1
+          },
+          {
+            "assessment": "No evidence of API design, database management, or deployment system ownership.",
+            "max_score": 5,
+            "name": "Architecture & Systems Depth",
+            "quote": "I have never built software applications, APIs, databases, or deployment systems.",
+            "score": 1
+          },
+          {
+            "assessment": "Quantified impact is limited to [REDACTED] sales metrics, not backend service improvements.",
+            "max_score": 5,
+            "name": "Quantified Impact & Scope",
+            "quote": "Increased store accessory sales by 12 percent through product demonstrations.",
+            "score": 1
+          },
+          {
+            "assessment": "Candidate's domain is [REDACTED] sales, not backend engineering or LLM [REDACTED] explanation systems.",
+            "max_score": 5,
+            "name": "Domain / Industry Knowledge",
+            "quote": "Processed in-store sales, arranged stock displays, and assisted customers with purchases.",
+            "score": 1
+          }
+        ],
+        "decision_explanation": "The candidate explicitly states they have no programming or software development experience and have never built software applications, APIs, databases, or deployment systems. The job requires Python, FastAPI, PostgreSQL, and Docker with at least 3 years of relevant backend experience, none of which is demonstrated. The candidate's six years of sales experience is unrelated to the required technical role.",
+        "evaluated_at": "2026-10-22T17:44:47.816086+05:30",
+        "evaluation_status": "COMPLETED",
+        "executive_verdict": "Clear mismatch: candidate lacks all required technical skills and explicitly disclaims any software development experience.",
+        "match_tier": "Low Match",
+        "model_version": "nvidia/nemotron-3.5-super-vl:free",
+        "overall_match_score": 10.0,
+        "risk_flags": [],
+        "screening_decision": "REJECT",
+        "suggested_improvements": [],
+        "suggested_questions": [],
+        "team_notes": []
+      }
+    }
+  },
+  "synthetic_only": true,
+  "verified": true,
+  "reevaluation_checks": [
+    {
+      "previous_decision_preserved": true,
+      "state": "FAILED",
+      "task_id": "29442716-c7d0-499d-aca8-4eac76407f79",
+      "provider_http_status": 502
+    },
+    {
+      "previous_decision_preserved": true,
+      "state": "FAILED",
+      "task_id": "a82fc61f-a157-47a5-a792-ce202b6f2fff",
+      "provider_http_status": 502
+    }
+  ]
+}
