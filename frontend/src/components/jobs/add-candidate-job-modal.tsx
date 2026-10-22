@@ -10,7 +10,9 @@ import {
   getErrorMessage,
   type UploadResponse,
   type UploadTask,
+  type ProcessingStage,
 } from "@/lib/api";
+import { UploadOperationList, operationSnapshot } from "./upload-operation-list";
 import { completedProfile, monitorIngestion, resumeHash } from "@/lib/ingestion";
 import type { CandidateDetail, NewCandidatePayload } from "@/types/ats";
 
@@ -30,9 +32,9 @@ interface AddCandidateJobModalProps {
 interface CompletedData {
   name: string;
   headline: string;
-  score: number;
+  score: number | null;
   tier: string;
-  experienceYears: number | string;
+  experienceYears: number | null;
   citation: string;
   matchedSkills: string[];
   otherSkills: string[];
@@ -41,9 +43,23 @@ interface CompletedData {
 
 export function AddCandidateJobModal(props: AddCandidateJobModalProps) {
   const [minimized, setMinimized] = useState(false);
-  const [trayProgress, setTrayProgress] = useState(10);
-  const [trayStep, setTrayStep] = useState("Processing resume…");
   const [trayTitle, setTrayTitle] = useState("Processing candidate…");
+  const [backgroundUpload, setBackgroundUpload] = useState<UploadResponse | null>(null);
+  const [backgroundTask, setBackgroundTask] = useState<UploadTask | null>(null);
+  const [backgroundUploadStage, setBackgroundUploadStage] = useState<ProcessingStage | null>(null);
+  const [trayError, setTrayError] = useState<string | null>(null);
+  const tray = operationSnapshot(backgroundTask, backgroundUploadStage);
+
+  useEffect(() => {
+    if (!minimized || !backgroundUpload) return;
+    const pending = new AbortController();
+    void monitorIngestion(backgroundUpload.task_id, pending.signal, task => {
+      if (!pending.signal.aborted) setBackgroundTask(task);
+    }).catch(reason => {
+      if (!pending.signal.aborted) setTrayError(getErrorMessage(reason));
+    });
+    return () => pending.abort();
+  }, [minimized, backgroundUpload]);
 
   // Reset minimized state when dialog opens normally
   const [prevOpen, setPrevOpen] = useState(props.open);
@@ -54,10 +70,12 @@ export function AddCandidateJobModal(props: AddCandidateJobModalProps) {
     }
   }
 
-  const handleMinimize = (title: string, progress: number, step: string) => {
+  const handleMinimize = (title: string, upload: UploadResponse, task: UploadTask | null, uploadStage: ProcessingStage | null) => {
     setTrayTitle(title);
-    setTrayProgress(progress);
-    setTrayStep(step);
+    setBackgroundUpload(upload);
+    setBackgroundTask(task);
+    setBackgroundUploadStage(uploadStage);
+    setTrayError(null);
     setMinimized(true);
     props.onOpenChange(false);
   };
@@ -72,7 +90,7 @@ export function AddCandidateJobModal(props: AddCandidateJobModalProps) {
       <Dialog
         open={props.open}
         onOpenChange={(nextOpen) => {
-          if (!nextOpen) setMinimized(false);
+          if (!nextOpen) { setMinimized(false); setBackgroundUpload(null); }
           props.onOpenChange(nextOpen);
         }}
       >
@@ -109,6 +127,9 @@ export function AddCandidateJobModal(props: AddCandidateJobModalProps) {
               <CandidatePicker
                 {...props}
                 onMinimize={handleMinimize}
+                resumeUpload={backgroundUpload}
+                resumeUploadStage={backgroundUploadStage}
+                onResetFlow={() => setBackgroundUpload(null)}
               />
             )}
           </div>
@@ -132,7 +153,7 @@ export function AddCandidateJobModal(props: AddCandidateJobModalProps) {
               <div className="min-w-0">
                 <p className="text-xs font-semibold truncate">{trayTitle}</p>
                 <p className="text-[11px] text-zinc-400 truncate">
-                  {trayStep} · {trayProgress}%
+                  {trayError || tray.title}
                 </p>
               </div>
             </div>
@@ -147,7 +168,7 @@ export function AddCandidateJobModal(props: AddCandidateJobModalProps) {
           <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden mt-2.5">
             <div
               className="h-full shimmer-bar rounded-full transition-all duration-300"
-              style={{ width: `${trayProgress}%` }}
+              style={{ width: `${tray.finished / tray.total * 100}%` }}
             />
           </div>
         </div>
@@ -171,39 +192,11 @@ function cleanNameFromFilename(filename: string): string {
     .join(" ");
 }
 
-const PIPELINE_STAGES = [
-  {
-    id: "hash",
-    title: "1. SHA-256 Integrity & Idempotency Lock",
-    detail: "Validating %PDF-1.7 signature, computing SHA-256 fingerprint, and obtaining leased task",
-    threshold: 18,
-    durationLabel: "0.3s",
-  },
-  {
-    id: "layout",
-    title: "2. Layout Parsing & Presidio PII Redaction",
-    detail: "Extracting multi-column layout via Docling/PyMuPDF and scrubbing personal contact tokens",
-    threshold: 45,
-    durationLabel: "1.1s",
-  },
-  {
-    id: "embed",
-    title: "3. EmbeddingGemma 2 (768-d) Skill Normalization",
-    detail: "Encoding contextual query vectors and mapping canonical skills in taxonomy matrix",
-    threshold: 75,
-    durationLabel: "0.9s",
-  },
-  {
-    id: "llm",
-    title: "4. Deep LLM Rubric Evaluation & Citation Grounding",
-    detail: "Scoring against job requisition rubric and verifying resume citation quotes",
-    threshold: 98,
-    durationLabel: "2.1s",
-  },
-];
-
 interface CandidatePickerProps extends AddCandidateJobModalProps {
-  onMinimize: (title: string, progress: number, step: string) => void;
+  onMinimize: (title: string, upload: UploadResponse, task: UploadTask | null, uploadStage: ProcessingStage | null) => void;
+  resumeUpload: UploadResponse | null;
+  resumeUploadStage: ProcessingStage | null;
+  onResetFlow: () => void;
 }
 
 function CandidatePicker({
@@ -215,14 +208,17 @@ function CandidatePicker({
   onCandidatesChanged,
   onOpenChange,
   onMinimize,
+  resumeUpload,
+  resumeUploadStage,
+  onResetFlow,
 }: CandidatePickerProps) {
   const [pool, setPool] = useState<CandidateDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [poolError, setPoolError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(Boolean(resumeUpload));
   const [tab, setTab] = useState<"new" | "existing">("new");
-  const [viewState, setViewState] = useState<"form" | "processing" | "complete">("form");
+  const [viewState, setViewState] = useState<"form" | "processing" | "complete">(resumeUpload ? "processing" : "form");
 
   const [search, setSearch] = useState("");
   const [name, setName] = useState("");
@@ -231,10 +227,12 @@ function CandidatePicker({
   const [file, setFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
 
-  const [accepted, setAccepted] = useState<UploadResponse | null>(null);
-  const [progressText, setProgressText] = useState("Initializing extraction pipeline…");
-  const [progressPercent, setProgressPercent] = useState(10);
-  const [taskFailed, setTaskFailed] = useState(false);
+  const [accepted, setAccepted] = useState<UploadResponse | null>(resumeUpload);
+  const [liveTask, setLiveTask] = useState<UploadTask | null>(null);
+  const [uploadStage, setUploadStage] = useState<ProcessingStage | null>(resumeUploadStage);
+  const liveProgress = operationSnapshot(liveTask, uploadStage);
+  const progressText = liveProgress.title;
+  const progressPercent = liveProgress.finished / liveProgress.total * 100;
   const [completedData, setCompletedData] = useState<CompletedData | null>(null);
 
   const controller = useRef<AbortController | null>(null);
@@ -318,29 +316,27 @@ function CandidatePicker({
 
   const finished = async (task: UploadTask, signal: AbortSignal) => {
     if (task.state === "FAILURE") {
-      setTaskFailed(true);
       throw new Error(
         task.error || "Resume processing failed. The candidate may still appear in the job for review."
       );
     }
     if (task.state !== "SUCCESS") return;
 
-    setProgressPercent(100);
     const candidate = await completedProfile(task);
     if (signal.aborted) return;
     await onCandidatesChanged(candidate.id);
     if (signal.aborted) return;
 
-    const rawScore =
+    const rawScore = task.result?.evaluation_status === "FAILED" || task.result?.evaluation_status === "SKIPPED" ? null :
       typeof task.result?.match_score === "number"
         ? task.result.match_score
         : typeof candidate.scorecard?.overall_match_score === "number"
         ? candidate.scorecard.overall_match_score
-        : 88;
+        : null;
 
     const tier =
       candidate.scorecard?.match_tier ||
-      (rawScore >= 80 ? "Strong Fit" : rawScore >= 60 ? "Moderate Fit" : "Screening Fit");
+      "Not evaluated";
 
     const candSkills = candidate.core_skills || [];
     const matched = candSkills.filter((s) =>
@@ -351,24 +347,44 @@ function CandidatePicker({
     );
 
     const firstCitation =
-      candidate.scorecard?.categories?.[0]?.quote ||
-      candidate.experience?.[0]?.description ||
-      `Demonstrated verifiable production experience matching requisition criteria for ${jobTitle}.`;
+      candidate.scorecard?.categories?.find(category => category.quote)?.quote || "";
 
     setCompletedData({
       name: candidate.name || name || "Candidate",
       headline: candidate.target_headline || headline || jobTitle,
-      score: Math.round(rawScore),
+      score: rawScore === null ? null : Math.round(rawScore),
       tier,
-      experienceYears: candidate.years_of_experience || "4.5",
+      experienceYears: candidate.years_of_experience ?? null,
       citation: firstCitation,
-      matchedSkills: matched.length > 0 ? matched : candSkills.slice(0, 4),
+      matchedSkills: matched,
       otherSkills: others.slice(0, 3),
       candidateId: candidate.id,
     });
 
     setViewState("complete");
   };
+
+  const finishRef = useRef(finished);
+  useEffect(() => { finishRef.current = finished; });
+  useEffect(() => {
+    if (!resumeUpload) return;
+    const pending = new AbortController();
+    controller.current = pending;
+    void monitorIngestion(resumeUpload.task_id, pending.signal, async task => {
+      if (pending.signal.aborted) return;
+      setLiveTask(task);
+      if (task.state === "SUCCESS") {
+        await finishRef.current(task, pending.signal);
+        if (!pending.signal.aborted) setBusy(false);
+      } else if (task.state === "FAILURE") {
+        setBusy(false);
+        setError(task.error || "Resume processing failed. Review the candidate record.");
+      }
+    }).catch(reason => {
+      if (!pending.signal.aborted) { setBusy(false); setError(getErrorMessage(reason)); }
+    });
+    return () => pending.abort();
+  }, [resumeUpload]);
 
   const upload = async (event: FormEvent) => {
     event.preventDefault();
@@ -378,17 +394,15 @@ function CandidatePicker({
     controller.current = pending;
     setBusy(true);
     setError(null);
-    setTaskFailed(false);
     setViewState("processing");
-    setProgressPercent(12);
-    setProgressText("Validating PDF structure & SHA-256 fingerprint…");
+    setLiveTask(null);
+    const startedAt = new Date().toISOString();
+    let queued = false;
+    setUploadStage({ status: "RUNNING", started_at: startedAt, finished_at: null });
 
     try {
       await resumeHash(file);
       if (pending.signal.aborted) return;
-
-      setProgressPercent(25);
-      setProgressText("Uploading resume to private document storage…");
 
       const result = await uploadAndWait(file, jobId, {
         signal: pending.signal,
@@ -401,20 +415,14 @@ function CandidatePicker({
         onAccepted: async (response) => {
           if (pending.signal.aborted) return;
           setAccepted(response);
-          setProgressPercent(40);
-          setProgressText("Processing PDF layout & Presidio PII de-identification…");
+          queued = true;
+          setUploadStage({ status: "COMPLETED", started_at: startedAt, finished_at: new Date().toISOString() });
+          setLiveTask({ task_id: response.task_id, state: "PENDING" });
           await onCandidatesChanged(response.candidate_id);
         },
         onProgress: (task) => {
           if (pending.signal.aborted) return;
-          const p =
-            typeof task.progress === "number" && task.progress > 0
-              ? task.progress
-              : task.state === "RUNNING"
-              ? 60
-              : 35;
-          setProgressPercent(Math.min(96, Math.max(25, p)));
-          setProgressText(task.step || "EmbeddingGemma 2 skill normalization & LLM evaluation…");
+          setLiveTask(task);
         },
       });
 
@@ -424,7 +432,8 @@ function CandidatePicker({
     } catch (reason) {
       if (!pending.signal.aborted) {
         setError(getErrorMessage(reason));
-        setViewState("form");
+        if (!queued) setUploadStage({ status: "FAILED", started_at: startedAt, finished_at: new Date().toISOString() });
+        setViewState(queued ? "processing" : "form");
       }
     } finally {
       if (controller.current === pending) {
@@ -443,6 +452,9 @@ function CandidatePicker({
     setAccepted(null);
     setError(null);
     setCompletedData(null);
+    setLiveTask(null);
+    setUploadStage(null);
+    onResetFlow();
   };
 
   return (
@@ -828,16 +840,17 @@ function CandidatePicker({
                     <div className="flex items-center justify-between gap-2">
                       <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-indigo-300">
                         <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping" />
-                        Durable Queue Active
+                        Live processing updates
                       </span>
                       <span className="text-lg font-extrabold font-mono-code text-white">
-                        {progressPercent}%
+                        {liveProgress.finished}/{liveProgress.total} steps
                       </span>
                     </div>
                     <h3 className="text-sm sm:text-base font-bold truncate mt-0.5">
-                      {name || "Candidate"} · {file?.name || "resume.pdf"}
+                      {name || "Candidate"} · {file?.name || accepted?.filename || "resume.pdf"}
                     </h3>
                     <p className="text-xs text-zinc-300 truncate mt-0.5">{progressText}</p>
+                    {liveTask?.stages?.llm_evaluation?.status === "RUNNING" && <p className="text-[11px] text-zinc-400 mt-1">Waiting for the model response. Completion time is not yet known.</p>}
 
                     <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden mt-3">
                       <div
@@ -848,112 +861,31 @@ function CandidatePicker({
                   </div>
                 </div>
 
-                {/* 4-Stage Stepper Checklist */}
-                <div className="space-y-2.5">
-                  {PIPELINE_STAGES.map((stage, idx) => {
-                    const prevThreshold = idx === 0 ? 0 : PIPELINE_STAGES[idx - 1].threshold;
-                    const isDone = progressPercent >= stage.threshold;
-                    const isCurrent = !isDone && progressPercent >= prevThreshold;
-
-                    let rowStyle = "border-zinc-200/80 bg-zinc-50/60 text-zinc-400";
-                    let iconHtml = (
-                      <div className="w-6 h-6 rounded-full border-2 border-zinc-300 bg-white text-zinc-400 flex items-center justify-center shrink-0 text-[10px] font-bold">
-                        {idx + 1}
-                      </div>
-                    );
-
-                    if (isDone) {
-                      rowStyle = "border-emerald-200 bg-emerald-50/50 text-zinc-900";
-                      iconHtml = (
-                        <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                          <svg
-                            className="w-3.5 h-3.5"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            viewBox="0 0 24 24"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
-                        </div>
-                      );
-                    } else if (isCurrent) {
-                      rowStyle = "border-indigo-300 bg-indigo-50/60 text-zinc-900 shadow-2xs";
-                      iconHtml = (
-                        <div className="relative w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center shrink-0 pulse-ring">
-                          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle
-                              className="opacity-30"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="3"
-                            />
-                            <path
-                              className="opacity-95"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"
-                            />
-                          </svg>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div
-                        key={stage.id}
-                        className={`flex items-start justify-between gap-3 p-3 rounded-xl border transition-all duration-300 ${rowStyle}`}
-                      >
-                        <div className="flex items-start gap-3 min-w-0">
-                          {iconHtml}
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold leading-snug">{stage.title}</p>
-                            <p
-                              className={`text-[11px] ${
-                                isDone || isCurrent ? "text-zinc-600" : "text-zinc-400"
-                              } mt-0.5`}
-                            >
-                              {stage.detail}
-                            </p>
-                          </div>
-                        </div>
-                        <span
-                          className={`text-[11px] font-mono-code shrink-0 ${
-                            isDone
-                              ? "text-emerald-700 font-semibold"
-                              : isCurrent
-                              ? "text-indigo-600 font-semibold"
-                              : "text-zinc-400"
-                          }`}
-                        >
-                          {isDone ? stage.durationLabel : isCurrent ? "Running…" : "Queued"}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+                <UploadOperationList task={liveTask} upload={uploadStage} />
 
                 {/* Stepper Footer Controls */}
                 <div className="pt-3 border-t border-zinc-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-xs text-zinc-500">
                     <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
                     <span>
-                      Server leased task{" "}
+                      {accepted ? "Saved task " : "Uploading resume "}
                       <code className="font-mono-code text-zinc-700">
                         #{accepted?.task_id ? accepted.task_id.slice(0, 8) : "async"}
                       </code>
-                      . Safe to minimize.
+                      {accepted ? ". Processing continues if minimized." : ""}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 self-end sm:self-auto">
                     <button
                       type="button"
+                      disabled={!accepted}
                       onClick={() => {
+                        if (!accepted) return;
                         onMinimize(
                           `Scoring ${name || "Candidate"}…`,
-                          progressPercent,
-                          progressText
+                          accepted,
+                          liveTask,
+                          uploadStage,
                         );
                       }}
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold transition"
@@ -991,13 +923,13 @@ function CandidatePicker({
                         fill="none"
                         strokeLinecap="round"
                         strokeDasharray="213.6"
-                        strokeDashoffset={213.6 - (213.6 * completedData.score) / 100}
+                        strokeDashoffset={213.6 - (213.6 * (completedData.score ?? 0)) / 100}
                         className="transition-all duration-700"
                       />
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
                       <span className="text-xl font-extrabold text-emerald-950 leading-none">
-                        {completedData.score}%
+                        {completedData.score === null ? "—" : `${completedData.score}%`}
                       </span>
                       <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-700 mt-0.5">
                         Match
@@ -1008,18 +940,18 @@ function CandidatePicker({
                   <div className="flex-1 text-center sm:text-left">
                     <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
                       <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-600 text-white">
-                        {completedData.tier} · Ranked
+                        {completedData.score === null ? "Resume saved · AI score unavailable" : `${completedData.tier} · Evaluated`}
                       </span>
                       <span className="text-xs font-medium text-emerald-900">
-                        {completedData.experienceYears} Years Verified Experience
+                        {completedData.experienceYears === null ? "Experience not extracted" : `${completedData.experienceYears} years recorded experience`}
                       </span>
                     </div>
                     <h3 className="text-base font-bold text-zinc-900 mt-1">
                       {completedData.name} — {completedData.headline}
                     </h3>
-                    <p className="text-xs text-zinc-600 mt-1 leading-relaxed">
+                    {completedData.citation && <p className="text-xs text-zinc-600 mt-1 leading-relaxed">
                       Grounded citation: <em>&ldquo;{completedData.citation}&rdquo;</em>
-                    </p>
+                    </p>}
                   </div>
                 </div>
 
@@ -1027,7 +959,7 @@ function CandidatePicker({
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                      Extracted &amp; Normalized Skills (EmbeddingGemma 2)
+                      Extracted skills
                     </span>
                     <span className="text-xs font-semibold text-emerald-700">
                       {completedData.matchedSkills.length} Required Skills Matched
@@ -1039,7 +971,7 @@ function CandidatePicker({
                         key={sk}
                         className="skill-pill-anim inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200"
                       >
-                        ✓ {sk} <span className="text-[10px] font-normal text-emerald-600">(Impact · 1.8x)</span>
+                        ✓ {sk}
                       </span>
                     ))}
                     {completedData.otherSkills.map((sk) => (
@@ -1054,6 +986,10 @@ function CandidatePicker({
                 </div>
 
                 {/* Actions */}
+                <details className="rounded-xl border border-zinc-200 p-3">
+                  <summary className="cursor-pointer text-xs font-semibold text-zinc-700">View processing operations &amp; timings</summary>
+                  <div className="mt-3"><UploadOperationList task={liveTask} upload={uploadStage} /></div>
+                </details>
                 <div className="pt-3 border-t border-zinc-100 flex flex-wrap items-center justify-between gap-2">
                   <button
                     type="button"
@@ -1067,7 +1003,7 @@ function CandidatePicker({
                     onClick={() => onOpenChange(false)}
                     className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs sm:text-sm font-semibold shadow-sm transition"
                   >
-                    Done · View in Ranked Pipeline
+                    Done · View job pipeline
                   </button>
                 </div>
               </div>

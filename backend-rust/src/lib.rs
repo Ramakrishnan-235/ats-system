@@ -6,6 +6,7 @@ pub mod jobs;
 pub mod migration;
 pub mod openapi;
 pub mod platform;
+pub mod progress;
 
 use axum::{
     Json,

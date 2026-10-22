@@ -232,7 +232,7 @@ pub async fn task_status(
     };
     let result: Option<Value> = row.get("result");
     Ok(Json(
-        json!({"task_id":id,"state":public,"processing_state":status,"execution_mode":"durable_queue","progress":row.get::<i32,_>("progress"),"step":row.get::<String,_>("step"),"error":row.get::<Option<String>,_>("error_code"),"result":result}),
+        json!({"task_id":id,"state":public,"processing_state":status,"execution_mode":"durable_queue","progress":row.get::<i32,_>("progress"),"step":row.get::<String,_>("step"),"stages":row.get::<Value,_>("progress_stages"),"attempt":row.get::<i32,_>("attempts"),"server_time":chrono::Utc::now(),"error":row.get::<Option<String>,_>("error_code"),"result":result}),
     ))
 }
 pub async fn resume(
@@ -302,7 +302,7 @@ pub async fn lease(State(state): State<AppState>, Path(id): Path<Uuid>) -> Resul
         return Err(ApiError(StatusCode::CONFLICT, "Retry limit reached."));
     }
     let attempt = Uuid::new_v4();
-    sqlx::query("UPDATE ats_v2.processing_jobs SET state='RUNNING',attempt_id=$2,attempts=attempts+1,lease_until=now()+make_interval(secs=>$3),updated_at=now(),progress=10,step='Parsing' WHERE id=$1").bind(id).bind(attempt).bind(state.config.lease_seconds as f64).execute(&mut *tx).await?;
+    sqlx::query("UPDATE ats_v2.processing_jobs SET state='RUNNING',attempt_id=$2,attempts=attempts+1,lease_until=now()+make_interval(secs=>$3),updated_at=now(),progress=0,step='Starting worker',progress_stages='{}'::jsonb WHERE id=$1").bind(id).bind(attempt).bind(state.config.lease_seconds as f64).execute(&mut *tx).await?;
     let document = sqlx::query("SELECT * FROM ats_v2.documents WHERE id=$1 AND tenant_id=$2")
         .bind(row.get::<Uuid, _>("document_id"))
         .bind(tenant)
@@ -627,7 +627,9 @@ pub async fn result(
         &input.evaluation_status
     };
     let summary = json!({"status":if failed{"FAILED"}else{"COMPLETED"},"candidate_id":candidate,"evaluation_status":eval_status,"match_score":score,"warnings":input.warnings});
-    sqlx::query("UPDATE ats_v2.processing_jobs SET state=$2,result_hash=$3,result=$4,error_code=$5,progress=100,step='Completed',lease_until=NULL,updated_at=now() WHERE id=$1").bind(id).bind(if failed{"FAILED"}else{"SUCCEEDED"}).bind(fingerprint).bind(summary).bind(input.error_code).execute(&mut *tx).await?;
+    let mut stages: Value = row.get("progress_stages");
+    crate::progress::finish(&mut stages, chrono::Utc::now());
+    sqlx::query("UPDATE ats_v2.processing_jobs SET state=$2,result_hash=$3,result=$4,error_code=$5,progress=100,step=$7,progress_stages=$6,lease_until=NULL,updated_at=now() WHERE id=$1").bind(id).bind(if failed{"FAILED"}else{"SUCCEEDED"}).bind(fingerprint).bind(summary).bind(input.error_code).bind(stages).bind(if failed{"Processing failed"}else{"Completed"}).execute(&mut *tx).await?;
     sqlx::query("INSERT INTO ats_v2.audit_events(id,tenant_id,actor_role,action,resource_type,resource_id) VALUES($1,$2,'service','APPLY_AI_RESULT','processing_job',$3)").bind(Uuid::new_v4()).bind(tenant).bind(id.to_string()).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(Json(json!({"status":"acknowledged","duplicate":false})))

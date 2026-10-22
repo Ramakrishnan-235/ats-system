@@ -289,11 +289,13 @@ def test_worker_only_saves_through_core_and_persists_artifact_first(monkeypatch)
         "core_client",
         lambda: httpx.Client(base_url="http://core", transport=httpx.MockTransport(respond)),
     )
-    monkeypatch.setattr(worker, "compute_result", lambda payload, document: outcome)
+    monkeypatch.setattr(worker, "compute_result", lambda payload, document, on_progress=None: outcome)
     assert worker.run_job(job)["status"] == "acknowledged"
     assert requests == [
         f"/internal/jobs/{job}/lease",
+        f"/internal/jobs/{job}/progress",
         f"/internal/jobs/{job}/document",
+        f"/internal/jobs/{job}/progress",
         f"/internal/jobs/{job}/artifact",
         f"/internal/jobs/{job}/result",
     ]
@@ -330,7 +332,7 @@ def test_extraction_failures_return_safe_errors(monkeypatch):
                     "operation": "evaluate",
                 },
             )
-        responses.append(request.content)
+        responses.append((request.url.path, request.content))
         return httpx.Response(200, json={"status": "acknowledged"})
 
     monkeypatch.setattr(
@@ -339,14 +341,15 @@ def test_extraction_failures_return_safe_errors(monkeypatch):
         lambda: httpx.Client(base_url="http://core", transport=httpx.MockTransport(respond)),
     )
 
-    def fail(*_):
+    def fail(*_, **kwargs):
         raise ValueError("private resume john@example.test")
 
     monkeypatch.setattr(worker, "compute_result", fail)
     worker.run_job(str(uuid4()))
     assert all(
-        b"john@example.test" not in body and b"PROCESSING_FAILED" in body for body in responses
+        b"john@example.test" not in body for _, body in responses
     )
+    assert all(b"PROCESSING_FAILED" in body for path, body in responses if not path.endswith("/progress"))
 
 
 def test_job_taxonomy_snapshot_never_uses_global_catalog(monkeypatch):

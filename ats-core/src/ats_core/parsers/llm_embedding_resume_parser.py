@@ -461,15 +461,18 @@ def parse_resume_with_llm_and_embeddings(
     *,
     taxonomy_rows: list[dict[str, Any]] | None = None,
     allow_llm: bool = True,
+    on_progress=None,
     **kwargs: Any,
 ) -> dict[str, Any]:
     """
     Pure LLM + EmbeddingGemma 2 replacement for `parse_resume_to_candidate()`.
     Returns the exact dictionary contract expected by `ai_api/worker.py` and `backend-rust`.
     """
+    emit = on_progress or (lambda stage, status, detail=None: None)
     if not allow_llm:
+        emit("pdf_parsing", "RUNNING", "LOCAL_EXTRACTION")
         from ats_core.parsers.resume_parser import parse_resume_to_candidate as legacy_parse
-        return legacy_parse(
+        profile = legacy_parse(
             file_bytes,
             filename=filename,
             target_job=target_job,
@@ -477,13 +480,20 @@ def parse_resume_with_llm_and_embeddings(
             allow_llm=False,
             **kwargs,
         )
+        emit("pdf_parsing", "COMPLETED")
+        for stage in ("pii_redaction", "profile_extraction", "skill_normalization"):
+            emit(stage, "SKIPPED", "LLM_DISABLED")
+        return profile
 
     # 1. Extract layout-aware Markdown from PDF (PyMuPDF + Docling)
+    emit("pdf_parsing", "RUNNING")
     raw_text, engine_used = _pdf_parser.parse_pdf(file_bytes, filename=filename)
     if not raw_text or len(raw_text.strip()) < 10:
         raise ValueError("DOCUMENT_TEXT_EMPTY")
+    emit("pdf_parsing", "COMPLETED")
 
     # 2. Sanitize against Unicode/XML prompt injection before calling LLM
+    emit("pii_redaction", "RUNNING")
     normalized_text = unicodedata.normalize("NFKC", raw_text)
     safe_markdown = sanitize_prompt_text(normalized_text)
 
@@ -496,8 +506,10 @@ def parse_resume_with_llm_and_embeddings(
     safe_markdown = get_shared_anonymizer().anonymize(
         safe_markdown, known_entities=contact.model_dump(),
     )
+    emit("pii_redaction", "COMPLETED")
 
     # 3. Execute single-pass structured LLM extraction
+    emit("profile_extraction", "RUNNING")
     chat_model = get_openrouter_chat_model(
         temperature=0.0,
         request_timeout=float(os.getenv("ATS_EXTRACTION_TIMEOUT", "60")),
@@ -520,6 +532,7 @@ def parse_resume_with_llm_and_embeddings(
         if not isinstance(extracted, FullLLMResumeExtraction):
             raise ValueError("Extraction did not return a structured profile")
         extracted.contact = contact
+        emit("profile_extraction", "COMPLETED")
     except Exception as llm_err:
         logger.warning(
             "LLM extraction failed (%s); using local deterministic parser",
@@ -527,6 +540,7 @@ def parse_resume_with_llm_and_embeddings(
         )
         from ats_core.parsers.resume_parser import parse_resume_to_candidate as legacy_parse
 
+        emit("profile_extraction", "RUNNING", "LOCAL_EXTRACTION")
         fallback = legacy_parse(
             file_bytes,
             filename=filename,
@@ -537,9 +551,12 @@ def parse_resume_with_llm_and_embeddings(
             **kwargs,
         )
         fallback["extraction_warnings"] = ["LLM_EXTRACTION_FALLBACK"]
+        emit("profile_extraction", "FALLBACK", "LOCAL_EXTRACTION")
+        emit("skill_normalization", "SKIPPED", "LOCAL_EXTRACTION")
         return fallback
 
     # 4. Normalize and ground skills using EmbeddingGemma 2 (768-d cosine similarity)
+    emit("skill_normalization", "RUNNING")
     normalizer = (
         EmbeddingGemmaSkillNormalizer(taxonomy_rows=taxonomy_rows)
         if taxonomy_rows is not None
@@ -548,6 +565,7 @@ def parse_resume_with_llm_and_embeddings(
     canonical_skills, enriched_skills = normalizer.normalize_extracted_skills(
         extracted.skills, raw_text
     )
+    emit("skill_normalization", "COMPLETED")
 
     # 5. Format experience entries and compute overlap-merged tenure
     experience_items: list[dict[str, Any]] = []

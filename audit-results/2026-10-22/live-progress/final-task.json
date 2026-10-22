@@ -1,0 +1,74 @@
+{
+  "attempt": 1,
+  "error": null,
+  "execution_mode": "durable_queue",
+  "processing_state": "SUCCEEDED",
+  "progress": 100,
+  "result": {
+    "candidate_id": "202c9610-9ce6-4968-bb77-84482dbd7e7d",
+    "evaluation_status": "COMPLETED",
+    "match_score": 85.0,
+    "status": "COMPLETED",
+    "warnings": []
+  },
+  "server_time": "2026-10-22T13:35:12.351097573Z",
+  "stages": {
+    "document_embedding": {
+      "detail": null,
+      "finished_at": "2026-10-22T13:34:39.942983795Z",
+      "started_at": "2026-10-22T13:34:39.430969465Z",
+      "status": "COMPLETED"
+    },
+    "document_verification": {
+      "detail": null,
+      "finished_at": "2026-10-22T13:33:26.266431925Z",
+      "started_at": "2026-10-22T13:33:26.219905517Z",
+      "status": "COMPLETED"
+    },
+    "llm_evaluation": {
+      "detail": null,
+      "finished_at": "2026-10-22T13:35:11.459267397Z",
+      "started_at": "2026-10-22T13:34:39.952950084Z",
+      "status": "COMPLETED"
+    },
+    "pdf_parsing": {
+      "detail": null,
+      "finished_at": "2026-10-22T13:33:31.518256602Z",
+      "started_at": "2026-10-22T13:33:26.278475495Z",
+      "status": "COMPLETED"
+    },
+    "pii_redaction": {
+      "detail": null,
+      "finished_at": "2026-10-22T13:33:57.243005281Z",
+      "started_at": "2026-10-22T13:33:31.529418718Z",
+      "status": "COMPLETED"
+    },
+    "profile_extraction": {
+      "detail": null,
+      "finished_at": "2026-10-22T13:34:24.365125008Z",
+      "started_at": "2026-10-22T13:33:57.255412923Z",
+      "status": "COMPLETED"
+    },
+    "profile_sanitization": {
+      "detail": null,
+      "finished_at": "2026-10-22T13:34:39.419870613Z",
+      "started_at": "2026-10-22T13:34:39.386283882Z",
+      "status": "COMPLETED"
+    },
+    "saving_results": {
+      "detail": null,
+      "finished_at": "2026-10-22T13:35:11.625680144Z",
+      "started_at": "2026-10-22T13:35:11.469841874Z",
+      "status": "COMPLETED"
+    },
+    "skill_normalization": {
+      "detail": null,
+      "finished_at": "2026-10-22T13:34:39.373483764Z",
+      "started_at": "2026-10-22T13:34:24.375077418Z",
+      "status": "COMPLETED"
+    }
+  },
+  "state": "SUCCESS",
+  "step": "Completed",
+  "task_id": "2e5dee5d-848e-42f5-b385-7ca4df84a661"
+}

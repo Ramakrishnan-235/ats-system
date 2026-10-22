@@ -203,6 +203,34 @@ async fn durable_tenant_workflow() {
         StatusCode::NOT_FOUND
     );
     let (status, lease) = internal(&app, &format!("/internal/jobs/{task}/lease"), json!({})).await;
+    let progress_path = format!("/internal/jobs/{task}/progress");
+    assert_eq!(
+        internal(
+            &app,
+            &progress_path,
+            json!({"attempt_id":Uuid::new_v4(),"stage":"pdf_parsing","status":"RUNNING"})
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    for stage_status in ["RUNNING", "COMPLETED"] {
+        assert_eq!(internal(&app, &progress_path, json!({"attempt_id":lease["attempt_id"],"stage":"pdf_parsing","status":stage_status})).await.0, StatusCode::OK);
+    }
+    let (_, live_progress, _) = request(
+        &app,
+        "GET",
+        &format!("/api/v1/candidates/tasks/{task}"),
+        Some(&sessions[0]),
+        json!({}),
+    )
+    .await;
+    assert_eq!(
+        live_progress["stages"]["pdf_parsing"]["status"],
+        "COMPLETED"
+    );
+    assert!(live_progress["stages"]["pdf_parsing"]["started_at"].is_string());
+    assert!(live_progress["stages"]["pdf_parsing"]["finished_at"].is_string());
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         internal(&app, &format!("/internal/jobs/{task}/lease"), json!({}))

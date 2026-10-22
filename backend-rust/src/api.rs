@@ -113,6 +113,7 @@ pub fn router(state: AppState) -> Router {
     let internal = Router::new()
         .route("/jobs/{id}/lease", post(jobs::lease))
         .route("/jobs/{id}/heartbeat", post(jobs::heartbeat))
+        .route("/jobs/{id}/progress", post(crate::progress::report))
         .route("/jobs/{id}/document", get(jobs::worker_document))
         .route("/jobs/{id}/result", post(jobs::result))
         .route("/jobs/{id}/artifact", post(jobs::artifact))

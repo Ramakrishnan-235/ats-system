@@ -150,7 +150,16 @@ export interface UploadResponse {
 export interface UploadTask {
   task_id: string; state: string; execution_mode?: string; error?: string;
   progress?: number; step?: string;
+  stages?: Record<string, ProcessingStage>;
+  server_time?: string;
+  attempt?: number;
   result?: { candidate_id: string; evaluation_status?: string; match_score?: number | null; status?: string; applied_for_job_id?: string };
+}
+export interface ProcessingStage {
+  status: "RUNNING" | "COMPLETED" | "FAILED" | "SKIPPED" | "FALLBACK";
+  started_at: string | null;
+  finished_at: string | null;
+  detail?: string | null;
 }
 export interface UploadWaitOptions {
   signal?: AbortSignal;

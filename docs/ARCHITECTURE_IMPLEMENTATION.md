@@ -84,6 +84,8 @@ Imported profiles are marked `LEGACY_REVIEW`. Historical scores/vectors/raw text
 
 ## Verification and operations
 
+Upload-operation progress is published by the private worker through the service-authenticated, attempt-scoped `/internal/jobs/{id}/progress` endpoint. The Rust core timestamps and persists each stage in `processing_jobs.progress_stages`. Public task status returns these snapshots with server time, so polling retains fast completed operations and computes observed durations. The upload dialog displays finished step counts and the active operation; it does not estimate percentage completion within opaque model calls. Completion includes an expandable operation history, and the minimized tray follows the same task.
+
 Candidate review pages show a job-specific **AI screening decision** (`ACCEPT`, `REJECT`, or `REVIEW`) and the configured LLM's saved explanation, model name, and evaluation time. The model receives the job description, required skills, minimum experience, and sanitized resume evidence. Each rubric assessment is visible alongside its source quote. Decisions are model outputs, not labels calculated from match-score thresholds; recruiters record pipeline/hiring decisions separately.
 
 New uploads associated with a job include these fields automatically. For older active applications, open **Candidates → Review Evidence → Generate AI decision**. The button runs the existing durable evaluation workflow and reloads the saved scorecard for the selected job. Historical evaluations without reasons are identified explicitly. Failed model calls produce no acceptance/rejection; rejected/withdrawn applications retain their existing workflow restrictions.
