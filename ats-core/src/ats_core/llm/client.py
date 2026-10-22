@@ -13,7 +13,7 @@ T = TypeVar("T", bound=BaseModel)
 DEFAULT_NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_NVIDIA_MODEL = "deepseek-ai/deepseek-v4.1-flash"
 DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
+DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3.5-super-vl:free"
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
 DEFAULT_OLLAMA_MODEL = "qwen3.5:2b"
 

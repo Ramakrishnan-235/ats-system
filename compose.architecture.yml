@@ -90,8 +90,8 @@ services:
       NVIDIA_MODEL: ${NVIDIA_MODEL:-deepseek-ai/deepseek-v4.1-flash}
       NVIDIA_BASE_URL: ${NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-nvidia/nemotron-3-super-120b-a12b:free}
-      LLM_MODEL: ${LLM_MODEL:-nvidia/nemotron-3-super-120b-a12b:free}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-nvidia/nemotron-3.5-super-vl:free}
+      LLM_MODEL: ${LLM_MODEL:-nvidia/nemotron-3.5-super-vl:free}
       OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://openrouter.ai/api/v1}
     volumes: ["architecture_models:/models"]
