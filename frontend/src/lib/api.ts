@@ -78,7 +78,7 @@ export interface DashboardData {
   today_evaluations: number;
   pipeline: Record<string, PipelineCandidateItem[]>;
 }
-export const fetchDashboardStats = () => json<DashboardData>("/dashboard/stats");
+export const fetchDashboardStats = (includePii = true) => json<DashboardData>(`/dashboard/stats${query({ include_pii: includePii })}`);
 export const fetchJobs = (params?: { status?: string; department?: string; search?: string; page?: number; limit?: number; offset?: number; envelope?: boolean }) => json<JobRequisition[]>(`/jobs${query(params)}`);
 export const fetchJobsPaginated = (params?: { status?: string; department?: string; search?: string; page?: number; limit?: number; offset?: number }) => json<PaginatedResult<JobRequisition>>(`/jobs${query({ ...params, envelope: true })}`);
 export const fetchJobDetail = (jobId: string) => json<JobRequisition>(`/jobs/${id(jobId)}`);
@@ -89,17 +89,17 @@ export function createJobRequisition(payload: {
 export function updateJobRequisition(jobId: string, payload: {
   title?: string; department?: string; location?: string; job_description?: string; required_skills?: string[]; min_years_experience?: number; status?: "OPEN" | "PAUSED" | "CLOSED";
 }) { return json<JobRequisition>(`/jobs/${id(jobId)}`, { method: "PATCH", ...body(payload) }); }
-export const fetchJobCandidates = (jobId: string) => json<RankedCandidate[]>(`/jobs/${id(jobId)}/candidates`);
+export const fetchJobCandidates = (jobId: string, includePii = true) => json<RankedCandidate[]>(`/jobs/${id(jobId)}/candidates${query({ include_pii: includePii })}`);
 export function addJobCandidate(jobId: string, payload: NewCandidatePayload) {
-  return json<RankedCandidate[]>(`/jobs/${id(jobId)}/candidates`, {
+  return json<RankedCandidate[]>(`/jobs/${id(jobId)}/candidates?include_pii=true`, {
     method: "POST", ...body({ ...payload, headline: payload.headline || "", matchScore: payload.matchScore ?? null }),
   });
 }
-export const removeJobCandidate = (jobId: string, candidateId: string) => json<RankedCandidate[]>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}`, { method: "DELETE" });
-export const updateJobCandidateStage = (jobId: string, candidateId: string, stage: string) => json<RankedCandidate>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}/stage${query({ new_stage: stage })}`, { method: "PATCH" });
-export const fetchCandidates = (params?: { search?: string; stage?: string; skill?: string; include_pii?: boolean; page?: number; limit?: number; offset?: number; envelope?: boolean; job_id?: string }) => json<CandidateDetail[]>(`/candidates${query(params)}`);
-export const fetchCandidatesPaginated = (params?: { search?: string; stage?: string; skill?: string; include_pii?: boolean; page?: number; limit?: number; offset?: number; job_id?: string }) => json<PaginatedResult<CandidateDetail>>(`/candidates${query({ ...params, envelope: true })}`);
-export const fetchCandidate = (candidateId: string, includePii = false, jobId?: string) => json<CandidateDetail>(`/candidates/${id(candidateId)}${query({ include_pii: includePii, job_id: jobId })}`);
+export const removeJobCandidate = (jobId: string, candidateId: string) => json<RankedCandidate[]>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}?include_pii=true`, { method: "DELETE" });
+export const updateJobCandidateStage = (jobId: string, candidateId: string, stage: string) => json<RankedCandidate>(`/jobs/${id(jobId)}/candidates/${id(candidateId)}/stage${query({ new_stage: stage, include_pii: true })}`, { method: "PATCH" });
+export const fetchCandidates = (params?: { search?: string; stage?: string; skill?: string; include_pii?: boolean; page?: number; limit?: number; offset?: number; envelope?: boolean; job_id?: string }) => json<CandidateDetail[]>(`/candidates${query({ include_pii: true, ...params })}`);
+export const fetchCandidatesPaginated = (params?: { search?: string; stage?: string; skill?: string; include_pii?: boolean; page?: number; limit?: number; offset?: number; job_id?: string }) => json<PaginatedResult<CandidateDetail>>(`/candidates${query({ include_pii: true, ...params, envelope: true })}`);
+export const fetchCandidate = (candidateId: string, includePii = true, jobId?: string) => json<CandidateDetail>(`/candidates/${id(candidateId)}${query({ include_pii: includePii, job_id: jobId })}`);
 export const fetchCandidateScorecard = (candidateId: string, jobId: string) => json<CandidateDetail["scorecard"]>(`/candidates/${id(candidateId)}/scorecard${query({ job_id: jobId })}`);
 export const updateCandidateStage = (candidateId: string, stage: string, jobId?: string) => json<{ status: string; stage: string }>(`/candidates/${id(candidateId)}/stage${query({ new_stage: stage, job_id: jobId })}`, { method: "PATCH" });
 export const addCandidateNote = (candidateId: string, content: string, author = "Recruiter", jobId?: string) => json<TeamNote>(`/candidates/${id(candidateId)}/notes${query({ job_id: jobId })}`, { method: "POST", ...body({ content, author }) });
@@ -351,7 +351,7 @@ export async function evaluateJobMatching(payload: {
   stage1_retrieve_limit?: number;
   stage2_rerank_limit?: number;
 }) {
-  const response = await json<MatchResponse & { task_ids?: string[] }>("/match/evaluate-job", { method: "POST", ...body(payload) });
+  const response = await json<MatchResponse & { task_ids?: string[] }>("/match/evaluate-job?include_pii=true", { method: "POST", ...body({ include_pii: true, ...payload }) });
   if (!response.task_ids) return response;
   const started = Date.now();
   const waiting = new Set(response.task_ids);

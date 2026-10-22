@@ -172,7 +172,7 @@ export default function CandidateDirectoryPage() {
 
               return {
                 id: c.id,
-                name: c.name || "Candidate",
+                name: c.name || c.anonymized_name || "Candidate",
                 title: c.target_headline || c.role || "Candidate Profile",
                 avatar: c.avatar || undefined,
                 targetJob: c.applied_for_job || "Talent Pool",

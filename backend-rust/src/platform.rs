@@ -88,8 +88,10 @@ pub async fn dashboard(
         let id: Uuid = r.get("id");
         let stage: String = r.get("stage");
         let mut p: Value = r.get("profile");
-        crate::domain::redact_profile(&mut p, &r.get::<Value, _>("contact"));
-        pipeline.entry(stage.clone()).or_insert(json!([])).as_array_mut().unwrap().push(json!({"id":id,"application_id":r.get::<Uuid,_>("application_id"),"job_id":r.get::<Uuid,_>("job_id"),"name":format!("Candidate #{}",&id.simple().to_string()[..8]),"role":p.get("target_headline").unwrap_or(&json!("Pending extraction")),"avatar":"CD","stage":stage,"match_score":r.get::<Option<f64>,_>("current_score"),"summary":r.get::<String,_>("title"),"probability":null,"applied_time":""}));
+        let contact: Value = r.get("contact");
+        crate::domain::redact_profile(&mut p, &contact);
+        let name = if user.can_reveal_contacts() { contact.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| format!("Candidate #{}", &id.simple().to_string()[..8])) } else { format!("Candidate #{}", &id.simple().to_string()[..8]) };
+        pipeline.entry(stage.clone()).or_insert(json!([])).as_array_mut().unwrap().push(json!({"id":id,"application_id":r.get::<Uuid,_>("application_id"),"job_id":r.get::<Uuid,_>("job_id"),"name":name,"role":p.get("target_headline").unwrap_or(&json!("Pending extraction")),"avatar":"CD","stage":stage,"match_score":r.get::<Option<f64>,_>("current_score"),"summary":r.get::<String,_>("title"),"probability":null,"applied_time":""}));
     }
     let weeks=sqlx::query("SELECT series.week,count(c.id) count FROM generate_series(date_trunc('week',now())-interval '7 weeks',date_trunc('week',now()),interval '1 week') series(week) LEFT JOIN ats_v2.candidates c ON c.created_at>=series.week AND c.created_at<series.week+interval '1 week' AND c.tenant_id=$1 AND c.deleted_at IS NULL GROUP BY series.week ORDER BY series.week").bind(user.tenant_id).fetch_all(&mut *tx).await?;
     let stats=[("active_jobs","ACTIVE JOBS",active,"briefcase"),("candidates","CANDIDATES",total,"users"),("processing","PROCESSING",processing,"file"),("evaluations","EVALUATIONS TODAY",today,"sparkles")].iter().map(|(id,label,count,icon)|json!({"id":id,"label":label,"value":count.to_string(),"change":"From saved records","trend":"neutral","icon":icon,"style":"default"})).collect::<Vec<_>>();
