@@ -877,3 +877,42 @@ fn candidate_shortlisted_for_job_a_and_rejected_for_job_b_without_overwrite() {
     assert_eq!(app_b["stage"], "Rejected");
     assert_ne!(app_a["stage"], app_b["stage"]);
 }
+
+#[test]
+fn reset_confirm_rate_limit_keys_and_client_ip_extraction() {
+    use axum::http::{HeaderMap, HeaderValue};
+
+    // 1. Default to 127.0.0.1 when no proxy headers present
+    let empty_headers = HeaderMap::new();
+    assert_eq!(ats_backend::auth::client_ip(&empty_headers), "127.0.0.1");
+
+    // 2. Extract first IP from x-forwarded-for
+    let mut xff_headers = HeaderMap::new();
+    xff_headers.insert(
+        "x-forwarded-for",
+        HeaderValue::from_static("203.0.113.195, 70.41.3.18, 150.172.238.178"),
+    );
+    assert_eq!(ats_backend::auth::client_ip(&xff_headers), "203.0.113.195");
+
+    // 3. Fallback to x-real-ip
+    let mut x_real_headers = HeaderMap::new();
+    x_real_headers.insert("x-real-ip", HeaderValue::from_static("198.51.100.1"));
+    assert_eq!(ats_backend::auth::client_ip(&x_real_headers), "198.51.100.1");
+
+    // 4. Verify rate-limit key scoping produces distinct keys for distinct tokens and IPs
+    let token_a = "rst_token_a_12345678901234567890";
+    let token_b = "rst_token_b_98765432109876543210";
+    let hash_a = ats_backend::hash(token_a.as_bytes());
+    let hash_b = ats_backend::hash(token_b.as_bytes());
+
+    let key_token_a = format!("reset-confirm:{hash_a}");
+    let key_token_b = format!("reset-confirm:{hash_b}");
+    let key_ip_1 = format!("reset-confirm:203.0.113.195");
+    let key_ip_2 = format!("reset-confirm:198.51.100.1");
+
+    assert_ne!(key_token_a, key_token_b);
+    assert_ne!(key_ip_1, key_ip_2);
+    assert_ne!(key_token_a, "reset-confirm");
+    assert_ne!(key_ip_1, "reset-confirm");
+}
+

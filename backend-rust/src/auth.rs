@@ -134,6 +134,20 @@ pub fn token(headers: &HeaderMap) -> Option<String> {
         .split(';')
         .find_map(|v| v.trim().strip_prefix("ats_session=").map(str::to_owned))
 }
+
+pub fn client_ip(headers: &HeaderMap) -> String {
+    for header_name in &["x-forwarded-for", "x-real-ip", "cf-connecting-ip"] {
+        if let Some(val) = headers.get(*header_name).and_then(|v| v.to_str().ok()) {
+            if let Some(first) = val.split(',').next() {
+                let trimmed = first.trim();
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
+            }
+        }
+    }
+    "127.0.0.1".to_string()
+}
 pub async fn authenticated(
     State(state): State<AppState>,
     mut request: Request,
@@ -791,6 +805,7 @@ pub struct PasswordResetConfirm {
 
 pub async fn password_reset_confirm(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(input): Json<PasswordResetConfirm>,
 ) -> Result<Json<Value>> {
     let raw_token = input.token.trim();
@@ -800,9 +815,13 @@ pub async fn password_reset_confirm(
     if input.password.len() < 12 || input.password.len() > 256 {
         return Err(bad("Password must be between 12 and 256 characters."));
     }
-    auth_limit(&state, "reset-confirm").await?;
+
+    let ip = client_ip(&headers);
+    auth_limit(&state, &format!("reset-confirm:{ip}")).await?;
 
     let token_hash = hash(raw_token.as_bytes());
+    auth_limit(&state, &format!("reset-confirm:{token_hash}")).await?;
+
     let mut tx = state.db.begin().await?;
 
     let row = sqlx::query("SELECT id, user_id, expires_at, used_at FROM ats_v2.password_reset_tokens WHERE token_hash = $1 FOR UPDATE")
