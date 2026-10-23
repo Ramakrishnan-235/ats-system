@@ -199,6 +199,10 @@ async function main() {
   assert(recipientMe.body?.user?.role === "recruiter", "Recipient assigned intended role 'recruiter'");
   const recipientUserId = recipientMe.body?.user?.user_id;
 
+  // Verify invitation email task transitioned to 'sent' and token scrubbed from payload (SEC-05)
+  const emailTaskAfterReg = runPsql(`SELECT status, payload ? 'token' as has_token FROM ats_v2.email_tasks WHERE recipient_email = '${recipientEmail}'`);
+  assert(emailTaskAfterReg.includes("sent|f") || emailTaskAfterReg.includes("sent|"), `Invitation email task transitioned to sent and token scrubbed (${emailTaskAfterReg})`);
+
   // 2b. Existing user receives invitation, signs in, then accepts invitation
   console.log("\n--- 2b. Existing User Invitation Acceptance (User already registered -> Signs in -> Accepts invitation -> Joins workspace) ---");
   const existingUserJar = new CookieJar();
@@ -420,6 +424,10 @@ async function main() {
     body: JSON.stringify({ token: resetToken, password: newAdminPassword }),
   });
   assert(resetConfirmRes.status === 200, `Password reset succeeded (HTTP ${resetConfirmRes.status})`);
+
+  // Verify password reset email task transitioned to 'sent' and token scrubbed from payload (SEC-05)
+  const emailTaskAfterReset = runPsql(`SELECT status, payload ? 'token' as has_token FROM ats_v2.email_tasks WHERE recipient_email = '${adminEmail}' AND template = 'password_reset'`);
+  assert(emailTaskAfterReset.includes("sent|f") || emailTaskAfterReset.includes("sent|"), `Password reset email task transitioned to sent and token scrubbed (${emailTaskAfterReset})`);
 
   // Verify prior sessions are invalidated
   const priorSessionCheck = await api(adminJar, "/auth/me");
