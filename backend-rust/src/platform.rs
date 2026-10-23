@@ -349,13 +349,16 @@ pub async fn add_member(
     audit(&mut tx, &user, "INVITE_MEMBER", "invitation", inv_id).await?;
     tx.commit().await?;
 
-    Ok(Json(json!({
+    let mut resp = json!({
         "status": "invited",
         "invitation_id": inv_id,
         "email": email,
         "role": role,
-        "token": raw_token
-    })))
+    });
+    if state.config.development_mode {
+        resp["token"] = json!(raw_token);
+    }
+    Ok(Json(resp))
 }
 
 pub async fn update_member_role(

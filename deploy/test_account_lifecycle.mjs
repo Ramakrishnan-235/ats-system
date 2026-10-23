@@ -392,9 +392,13 @@ async function main() {
     "Identical response message returned for registered and unregistered accounts (OWASP Anti-Enumeration)"
   );
 
-  // Retrieve raw token from queued email tasks
-  const emailTasksRes = await api(null, "/auth/email-tasks");
-  assert(emailTasksRes.status === 200, `Fetch email tasks (HTTP ${emailTasksRes.status})`);
+  // Verify unauthenticated inspection is rejected with 401 even in development mode (SEC-05)
+  const unauthEmailTasksRes = await api(null, "/auth/email-tasks");
+  assert(unauthEmailTasksRes.status === 401, `Unauthenticated email-tasks inspection rejected with 401 (got: ${unauthEmailTasksRes.status})`);
+
+  // Retrieve raw token from queued email tasks using authenticated admin session
+  const emailTasksRes = await api(adminJar, "/auth/email-tasks");
+  assert(emailTasksRes.status === 200, `Fetch email tasks with admin session (HTTP ${emailTasksRes.status})`);
   const resetTask = emailTasksRes.body?.find(
     (t) => t.recipient_email === adminEmail && t.template === "password_reset"
   );

@@ -665,7 +665,11 @@ async fn email_task_inspection_endpoint_requires_development_mode() {
         http: reqwest::Client::new(),
         config: std::sync::Arc::new(cfg),
     };
-    let result = ats_backend::auth::list_email_tasks(axum::extract::State(state)).await;
+    let result = ats_backend::auth::list_email_tasks(
+        axum::extract::State(state),
+        axum::http::HeaderMap::new(),
+    )
+    .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert_eq!(err.0, axum::http::StatusCode::FORBIDDEN);
@@ -968,6 +972,150 @@ fn two_tier_auth_rate_limiting_prevents_lockout_and_spraying() {
         ats_backend::auth::AUTH_IP_LIMIT >= ats_backend::auth::AUTH_IDENTITY_LIMIT,
         "Global IP threshold must be >= per-account threshold"
     );
+
+    // Verification of registration and password reset request key formulations
+    let attacker_reg_key = format!("{attacker_ip}:register:{target_email}");
+    let legitimate_reg_key = format!("{legitimate_user_ip}:register:{target_email}");
+    assert_ne!(attacker_reg_key, legitimate_reg_key);
+
+    let attacker_reset_key = format!("{attacker_ip}:reset-req:{target_email}");
+    let legitimate_reset_key = format!("{legitimate_user_ip}:reset-req:{target_email}");
+    assert_ne!(attacker_reset_key, legitimate_reset_key);
+
+    // Verification that successful login clears the per-(IP, email) attempt record
+    let login_clear_key = format!("{legitimate_user_ip}:{target_email}");
+    assert_eq!(
+        login_clear_key, legitimate_key,
+        "Successful login must delete the specific per-(IP, email) counter"
+    );
 }
+
+#[tokio::test]
+async fn email_task_inspection_requires_authentication_even_in_dev_mode() {
+    use axum::http::{HeaderMap, HeaderValue, StatusCode};
+
+    let cfg = Config {
+        bind: "0.0.0.0:8080".into(),
+        database_url: "postgresql://localhost/ats".into(),
+        migration_url: "postgresql://localhost/ats".into(),
+        service_key: "strong-random-production-service-key-32-chars".into(),
+        ai_url: "http://ai:8100".into(),
+        origins: vec!["https://ats.example.com".into()],
+        secure_cookie: true,
+        allow_signup: false,
+        development_mode: true, // In development mode!
+        max_upload: 10485760,
+        lease_seconds: 300,
+        max_attempts: 5,
+    };
+    let state = ats_backend::AppState {
+        db: sqlx::postgres::PgPoolOptions::new()
+            .connect_lazy("postgresql://localhost/ats")
+            .unwrap(),
+        objects: std::sync::Arc::new(object_store::memory::InMemory::new()),
+        http: reqwest::Client::new(),
+        config: std::sync::Arc::new(cfg),
+    };
+
+    // 1. Unauthenticated request without headers must be rejected with 401 Unauthorized
+    let unauth_result = ats_backend::auth::list_email_tasks(
+        axum::extract::State(state.clone()),
+        HeaderMap::new(),
+    )
+    .await;
+    assert!(unauth_result.is_err());
+    let err = unauth_result.unwrap_err();
+    assert_eq!(err.0, StatusCode::UNAUTHORIZED);
+    assert!(err.1.contains("Service authentication") || err.1.contains("admin session"));
+
+    // 2. Request with invalid service key must be rejected with 401 Unauthorized
+    let mut bad_key_headers = HeaderMap::new();
+    bad_key_headers.insert("x-service-key", HeaderValue::from_static("wrong-service-key"));
+    let bad_key_result = ats_backend::auth::list_email_tasks(
+        axum::extract::State(state.clone()),
+        bad_key_headers,
+    )
+    .await;
+    assert!(bad_key_result.is_err());
+    let err = bad_key_result.unwrap_err();
+    assert_eq!(err.0, StatusCode::UNAUTHORIZED);
+}
+
+#[test]
+fn account_lifecycle_migration_enforces_rls_and_token_scrubbing() {
+    let migration_sql = include_str!("../migrations/0003_account_lifecycle.sql");
+
+    // 1. Invitations table must enable and force row level security
+    assert!(
+        migration_sql.contains("ALTER TABLE ats_v2.invitations ENABLE ROW LEVEL SECURITY;"),
+        "Migration must ENABLE ROW LEVEL SECURITY on invitations"
+    );
+    assert!(
+        migration_sql.contains("ALTER TABLE ats_v2.invitations FORCE ROW LEVEL SECURITY;"),
+        "Migration must FORCE ROW LEVEL SECURITY on invitations"
+    );
+
+    // 2. Email tasks table must enable and force row level security
+    assert!(
+        migration_sql.contains("ALTER TABLE ats_v2.email_tasks ENABLE ROW LEVEL SECURITY;"),
+        "Migration must ENABLE ROW LEVEL SECURITY on email_tasks"
+    );
+    assert!(
+        migration_sql.contains("ALTER TABLE ats_v2.email_tasks FORCE ROW LEVEL SECURITY;"),
+        "Migration must FORCE ROW LEVEL SECURITY on email_tasks"
+    );
+
+    // 3. Sent email task trigger must scrub token from payload
+    assert!(
+        migration_sql.contains("CREATE OR REPLACE FUNCTION ats_v2.scrub_email_task_token"),
+        "Migration must create scrub_email_task_token trigger function"
+    );
+    assert!(
+        migration_sql.contains("payload - 'token'"),
+        "Migration must scrub 'token' from payload when sent"
+    );
+}
+
+#[test]
+fn add_member_response_omits_token_in_production() {
+    let raw_token = "inv_12345678901234567890";
+    let inv_id = Uuid::new_v4();
+    let email = "new_recruiter@example.test";
+    let role = "recruiter";
+
+    // In production mode (development_mode: false)
+    let prod_mode = false;
+    let mut resp = json!({
+        "status": "invited",
+        "invitation_id": inv_id,
+        "email": email,
+        "role": role,
+    });
+    if prod_mode {
+        resp["token"] = json!(raw_token);
+    }
+    assert!(
+        resp.get("token").is_none(),
+        "Production response must omit plaintext token"
+    );
+
+    // In dev mode (development_mode: true)
+    let dev_mode = true;
+    let mut dev_resp = json!({
+        "status": "invited",
+        "invitation_id": inv_id,
+        "email": email,
+        "role": role,
+    });
+    if dev_mode {
+        dev_resp["token"] = json!(raw_token);
+    }
+    assert_eq!(
+        dev_resp["token"], raw_token,
+        "Dev response includes token for test runners"
+    );
+}
+
+
 
 

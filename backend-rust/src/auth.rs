@@ -425,6 +425,16 @@ pub async fn register(
             .execute(&mut *tx)
             .await?;
 
+        // Transition invitation email task to sent and scrub plaintext token
+        sqlx::query(
+            "UPDATE ats_v2.email_tasks \
+             SET status = 'sent', sent_at = now(), payload = payload - 'token' \
+             WHERE recipient_email = $1 AND template = 'invitation' AND status = 'queued'",
+        )
+        .bind(&email)
+        .execute(&mut *tx)
+        .await?;
+
         tx.commit().await?;
         return issue_session(&state, user, tenant_id).await;
     }
@@ -527,7 +537,7 @@ pub async fn login(
     }
     let row = row.unwrap();
     sqlx::query("DELETE FROM ats_v2.auth_attempts WHERE identity_hash=$1")
-        .bind(hash(email.as_bytes()))
+        .bind(hash(format!("{ip}:{email}").as_bytes()))
         .execute(&state.db)
         .await?;
     issue_session(&state, row.get("id"), row.get("tenant_id")).await
@@ -675,6 +685,16 @@ pub async fn accept_invitation(
         .bind(inv_id)
         .execute(&mut *tx)
         .await?;
+
+    // Transition invitation email task to sent and scrub plaintext token
+    sqlx::query(
+        "UPDATE ats_v2.email_tasks \
+         SET status = 'sent', sent_at = now(), payload = payload - 'token' \
+         WHERE recipient_email = $1 AND template = 'invitation' AND status = 'queued'",
+    )
+    .bind(&inv_email)
+    .execute(&mut *tx)
+    .await?;
 
     sqlx::query("UPDATE ats_v2.users SET email_verified = true WHERE id = $1")
         .bind(user.user_id)
@@ -906,6 +926,17 @@ pub async fn password_reset_confirm(
         .execute(&mut *tx)
         .await?;
 
+    // Transition password reset email task to sent and scrub plaintext token
+    sqlx::query(
+        "UPDATE ats_v2.email_tasks \
+         SET status = 'sent', sent_at = now(), payload = payload - 'token' \
+         WHERE recipient_email = (SELECT email FROM ats_v2.users WHERE id = $1) \
+           AND template = 'password_reset' AND status = 'queued'",
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+
     tx.commit().await?;
 
     Ok(Json(json!({
@@ -968,13 +999,72 @@ pub async fn verify_email_confirm(
     })))
 }
 
-pub async fn list_email_tasks(State(state): State<AppState>) -> Result<Json<Value>> {
+pub async fn complete_email_task(db: &sqlx::PgPool, task_id: Uuid) -> Result<()> {
+    sqlx::query(
+        "UPDATE ats_v2.email_tasks \
+         SET status = 'sent', sent_at = now(), payload = payload - 'token' \
+         WHERE id = $1",
+    )
+    .bind(task_id)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+pub async fn list_email_tasks(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>> {
     if !state.config.development_mode {
         return Err(ApiError(
             StatusCode::FORBIDDEN,
             "Email task inspection is only permitted in development mode.",
         ));
     }
+
+    // Require service_auth or admin authentication even in development mode
+    let mut authorized = false;
+
+    // 1. Service authentication (x-service-key header)
+    if let Some(supplied) = headers.get("x-service-key").and_then(|v| v.to_str().ok()) {
+        if bool::from(
+            hash(supplied.as_bytes())
+                .as_bytes()
+                .ct_eq(hash(state.config.service_key.as_bytes()).as_bytes()),
+        ) {
+            authorized = true;
+        }
+    }
+
+    // 2. Admin session authentication (cookie or Bearer token)
+    if !authorized {
+        if let Some(tok) = token(&headers) {
+            let tok_hash = hash(tok.as_bytes());
+            let row = sqlx::query(
+                "SELECT m.role FROM ats_v2.sessions s \
+                 JOIN ats_v2.memberships m ON m.user_id = s.user_id AND m.tenant_id = s.tenant_id \
+                 WHERE s.token_hash = $1 AND s.expires_at > now()",
+            )
+            .bind(&tok_hash)
+            .fetch_optional(&state.db)
+            .await?;
+
+            if let Some(r) = row {
+                let role: String = r.get("role");
+                if role == "admin" {
+                    authorized = true;
+                }
+            }
+        }
+    }
+
+    if !authorized {
+        return Err(ApiError(
+            StatusCode::UNAUTHORIZED,
+            "Service authentication (x-service-key) or admin session is required to inspect email tasks.",
+        ));
+    }
+
     let rows = sqlx::query(
         "SELECT id, tenant_id, recipient_email, template, payload, status, attempts, available_at, sent_at, created_at \
          FROM ats_v2.email_tasks \
