@@ -114,6 +114,16 @@ def sync_candidates_to_retriever(retriever, job_id: str | None = None) -> int:
 
         text_parts = []
         name = cand.get("name", "")
+        email = cand.get("email")
+        phone = cand.get("phone")
+        location = cand.get("location")
+        urls = []
+        for u in [cand.get("linkedin"), cand.get("github"), cand.get("portfolio")]:
+            if u and str(u).strip() and str(u).strip().upper() != "N/A":
+                urls.append(str(u).strip())
+        if isinstance(cand.get("urls"), list):
+            urls.extend(cand.get("urls"))
+
         headline = cand.get("target_headline") or cand.get("role") or ""
         skills = cand.get("core_skills") or cand.get("skills") or []
         education = cand.get("highest_education", "")
@@ -121,7 +131,7 @@ def sync_candidates_to_retriever(retriever, job_id: str | None = None) -> int:
         raw_text = cand.get("raw_anonymized_text") or cand.get("raw_text") or ""
         experience = cand.get("experience") or []
 
-        # Omit candidate's personal name from doc_text to prevent PII leakage to LLMs and search corpus
+        # Omit candidate's personal name and PII from doc_text to prevent PII leakage to LLMs and search corpus
         if headline:
             text_parts.append(f"Title/Role: {headline}")
         if skills:
@@ -145,14 +155,36 @@ def sync_candidates_to_retriever(retriever, job_id: str | None = None) -> int:
 
         doc_text = "\n".join(text_parts).strip() or headline or "Candidate Profile"
 
-        if name and name.strip() and name.strip().lower() not in {"candidate", "unknown", "n/a"}:
-            doc_text = re.sub(rf"\b{re.escape(name.strip())}\b", "[REDACTED]", doc_text, flags=re.IGNORECASE)
+        # Pass full known contact entities to ResumeAnonymizer before indexing into retriever
+        try:
+            from ats_core.parsers.anonymizer import get_shared_anonymizer
+            anonymizer = get_shared_anonymizer()
+            doc_text = anonymizer.anonymize(
+                text=doc_text,
+                known_name=name,
+                known_email=email,
+                known_phone=phone,
+                known_location=location,
+                known_urls=urls,
+            )
+        except Exception as anon_err:
+            logger.warning("Anonymization failed for candidate %s in match.py: %s", cid, anon_err)
+            if name and name.strip() and name.strip().lower() not in {"candidate", "unknown", "n/a"}:
+                doc_text = re.sub(rf"\b{re.escape(name.strip())}\b", "[CANDIDATE_NAME]", doc_text, flags=re.IGNORECASE)
+            if email and email.strip() and email.strip().upper() != "N/A":
+                doc_text = re.sub(rf"\b{re.escape(email.strip())}\b", "[EMAIL_ADDRESS]", doc_text, flags=re.IGNORECASE)
+            if phone and phone.strip() and phone.strip().upper() != "N/A":
+                doc_text = re.sub(rf"{re.escape(phone.strip())}", "[PHONE_NUMBER]", doc_text)
+            for u in urls:
+                if u and str(u).strip() and str(u).strip().upper() != "N/A":
+                    doc_text = doc_text.replace(str(u).strip(), "[PROFILE_URL]")
 
+        anon_display_name = cand.get("anonymized_name") or f"Candidate #{str(cid)[-8:]}"
         records_to_index.append({
             "id": cid,
             "text": doc_text,
             "metadata": {
-                "name": name,
+                "name": anon_display_name,
                 "title": headline,
                 "skills": skills,
                 "years_of_experience": years_exp,

@@ -186,8 +186,54 @@ def sync_candidate_to_db(cand_dict: dict[str, Any]) -> bool:
             db_c.location = cand_dict.get("location") or "Remote"
             db_c.highest_education = cand_dict.get("highest_education")
             db_c.core_skills = cand_dict.get("core_skills") or cand_dict.get("skills") or []
-            db_c.raw_anonymized_text = cand_dict.get("raw_anonymized_text") or cand_dict.get("raw_text") or ""
-            db_c.structured_profile = {**cand_dict, "candidate_id": cid}
+
+            # 1. Anonymize raw_text via ResumeAnonymizer before storing raw_anonymized_text
+            raw_anon = cand_dict.get("raw_anonymized_text")
+            raw_text = cand_dict.get("raw_text") or ""
+            if not raw_anon and raw_text:
+                try:
+                    from ats_core.parsers.anonymizer import get_shared_anonymizer
+                    anonymizer = get_shared_anonymizer()
+                    cand_urls = []
+                    for u in [cand_dict.get("linkedin"), cand_dict.get("github"), cand_dict.get("portfolio")]:
+                        if u and str(u).strip() and str(u).strip().upper() != "N/A":
+                            cand_urls.append(str(u).strip())
+                    raw_anon = anonymizer.anonymize(
+                        text=raw_text,
+                        known_name=cand_dict.get("name"),
+                        known_email=cand_dict.get("email"),
+                        known_phone=cand_dict.get("phone"),
+                        known_location=cand_dict.get("location"),
+                        known_urls=cand_urls,
+                    )
+                except Exception as anon_err:
+                    logger.warning("ResumeAnonymizer failed in sync_candidate_to_db: %s", anon_err)
+                    raw_anon = raw_text
+                    for pii_val in [cand_dict.get("name"), cand_dict.get("email"), cand_dict.get("phone")]:
+                        if pii_val and str(pii_val).strip() and str(pii_val).strip().upper() != "N/A":
+                            raw_anon = raw_anon.replace(str(pii_val).strip(), "[REDACTED]")
+
+            db_c.raw_anonymized_text = raw_anon or ""
+            if raw_anon and not cand_dict.get("raw_anonymized_text"):
+                cand_dict["raw_anonymized_text"] = raw_anon
+
+            # 2. Strip raw contact identifiers and raw_text from structured_profile before persisting
+            CONTACT_FIELDS_TO_STRIP = {
+                "name", "email", "phone", "linkedin", "github", "portfolio",
+                "urls", "contact", "raw_text", "unredacted_text",
+            }
+            clean_profile = {
+                k: v for k, v in cand_dict.items()
+                if k not in CONTACT_FIELDS_TO_STRIP
+            }
+            if "structured_profile" in clean_profile and isinstance(clean_profile["structured_profile"], dict):
+                clean_profile["structured_profile"] = {
+                    k: v for k, v in clean_profile["structured_profile"].items()
+                    if k not in CONTACT_FIELDS_TO_STRIP
+                }
+            clean_profile["candidate_id"] = cid
+            clean_profile["anonymized_name"] = db_c.anonymized_name
+            db_c.structured_profile = clean_profile
 
             session.commit()
             return True

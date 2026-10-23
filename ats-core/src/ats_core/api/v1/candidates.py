@@ -531,6 +531,34 @@ async def _process_resume_pipeline(
         )
         parsed_candidate["id"] = candidate_id
 
+        # Compute de-identified resume text via ResumeAnonymizer
+        cand_name = parsed_candidate.get("name")
+        cand_email = parsed_candidate.get("email")
+        cand_phone = parsed_candidate.get("phone")
+        cand_loc = parsed_candidate.get("location")
+        cand_linkedin = parsed_candidate.get("linkedin")
+        cand_urls = [cand_linkedin] if cand_linkedin and cand_linkedin != "N/A" else []
+
+        try:
+            from ats_core.parsers.anonymizer import get_shared_anonymizer
+            anonymizer = get_shared_anonymizer()
+            raw_anon = anonymizer.anonymize(
+                text=parsed_candidate.get("raw_text", ""),
+                known_name=cand_name,
+                known_email=cand_email,
+                known_phone=cand_phone,
+                known_location=cand_loc,
+                known_urls=cand_urls,
+            )
+        except Exception as anon_err:
+            logger.warning("Anonymizer error during resume processing: %s", anon_err)
+            raw_anon = parsed_candidate.get("raw_text", "")
+            for pii_val in [cand_name, cand_email, cand_phone]:
+                if pii_val and str(pii_val).strip() and str(pii_val).strip().upper() != "N/A":
+                    raw_anon = raw_anon.replace(str(pii_val).strip(), "[REDACTED]")
+
+        parsed_candidate["raw_anonymized_text"] = raw_anon
+
         # Link to target job
         if target_job:
             target_job_id = target_job.get("id") or job_id
