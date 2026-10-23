@@ -603,8 +603,27 @@ pub async fn accept_invitation(
         return Err(bad("Invitation has expired."));
     }
 
-    // Add or update membership for the accepting user
-    sqlx::query("INSERT INTO ats_v2.memberships(tenant_id, user_id, role) VALUES($1, $2, $3) ON CONFLICT(tenant_id, user_id) DO UPDATE SET role = EXCLUDED.role")
+    if user.email.trim().to_lowercase() != inv_email.trim().to_lowercase() {
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "Invitation email does not match the signed-in account.",
+        ));
+    }
+
+    let already_member: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM ats_v2.memberships WHERE tenant_id = $1 AND user_id = $2)",
+    )
+    .bind(tenant_id)
+    .bind(user.user_id)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    if already_member {
+        return Err(bad("You are already a member of this workspace."));
+    }
+
+    // Add membership for the accepting user
+    sqlx::query("INSERT INTO ats_v2.memberships(tenant_id, user_id, role) VALUES($1, $2, $3)")
         .bind(tenant_id)
         .bind(user.user_id)
         .bind(&role)
@@ -617,12 +636,10 @@ pub async fn accept_invitation(
         .execute(&mut *tx)
         .await?;
 
-    if user.email.to_lowercase() == inv_email.to_lowercase() {
-        sqlx::query("UPDATE ats_v2.users SET email_verified = true WHERE id = $1")
-            .bind(user.user_id)
-            .execute(&mut *tx)
-            .await?;
-    }
+    sqlx::query("UPDATE ats_v2.users SET email_verified = true WHERE id = $1")
+        .bind(user.user_id)
+        .execute(&mut *tx)
+        .await?;
 
     // Update current session's tenant_id if available
     if let Some(tok) = token(&headers) {
