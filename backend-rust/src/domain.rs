@@ -1230,6 +1230,11 @@ impl InterviewInput {
                 "Interview outcome must be SCHEDULED, PASSED, FAILED, CANCELLED, or COMPLETED.",
             ));
         }
+        if let Some(ref notes) = self.notes {
+            if notes.chars().count() > 10_000 {
+                return Err(bad("Interview notes cannot exceed 10,000 characters."));
+            }
+        }
         Ok(())
     }
 }
@@ -1407,7 +1412,16 @@ pub async fn update_interview(
         entry["outcome"] = json!(outcome);
     }
     if let Some(notes) = input.get("notes") {
-        entry["notes"] = notes.clone();
+        if notes.is_null() {
+            entry["notes"] = Value::Null;
+        } else if let Some(notes_str) = notes.as_str() {
+            if notes_str.chars().count() > 10_000 {
+                return Err(bad("Interview notes cannot exceed 10,000 characters."));
+            }
+            entry["notes"] = json!(notes_str);
+        } else {
+            return Err(bad("Interview notes must be a string."));
+        }
     }
     if let Some(scheduled_at) = input.get("scheduled_at").and_then(Value::as_str) {
         entry["scheduled_at"] = json!(scheduled_at);

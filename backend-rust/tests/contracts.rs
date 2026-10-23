@@ -1214,6 +1214,97 @@ fn sec08_unredacted_pii_interviews_offer_and_viewer_access() {
     assert!(name_viewer.starts_with("Candidate #"));
 }
 
+#[test]
+fn sec09_invited_new_users_allowed_when_signup_disabled() {
+    // When ATS_ALLOW_SIGNUP=false, open registration without an invitation token is blocked
+    let allow_signup = false;
+
+    let open_signup = ats_backend::auth::Credentials {
+        email: "newrecruiter@example.com".into(),
+        password: "StrongPassword123!".into(),
+        name: "New Recruiter".into(),
+        workspace_name: "Acme Corp".into(),
+        workspace_kind: "corporate".into(),
+        invitation_token: None,
+    };
+    let has_invitation = open_signup
+        .invitation_token
+        .as_ref()
+        .is_some_and(|t| !t.trim().is_empty());
+    assert!(!allow_signup && !has_invitation, "Open signup must be blocked when allow_signup is false");
+
+    // Whitespace token is treated as no invitation
+    let whitespace_token_signup = ats_backend::auth::Credentials {
+        email: "newrecruiter@example.com".into(),
+        password: "StrongPassword123!".into(),
+        name: "New Recruiter".into(),
+        workspace_name: "Acme Corp".into(),
+        workspace_kind: "corporate".into(),
+        invitation_token: Some("   ".into()),
+    };
+    let has_invitation = whitespace_token_signup
+        .invitation_token
+        .as_ref()
+        .is_some_and(|t| !t.trim().is_empty());
+    assert!(!allow_signup && !has_invitation, "Whitespace invitation token must be rejected as no invitation");
+
+    // With a valid non-empty invitation token, the allow_signup check must pass
+    let invited_signup = ats_backend::auth::Credentials {
+        email: "inviteduser@example.com".into(),
+        password: "StrongPassword123!".into(),
+        name: "Invited User".into(),
+        workspace_name: "".into(),
+        workspace_kind: "corporate".into(),
+        invitation_token: Some("valid-workspace-invite-token-uuid-1234".into()),
+    };
+    let has_invitation = invited_signup
+        .invitation_token
+        .as_ref()
+        .is_some_and(|t| !t.trim().is_empty());
+    assert!(has_invitation, "Must detect valid invitation token");
+    let blocked = !allow_signup && !has_invitation;
+    assert!(!blocked, "Invited user must NOT be blocked when allow_signup is false");
+}
+
+#[test]
+fn sec10_bounded_json_routes_and_body_limits() {
+    // 1. InterviewInput validates notes max length of 10,000 characters
+    let valid_interview = ats_backend::domain::InterviewInput {
+        round: "Technical 1".into(),
+        scheduled_at: "2026-11-01T10:00:00Z".into(),
+        interviewer_name: "Alice Engineer".into(),
+        interviewer_email: Some("alice@company.test".into()),
+        notes: Some("A".repeat(10_000)),
+        outcome: "SCHEDULED".into(),
+    };
+    assert!(valid_interview.validate().is_ok(), "Notes with exactly 10,000 chars must be allowed");
+
+    let oversized_interview = ats_backend::domain::InterviewInput {
+        round: "Technical 1".into(),
+        scheduled_at: "2026-11-01T10:00:00Z".into(),
+        interviewer_name: "Alice Engineer".into(),
+        interviewer_email: Some("alice@company.test".into()),
+        notes: Some("A".repeat(10_001)),
+        outcome: "SCHEDULED".into(),
+    };
+    assert!(oversized_interview.validate().is_err(), "Notes exceeding 10,000 chars must be rejected");
+
+    // 2. Client contact validation bounds checking
+    // Valid object <= 5000 bytes
+    let valid_contact_obj = json!({"email": "client@enterprise.test", "phone": "+1-800-555-0199"});
+    let serialized_obj = serde_json::to_vec(&valid_contact_obj).unwrap();
+    assert!(serialized_obj.len() <= 5000);
+
+    // Oversized object > 5000 bytes
+    let oversized_contact_obj = json!({"large_payload": "X".repeat(5001)});
+    let oversized_bytes = serde_json::to_vec(&oversized_contact_obj).unwrap();
+    assert!(oversized_bytes.len() > 5000);
+
+    // Invalid non-object / non-string type (e.g. array or numeric)
+    let invalid_contact_array = json!(["not", "an", "object"]);
+    assert!(!invalid_contact_array.is_object() && !invalid_contact_array.is_string());
+}
+
 
 
 

@@ -44,7 +44,10 @@ pub fn router(state: AppState) -> Router {
             get(domain::get_offer).post(domain::record_offer),
         )
         .route("/candidates", get(domain::list_candidates))
-        .route("/candidates/upload-async", post(jobs::upload))
+        .route(
+            "/candidates/upload-async",
+            post(jobs::upload).layer(DefaultBodyLimit::max(state.config.max_upload + 65536)),
+        )
         .route("/candidates/tasks/{id}", get(jobs::task_status))
         .route(
             "/candidates/{id}",
@@ -144,7 +147,6 @@ pub fn router(state: AppState) -> Router {
             axum::http::header::AUTHORIZATION,
             axum::http::HeaderName::from_static("idempotency-key"),
         ]);
-    let max = state.config.max_upload + 65536;
     Router::new()
         .route(
             "/openapi.json",
@@ -185,7 +187,7 @@ pub fn router(state: AppState) -> Router {
         .nest("/api/v1", business)
         .nest("/internal", internal)
         .layer(middleware::from_fn_with_state(state.clone(), auth::csrf))
-        .layer(DefaultBodyLimit::max(max))
+        .layer(DefaultBodyLimit::max(256 * 1024))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state)

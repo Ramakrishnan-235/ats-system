@@ -331,7 +331,11 @@ pub async fn register(
     headers: HeaderMap,
     Json(input): Json<Credentials>,
 ) -> Result<Response> {
-    if !state.config.allow_signup {
+    let has_invitation = input
+        .invitation_token
+        .as_ref()
+        .is_some_and(|t| !t.trim().is_empty());
+    if !state.config.allow_signup && !has_invitation {
         return Err(ApiError(
             StatusCode::FORBIDDEN,
             "Workspace registration is disabled.",

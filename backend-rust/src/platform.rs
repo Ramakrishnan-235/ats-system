@@ -575,13 +575,30 @@ pub async fn create_client(
     if name.trim().is_empty() || name.len() > 200 {
         return Err(bad("Client name is required."));
     }
+    let contact = match v.get("contact") {
+        None | Some(Value::Null) => json!({}),
+        Some(c @ Value::Object(_)) => {
+            let bytes = serde_json::to_vec(c).map_err(|_| bad("Invalid contact payload."))?;
+            if bytes.len() > 5000 {
+                return Err(bad("Client contact cannot exceed 5,000 bytes."));
+            }
+            c.clone()
+        }
+        Some(Value::String(s)) => {
+            if s.len() > 5000 {
+                return Err(bad("Client contact cannot exceed 5,000 bytes."));
+            }
+            json!(s)
+        }
+        _ => return Err(bad("Client contact must be a JSON object or string.")),
+    };
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
     let id = Uuid::new_v4();
     sqlx::query("INSERT INTO ats_v2.clients(id,tenant_id,name,contact) VALUES($1,$2,$3,$4)")
         .bind(id)
         .bind(user.tenant_id)
         .bind(name.trim())
-        .bind(v.get("contact").cloned().unwrap_or(json!({})))
+        .bind(contact)
         .execute(&mut *tx)
         .await?;
     audit(&mut tx, &user, "CREATE_CLIENT", "client", id).await?;
