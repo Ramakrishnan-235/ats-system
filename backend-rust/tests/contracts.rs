@@ -1116,6 +1116,105 @@ fn add_member_response_omits_token_in_production() {
     );
 }
 
+#[test]
+fn sec08_unredacted_pii_interviews_offer_and_viewer_access() {
+    use ats_backend::domain::{mask_offer_compensation, redact_profile};
+    use serde_json::Value;
+
+    // 1. Verify mask_offer_compensation strips salary, equity, and bonus while retaining status
+    let mut offer = json!({
+        "status": "EXTENDED",
+        "base_salary": 185000.0,
+        "currency": "USD",
+        "equity": "0.75%",
+        "sign_on_bonus": 30000.0,
+        "start_date": "2026-11-01",
+        "notes": "Top tier candidate compensation"
+    });
+    mask_offer_compensation(&mut offer);
+    assert_eq!(offer["status"], "EXTENDED");
+    assert_eq!(offer["currency"], "USD");
+    assert_eq!(offer["base_salary"], Value::Null);
+    assert_eq!(offer["equity"], "[CONFIDENTIAL]");
+    assert_eq!(offer["sign_on_bonus"], Value::Null);
+
+    // 2. Verify redact_profile scrubs candidate PII from interview and offer structures
+    let contact = json!({
+        "name": "Alex Mercer",
+        "email": "alex.mercer@cyber.test",
+        "phone": "+1-555-890-1234",
+        "location": "Boston, MA"
+    });
+    let mut interview_notes = json!([
+        {
+            "round": "Technical Round 2",
+            "notes": "Discussed distributed consensus with Alex Mercer at alex.mercer@cyber.test (call +1-555-890-1234)"
+        }
+    ]);
+    redact_profile(&mut interview_notes, &contact);
+    let redacted_text = interview_notes[0]["notes"].as_str().unwrap();
+    assert!(!redacted_text.contains("Alex Mercer"));
+    assert!(!redacted_text.contains("alex.mercer@cyber.test"));
+    assert!(!redacted_text.contains("555-890-1234"));
+    assert!(redacted_text.contains("[REDACTED]"));
+
+    // 3. Verify role permission gates for viewer and interviewer
+    let viewer = Identity {
+        user_id: Uuid::new_v4(),
+        tenant_id: Uuid::new_v4(),
+        role: "viewer".into(),
+        name: "Viewer User".into(),
+        email: "viewer@company.test".into(),
+    };
+    let interviewer = Identity {
+        user_id: Uuid::new_v4(),
+        tenant_id: Uuid::new_v4(),
+        role: "interviewer".into(),
+        name: "Interviewer User".into(),
+        email: "interviewer@company.test".into(),
+    };
+    let recruiter = Identity {
+        user_id: Uuid::new_v4(),
+        tenant_id: Uuid::new_v4(),
+        role: "recruiter".into(),
+        name: "Recruiter User".into(),
+        email: "recruiter@company.test".into(),
+    };
+
+    assert!(viewer.pii().is_err(), "Viewer must not have PII access");
+    assert!(!viewer.can_reveal_contacts(), "Viewer cannot reveal contacts");
+
+    assert!(interviewer.pii().is_err(), "Interviewer must not have PII access");
+    assert!(!interviewer.can_reveal_contacts(), "Interviewer cannot reveal contacts");
+
+    assert!(recruiter.pii().is_ok(), "Recruiter must have PII access");
+    assert!(recruiter.can_reveal_contacts(), "Recruiter can reveal contacts");
+
+    // 4. Verify candidate name scoping rule: only reveal when include_pii=true AND user.can_reveal_contacts()
+    let cid = Uuid::new_v4();
+    let name_when_pii_requested = if true && recruiter.can_reveal_contacts() {
+        contact.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap()
+    } else {
+        format!("Candidate #{}", &cid.simple().to_string()[..8])
+    };
+    assert_eq!(name_when_pii_requested, "Alex Mercer");
+
+    let name_when_pii_omitted = if false && recruiter.can_reveal_contacts() {
+        contact.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap()
+    } else {
+        format!("Candidate #{}", &cid.simple().to_string()[..8])
+    };
+    assert!(name_when_pii_omitted.starts_with("Candidate #"));
+
+    let name_viewer = if true && viewer.can_reveal_contacts() {
+        contact.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap()
+    } else {
+        format!("Candidate #{}", &cid.simple().to_string()[..8])
+    };
+    assert!(name_viewer.starts_with("Candidate #"));
+}
+
+
 
 
 

@@ -288,6 +288,21 @@ async fn unscored_candidate_status(
         None => empty_scorecard(),
     })
 }
+
+pub fn mask_offer_compensation(offer: &mut Value) {
+    if let Some(obj) = offer.as_object_mut() {
+        if obj.contains_key("base_salary") {
+            obj.insert("base_salary".to_string(), Value::Null);
+        }
+        if obj.contains_key("equity") {
+            obj.insert("equity".to_string(), json!("[CONFIDENTIAL]"));
+        }
+        if obj.contains_key("sign_on_bonus") {
+            obj.insert("sign_on_bonus".to_string(), Value::Null);
+        }
+    }
+}
+
 pub async fn candidate_json(
     tx: &mut Transaction<'_, Postgres>,
     user: &Identity,
@@ -429,6 +444,18 @@ pub async fn candidate_json(
     }
     if !pii {
         redact_profile(&mut p, &contact);
+        mask_offer_compensation(&mut p["offer"]);
+        if let Some(apps) = p["applications"].as_array_mut() {
+            for app in apps {
+                if let Some(off) = app.get_mut("offer") {
+                    mask_offer_compensation(off);
+                }
+                if let Some(interviews) = app.get_mut("interviews") {
+                    redact_profile(interviews, &contact);
+                }
+            }
+        }
+        redact_profile(&mut p["interviews"], &contact);
     }
     Ok(p)
 }
@@ -843,7 +870,7 @@ pub async fn job_candidate_stage(
     let stage = f.new_stage.ok_or_else(|| bad("Stage is required."))?;
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
     move_stage(&mut tx, &user, job, candidate, &stage).await?;
-    let values = ranked(&mut tx, &user, job).await?;
+    let values = ranked(&mut tx, &user, job, f.include_pii).await?;
     tx.commit().await?;
     if let Some(candidate_val) = values.into_iter().find(|v| v["id"] == json!(candidate)) {
         Ok(Json(candidate_val))
@@ -855,6 +882,7 @@ pub async fn ranked(
     tx: &mut Transaction<'_, Postgres>,
     user: &Identity,
     job: Uuid,
+    include_pii: bool,
 ) -> Result<Vec<Value>> {
     let exists: bool =
         sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM ats_v2.jobs WHERE id=$1 AND tenant_id=$2)")
@@ -866,23 +894,75 @@ pub async fn ranked(
         return Err(missing());
     }
     let rows = sqlx::query("SELECT c.*,a.id application_id,a.stage application_stage,a.current_score,a.interviews,a.offer FROM ats_v2.applications a JOIN ats_v2.candidates c ON c.id=a.candidate_id AND c.tenant_id=a.tenant_id WHERE a.job_id=$1 AND a.tenant_id=$2 AND c.deleted_at IS NULL AND a.stage != 'Withdrawn' ORDER BY a.current_score DESC NULLS LAST,a.created_at").bind(job).bind(user.tenant_id).fetch_all(&mut **tx).await?;
-    Ok(rows.iter().enumerate().map(|(i,r)| {let mut p:Value=r.get("profile");let contact: Value = r.get("contact");redact_profile(&mut p,&contact);let id:Uuid=r.get("id");let name = if user.can_reveal_contacts() { contact.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| format!("Candidate #{}", &id.simple().to_string()[..8])) } else { format!("Candidate #{}", &id.simple().to_string()[..8]) };json!({"id":id,"application_id":r.get::<Uuid,_>("application_id"),"jobId":job,"rank":i+1,"name":name,"headline":p.get("target_headline").unwrap_or(&json!("Pending extraction")),"avatar":"CD","isImageAvatar":false,"matchScore":r.get::<Option<f64>,_>("current_score"),"matchLabel":"Job-specific evaluation","skills":p.get("core_skills").unwrap_or(&json!([])),"stage":r.get::<String,_>("application_stage"),"interviews":r.get::<Value,_>("interviews"),"offer":r.get::<Value,_>("offer"),"sourceResumeLink":format!("/candidates/{id}"),"quote":"","suggestedQuestions":[]})}).collect())
+    Ok(rows.iter().enumerate().map(|(i, r)| {
+        let mut p: Value = r.get("profile");
+        let contact: Value = r.get("contact");
+        let id: Uuid = r.get("id");
+        let mut interviews: Value = r.get("interviews");
+        let mut offer: Value = r.get("offer");
+
+        let name = if include_pii && user.can_reveal_contacts() {
+            contact.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| format!("Candidate #{}", &id.simple().to_string()[..8]))
+        } else {
+            format!("Candidate #{}", &id.simple().to_string()[..8])
+        };
+
+        if !include_pii {
+            redact_profile(&mut p, &contact);
+            redact_profile(&mut interviews, &contact);
+            redact_profile(&mut offer, &contact);
+            mask_offer_compensation(&mut offer);
+        }
+
+        json!({
+            "id": id,
+            "application_id": r.get::<Uuid, _>("application_id"),
+            "jobId": job,
+            "rank": i + 1,
+            "name": name,
+            "headline": p.get("target_headline").unwrap_or(&json!("Pending extraction")),
+            "avatar": "CD",
+            "isImageAvatar": false,
+            "matchScore": r.get::<Option<f64>, _>("current_score"),
+            "matchLabel": "Job-specific evaluation",
+            "skills": p.get("core_skills").unwrap_or(&json!([])),
+            "stage": r.get::<String, _>("application_stage"),
+            "interviews": interviews,
+            "offer": offer,
+            "sourceResumeLink": format!("/candidates/{id}"),
+            "quote": "",
+            "suggestedQuestions": []
+        })
+    }).collect())
 }
 pub async fn job_candidates(
     State(state): State<AppState>,
     Extension(user): Extension<Identity>,
     Path(job): Path<Uuid>,
+    Query(f): Query<Filters>,
 ) -> Result<Json<Value>> {
+    if f.include_pii {
+        user.pii()?;
+    }
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
-    Ok(Json(json!(ranked(&mut tx, &user, job).await?)))
+    let results = ranked(&mut tx, &user, job, f.include_pii).await?;
+    if f.include_pii {
+        audit(&mut tx, &user, "VIEW_CANDIDATES_PII", "job", job).await?;
+    }
+    tx.commit().await?;
+    Ok(Json(json!(results)))
 }
 pub async fn add_job_candidate(
     State(state): State<AppState>,
     Extension(user): Extension<Identity>,
     Path(job): Path<Uuid>,
+    Query(f): Query<Filters>,
     Json(input): Json<Value>,
 ) -> Result<Json<Value>> {
     user.write()?;
+    if f.include_pii {
+        user.pii()?;
+    }
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
     let job_row = sqlx::query("SELECT status FROM ats_v2.jobs WHERE id=$1 AND tenant_id=$2")
         .bind(job)
@@ -924,7 +1004,7 @@ pub async fn add_job_candidate(
     };
     sqlx::query("INSERT INTO ats_v2.applications(id,tenant_id,candidate_id,job_id) VALUES($1,$2,$3,$4) ON CONFLICT(tenant_id,candidate_id,job_id) DO NOTHING").bind(Uuid::new_v4()).bind(user.tenant_id).bind(candidate).bind(job).execute(&mut *tx).await?;
     audit(&mut tx, &user, "ADD_APPLICATION", "candidate", candidate).await?;
-    let results = ranked(&mut tx, &user, job).await?;
+    let results = ranked(&mut tx, &user, job, f.include_pii).await?;
     tx.commit().await?;
     Ok(Json(json!(results)))
 }
@@ -932,13 +1012,17 @@ pub async fn remove_job_candidate(
     State(state): State<AppState>,
     Extension(user): Extension<Identity>,
     Path((job, candidate)): Path<(Uuid, Uuid)>,
+    Query(f): Query<Filters>,
 ) -> Result<Json<Value>> {
     user.write()?;
+    if f.include_pii {
+        user.pii()?;
+    }
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
     // Preserve history and prevent pending AI callbacks from reviving a withdrawn application.
     move_stage(&mut tx, &user, job, candidate, "Withdrawn").await?;
     sqlx::query("UPDATE ats_v2.processing_jobs SET state='CANCELLED',updated_at=now() WHERE tenant_id=$1 AND application_id IN(SELECT id FROM ats_v2.applications WHERE tenant_id=$1 AND job_id=$2 AND candidate_id=$3) AND state IN('QUEUED','RUNNING')").bind(user.tenant_id).bind(job).bind(candidate).execute(&mut *tx).await?;
-    let results = ranked(&mut tx, &user, job).await?;
+    let results = ranked(&mut tx, &user, job, f.include_pii).await?;
     tx.commit().await?;
     Ok(Json(json!(results)))
 }
@@ -1154,10 +1238,14 @@ pub async fn list_interviews(
     State(state): State<AppState>,
     Extension(user): Extension<Identity>,
     Path((job, candidate)): Path<(Uuid, Uuid)>,
+    Query(f): Query<Filters>,
 ) -> Result<Json<Value>> {
+    if f.include_pii {
+        user.pii()?;
+    }
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
     let row = sqlx::query(
-        "SELECT interviews FROM ats_v2.applications WHERE tenant_id=$1 AND job_id=$2 AND candidate_id=$3",
+        "SELECT a.interviews, c.contact FROM ats_v2.applications a JOIN ats_v2.candidates c ON c.id=a.candidate_id AND c.tenant_id=a.tenant_id WHERE a.tenant_id=$1 AND a.job_id=$2 AND a.candidate_id=$3 AND c.deleted_at IS NULL",
     )
     .bind(user.tenant_id)
     .bind(job)
@@ -1165,7 +1253,13 @@ pub async fn list_interviews(
     .fetch_optional(&mut *tx)
     .await?
     .ok_or_else(missing)?;
-    let interviews: Value = row.get("interviews");
+    let mut interviews: Value = row.get("interviews");
+    let contact: Value = row.get("contact");
+    if f.include_pii {
+        audit(&mut tx, &user, "VIEW_CANDIDATE_INTERVIEWS_PII", "application", candidate).await?;
+    } else {
+        redact_profile(&mut interviews, &contact);
+    }
     tx.commit().await?;
     Ok(Json(interviews))
 }
@@ -1388,10 +1482,14 @@ pub async fn get_offer(
     State(state): State<AppState>,
     Extension(user): Extension<Identity>,
     Path((job, candidate)): Path<(Uuid, Uuid)>,
+    Query(f): Query<Filters>,
 ) -> Result<Json<Value>> {
+    if f.include_pii {
+        user.pii()?;
+    }
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
     let row = sqlx::query(
-        "SELECT offer FROM ats_v2.applications WHERE tenant_id=$1 AND job_id=$2 AND candidate_id=$3",
+        "SELECT a.offer, c.contact FROM ats_v2.applications a JOIN ats_v2.candidates c ON c.id=a.candidate_id AND c.tenant_id=a.tenant_id WHERE a.tenant_id=$1 AND a.job_id=$2 AND a.candidate_id=$3 AND c.deleted_at IS NULL",
     )
     .bind(user.tenant_id)
     .bind(job)
@@ -1399,7 +1497,14 @@ pub async fn get_offer(
     .fetch_optional(&mut *tx)
     .await?
     .ok_or_else(missing)?;
-    let offer: Value = row.get("offer");
+    let mut offer: Value = row.get("offer");
+    let contact: Value = row.get("contact");
+    if f.include_pii {
+        audit(&mut tx, &user, "VIEW_CANDIDATE_OFFER_PII", "application", candidate).await?;
+    } else {
+        redact_profile(&mut offer, &contact);
+        mask_offer_compensation(&mut offer);
+    }
     tx.commit().await?;
     Ok(Json(offer))
 }

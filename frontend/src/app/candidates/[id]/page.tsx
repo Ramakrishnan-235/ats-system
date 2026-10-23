@@ -117,7 +117,7 @@ export default function CandidateAssessmentPage() {
       try {
         const data = await fetchCandidate(candidateId, true).catch((err: unknown) => {
           if (err instanceof ApiError && err.status === 403) {
-            return fetchCandidate(candidateId);
+            return fetchCandidate(candidateId, false);
           }
           throw err;
         });

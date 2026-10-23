@@ -56,7 +56,11 @@ pub async fn submissions(
 pub async fn dashboard(
     State(state): State<AppState>,
     Extension(user): Extension<Identity>,
+    Query(f): Query<crate::domain::Filters>,
 ) -> Result<Json<Value>> {
+    if f.include_pii {
+        user.pii()?;
+    }
     let mut tx = tenant_tx(&state.db, user.tenant_id).await?;
     let total: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM ats_v2.candidates WHERE tenant_id=$1 AND deleted_at IS NULL",
@@ -89,9 +93,18 @@ pub async fn dashboard(
         let stage: String = r.get("stage");
         let mut p: Value = r.get("profile");
         let contact: Value = r.get("contact");
-        crate::domain::redact_profile(&mut p, &contact);
-        let name = if user.can_reveal_contacts() { contact.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| format!("Candidate #{}", &id.simple().to_string()[..8])) } else { format!("Candidate #{}", &id.simple().to_string()[..8]) };
+        if !f.include_pii {
+            crate::domain::redact_profile(&mut p, &contact);
+        }
+        let name = if f.include_pii && user.can_reveal_contacts() {
+            contact.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| format!("Candidate #{}", &id.simple().to_string()[..8]))
+        } else {
+            format!("Candidate #{}", &id.simple().to_string()[..8])
+        };
         pipeline.entry(stage.clone()).or_insert(json!([])).as_array_mut().unwrap().push(json!({"id":id,"application_id":r.get::<Uuid,_>("application_id"),"job_id":r.get::<Uuid,_>("job_id"),"name":name,"role":p.get("target_headline").unwrap_or(&json!("Pending extraction")),"avatar":"CD","stage":stage,"match_score":r.get::<Option<f64>,_>("current_score"),"summary":r.get::<String,_>("title"),"probability":null,"applied_time":""}));
+    }
+    if f.include_pii {
+        audit(&mut tx, &user, "VIEW_CANDIDATES_PII", "candidate", "dashboard").await?;
     }
     let weeks=sqlx::query("SELECT series.week,count(c.id) count FROM generate_series(date_trunc('week',now())-interval '7 weeks',date_trunc('week',now()),interval '1 week') series(week) LEFT JOIN ats_v2.candidates c ON c.created_at>=series.week AND c.created_at<series.week+interval '1 week' AND c.tenant_id=$1 AND c.deleted_at IS NULL GROUP BY series.week ORDER BY series.week").bind(user.tenant_id).fetch_all(&mut *tx).await?;
     let stats=[("active_jobs","ACTIVE JOBS",active,"briefcase"),("candidates","CANDIDATES",total,"users"),("processing","PROCESSING",processing,"file"),("evaluations","EVALUATIONS TODAY",today,"sparkles")].iter().map(|(id,label,count,icon)|json!({"id":id,"label":label,"value":count.to_string(),"change":"From saved records","trend":"neutral","icon":icon,"style":"default"})).collect::<Vec<_>>();
