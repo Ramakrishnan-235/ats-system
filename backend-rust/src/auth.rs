@@ -293,10 +293,22 @@ async fn issue_session(state: &AppState, user_id: Uuid, tenant_id: Uuid) -> Resu
     )
         .into_response())
 }
-async fn auth_limit(state: &AppState, identity: &str) -> Result<()> {
-    let count:i32=sqlx::query_scalar("INSERT INTO ats_v2.auth_attempts(identity_hash,attempts) VALUES($1,1) ON CONFLICT(identity_hash) DO UPDATE SET attempts=CASE WHEN auth_attempts.window_start < now()-interval '15 minutes' THEN 1 ELSE auth_attempts.attempts+1 END,window_start=CASE WHEN auth_attempts.window_start < now()-interval '15 minutes' THEN now() ELSE auth_attempts.window_start END RETURNING attempts")
-        .bind(hash(identity.as_bytes())).fetch_one(&state.db).await?;
-    if count > 10 {
+pub const AUTH_IDENTITY_LIMIT: i32 = 10;
+pub const AUTH_IP_LIMIT: i32 = 30;
+
+pub async fn check_rate_limit(state: &AppState, key: &str, max_attempts: i32) -> Result<()> {
+    let count: i32 = sqlx::query_scalar(
+        "INSERT INTO ats_v2.auth_attempts(identity_hash,attempts) VALUES($1,1) \
+         ON CONFLICT(identity_hash) DO UPDATE SET \
+         attempts=CASE WHEN auth_attempts.window_start < now()-interval '15 minutes' THEN 1 ELSE auth_attempts.attempts+1 END, \
+         window_start=CASE WHEN auth_attempts.window_start < now()-interval '15 minutes' THEN now() ELSE auth_attempts.window_start END \
+         RETURNING attempts",
+    )
+    .bind(hash(key.as_bytes()))
+    .fetch_one(&state.db)
+    .await?;
+
+    if count > max_attempts {
         return Err(ApiError(
             StatusCode::TOO_MANY_REQUESTS,
             "Too many sign-in attempts. Retry in 15 minutes.",
@@ -304,8 +316,19 @@ async fn auth_limit(state: &AppState, identity: &str) -> Result<()> {
     }
     Ok(())
 }
+
+pub async fn auth_limit(state: &AppState, ip: &str, identity: &str) -> Result<()> {
+    // Tier 1: per-IP global threshold across all emails to prevent horizontal password spraying
+    check_rate_limit(state, &format!("ip:{ip}"), AUTH_IP_LIMIT).await?;
+
+    // Tier 2: per-(ip, email/identity) threshold to prevent single-source brute force without locking out legitimate users on other IPs
+    check_rate_limit(state, &format!("{ip}:{identity}"), AUTH_IDENTITY_LIMIT).await?;
+
+    Ok(())
+}
 pub async fn register(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(input): Json<Credentials>,
 ) -> Result<Response> {
     if !state.config.allow_signup {
@@ -315,8 +338,9 @@ pub async fn register(
         ));
     }
     validate_credentials(&input)?;
+    let ip = client_ip(&headers);
     let email = input.email.trim().to_lowercase();
-    auth_limit(&state, &format!("register:{email}")).await?;
+    auth_limit(&state, &ip, &format!("register:{email}")).await?;
 
     let existing: bool =
         sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM ats_v2.users WHERE email = $1)")
@@ -467,13 +491,15 @@ fn validate_credentials(input: &Credentials) -> Result<()> {
 }
 pub async fn login(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(input): Json<Credentials>,
 ) -> Result<Response> {
+    let ip = client_ip(&headers);
     let email = input.email.trim().to_lowercase();
     if email.len() > 254 || input.password.len() > 256 {
         return Err(bad("Invalid credentials."));
     }
-    auth_limit(&state, &email).await?;
+    auth_limit(&state, &ip, &email).await?;
     let row=sqlx::query("SELECT u.id,u.password_hash,m.tenant_id FROM ats_v2.users u JOIN ats_v2.memberships m ON m.user_id=u.id WHERE u.email=$1 ORDER BY m.tenant_id LIMIT 1")
         .bind(&email).fetch_optional(&state.db).await?;
     let password = input.password;
@@ -726,13 +752,15 @@ pub struct PasswordResetRequest {
 
 pub async fn password_reset_request(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(input): Json<PasswordResetRequest>,
 ) -> Result<Json<Value>> {
     let email = input.email.trim().to_lowercase();
     if email.is_empty() || !email.contains('@') {
         return Err(bad("Enter a valid email address."));
     }
-    auth_limit(&state, &format!("reset-req:{email}")).await?;
+    let ip = client_ip(&headers);
+    auth_limit(&state, &ip, &format!("reset-req:{email}")).await?;
 
     let user_row = sqlx::query("SELECT id, name FROM ats_v2.users WHERE email = $1")
         .bind(&email)
@@ -817,10 +845,9 @@ pub async fn password_reset_confirm(
     }
 
     let ip = client_ip(&headers);
-    auth_limit(&state, &format!("reset-confirm:{ip}")).await?;
-
     let token_hash = hash(raw_token.as_bytes());
-    auth_limit(&state, &format!("reset-confirm:{token_hash}")).await?;
+    check_rate_limit(&state, &format!("reset-confirm:{token_hash}"), 10).await?;
+    auth_limit(&state, &ip, &format!("reset-confirm:{token_hash}")).await?;
 
     let mut tx = state.db.begin().await?;
 

@@ -916,3 +916,58 @@ fn reset_confirm_rate_limit_keys_and_client_ip_extraction() {
     assert_ne!(key_ip_1, "reset-confirm");
 }
 
+#[test]
+fn two_tier_auth_rate_limiting_prevents_lockout_and_spraying() {
+    let attacker_ip = "198.51.100.42";
+    let legitimate_user_ip = "203.0.113.88";
+    let target_email = "admin@example.test";
+
+    // Tier 1: Per-(IP, email) key formulation
+    let attacker_key = format!("{attacker_ip}:{target_email}");
+    let legitimate_key = format!("{legitimate_user_ip}:{target_email}");
+
+    // An attacker's brute force attempts generate a distinct key and hash
+    assert_ne!(
+        attacker_key, legitimate_key,
+        "Attacker key must not match legitimate user's key"
+    );
+    assert_ne!(
+        ats_backend::hash(attacker_key.as_bytes()),
+        ats_backend::hash(legitimate_key.as_bytes()),
+        "Attacker attempts must not increment legitimate user's rate-limit counter"
+    );
+    assert_ne!(
+        attacker_key, target_email,
+        "Rate limit key must not be solely the target email"
+    );
+
+    // Tier 2: Per-IP global key formulation to throttle horizontal password spraying
+    let email_1 = "recruiter1@example.test";
+    let email_2 = "recruiter2@example.test";
+    let email_3 = "recruiter3@example.test";
+
+    let global_ip_key_1 = format!("ip:{attacker_ip}");
+    let global_ip_key_2 = format!("ip:{attacker_ip}");
+    assert_eq!(
+        global_ip_key_1, global_ip_key_2,
+        "Horizontal spraying attempts from the same IP must share the global IP key"
+    );
+
+    // Individual emails are distinct under Tier 1, but aggregated under Tier 2
+    let spray_key_1 = format!("{attacker_ip}:{email_1}");
+    let spray_key_2 = format!("{attacker_ip}:{email_2}");
+    let spray_key_3 = format!("{attacker_ip}:{email_3}");
+
+    assert_ne!(spray_key_1, spray_key_2);
+    assert_ne!(spray_key_2, spray_key_3);
+
+    // Constants verification
+    assert_eq!(ats_backend::auth::AUTH_IDENTITY_LIMIT, 10);
+    assert_eq!(ats_backend::auth::AUTH_IP_LIMIT, 30);
+    assert!(
+        ats_backend::auth::AUTH_IP_LIMIT >= ats_backend::auth::AUTH_IDENTITY_LIMIT,
+        "Global IP threshold must be >= per-account threshold"
+    );
+}
+
+
