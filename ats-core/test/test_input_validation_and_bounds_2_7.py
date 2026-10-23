@@ -33,6 +33,8 @@ from ats_core.api.v1.taxonomy import router as taxonomy_router
 from ats_core.taxonomy.taxonomy_service import SkillTaxonomyService
 
 TEST_API_KEY = "test-key-bounds-27"
+RECRUITER_TOKEN = auth.create_signed_token("recruiter-actual-id", "recruiter", "verified.recruiter@company.com", secret_key=TEST_API_KEY)
+RECRUITER_HEADERS = {"Authorization": f"Bearer {RECRUITER_TOKEN}"}
 
 
 @pytest.fixture
@@ -74,10 +76,7 @@ def test_candidate_stage_validation(test_app):
         "scorecard": {"team_notes": []},
     }
 
-    headers = {
-        "X-API-Key": TEST_API_KEY,
-        "X-User-Role": "recruiter",
-    }
+    headers = RECRUITER_HEADERS
 
     # Invalid stage should return 400 Bad Request
     res_bad = test_app.patch(
@@ -116,10 +115,7 @@ def test_job_candidate_stage_validation(test_app):
         }
     ]
 
-    headers = {
-        "X-API-Key": TEST_API_KEY,
-        "X-User-Role": "recruiter",
-    }
+    headers = RECRUITER_HEADERS
 
     # Invalid stage rejected
     res_bad = test_app.patch(
@@ -151,10 +147,7 @@ def test_note_content_length_and_whitespace(test_app):
         "scorecard": {"team_notes": []},
     }
 
-    headers = {
-        "X-API-Key": TEST_API_KEY,
-        "X-User-Role": "recruiter",
-    }
+    headers = RECRUITER_HEADERS
 
     # Whitespace only rejected (422)
     res = test_app.post(
@@ -190,12 +183,7 @@ def test_note_author_anti_spoofing(test_app):
         "scorecard": {"team_notes": []},
     }
 
-    headers = {
-        "X-API-Key": TEST_API_KEY,
-        "X-User-Role": "recruiter",
-        "X-User-Id": "recruiter-actual-id",
-        "X-User-Email": "verified.recruiter@company.com",
-    }
+    headers = RECRUITER_HEADERS
 
     # Attacker tries to impersonate someone else in the JSON payload
     res = test_app.post(
@@ -215,10 +203,7 @@ def test_note_author_anti_spoofing(test_app):
 
 def test_job_create_validation(test_app):
     """CreateJobRequest must validate title (2-200 chars) and job_description (10-50000 chars)."""
-    headers = {
-        "X-API-Key": TEST_API_KEY,
-        "X-User-Role": "recruiter",
-    }
+    headers = RECRUITER_HEADERS
 
     # Title too short (< 2)
     res = test_app.post(
@@ -265,10 +250,7 @@ def test_job_update_validation(test_app):
         "status": "ACTIVE",
     }
 
-    headers = {
-        "X-API-Key": TEST_API_KEY,
-        "X-User-Role": "recruiter",
-    }
+    headers = RECRUITER_HEADERS
 
     # Update with invalid short title
     res = test_app.patch(
@@ -291,10 +273,7 @@ def test_job_update_validation(test_app):
 
 def test_taxonomy_category_and_source_validation(test_app):
     """Taxonomy create and approve payloads must enforce category and source whitelists."""
-    headers = {
-        "X-API-Key": TEST_API_KEY,
-        "X-User-Role": "recruiter",
-    }
+    headers = RECRUITER_HEADERS
 
     # Invalid category
     res = test_app.post(
@@ -341,11 +320,7 @@ def test_sliding_window_rate_limiter_unit():
 
 def test_rate_limiting_middleware_http(test_app):
     """FastAPI TestClient: verifies rate limit 429 response and Retry-After header."""
-    headers = {
-        "X-API-Key": TEST_API_KEY,
-        "X-User-Role": "recruiter",
-        "X-User-Id": "rate-limited-user",
-    }
+    headers = RECRUITER_HEADERS
 
     # App fixture rate limit is set to 10 rpm
     for _ in range(10):

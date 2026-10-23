@@ -3,11 +3,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, field_validator
 
 from ats_core.api.audit import check_and_audit_pii_access
-from ats_core.api.auth import get_current_user
+from ats_core.api.auth import get_current_user, require_write_role
 
 logger = logging.getLogger("ats.api.jobs")
 router = APIRouter(prefix="/jobs", tags=["Job Postings & Requisitions"])
@@ -943,8 +943,9 @@ async def get_job(job_id: str):
     return _normalize_job_dict(JOBS_STORE[job_id])
 
 
-@router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
-async def create_job(payload: CreateJobRequest):
+@router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_write_role)])
+async def create_job(request: Request, payload: CreateJobRequest):
+    require_write_role(request)
     new_id = f"job-{uuid.uuid4().hex[:8]}"
     now = datetime.now(UTC)
     now_str = now.strftime("%Y-%m-%d")
@@ -1014,8 +1015,9 @@ async def create_job(payload: CreateJobRequest):
     return new_job
 
 
-@router.patch("/{job_id}", response_model=JobResponse)
-async def update_job(job_id: str, payload: UpdateJobRequest):
+@router.patch("/{job_id}", response_model=JobResponse, dependencies=[Depends(require_write_role)])
+async def update_job(request: Request, job_id: str, payload: UpdateJobRequest):
+    require_write_role(request)
     if job_id not in JOBS_STORE:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Job not found")
 
@@ -1031,8 +1033,9 @@ async def update_job(job_id: str, payload: UpdateJobRequest):
     return JOBS_STORE[job_id]
 
 
-@router.patch("/{job_id}/status", response_model=JobResponse)
-async def update_job_status(job_id: str, new_status: str = Query(..., pattern="^(OPEN|PAUSED|CLOSED)$")):
+@router.patch("/{job_id}/status", response_model=JobResponse, dependencies=[Depends(require_write_role)])
+async def update_job_status(request: Request, job_id: str, new_status: str = Query(..., pattern="^(OPEN|PAUSED|CLOSED)$")):
+    require_write_role(request)
     if job_id not in JOBS_STORE:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 
@@ -1112,8 +1115,9 @@ async def get_job_candidates(request: Request, job_id: str, include_pii: bool = 
     return _present_job_candidates(current, include_pii)
 
 
-@router.post("/{job_id}/candidates", response_model=list[dict[str, Any]])
+@router.post("/{job_id}/candidates", response_model=list[dict[str, Any]], dependencies=[Depends(require_write_role)])
 async def add_job_candidate(request: Request, job_id: str, candidate: JobCandidatePayload, include_pii: bool = Query(False)):
+    require_write_role(request)
     if include_pii:
         user = get_current_user(request)
         check_and_audit_pii_access(request, user, "ADD_JOB_CANDIDATE_PII", "job_candidates", job_id)
@@ -1281,8 +1285,9 @@ async def add_job_candidate(request: Request, job_id: str, candidate: JobCandida
     return _present_job_candidates(updated_list, include_pii)
 
 
-@router.delete("/{job_id}/candidates/{candidate_id}", response_model=list[dict[str, Any]])
+@router.delete("/{job_id}/candidates/{candidate_id}", response_model=list[dict[str, Any]], dependencies=[Depends(require_write_role)])
 async def remove_job_candidate(request: Request, job_id: str, candidate_id: str, include_pii: bool = Query(False)):
+    require_write_role(request)
     if include_pii:
         user = get_current_user(request)
         check_and_audit_pii_access(request, user, "REMOVE_JOB_CANDIDATE_PII", "job_candidates", job_id)
@@ -1310,8 +1315,9 @@ async def remove_job_candidate(request: Request, job_id: str, candidate_id: str,
     return _present_job_candidates(updated_list, include_pii)
 
 
-@router.patch("/{job_id}/candidates/{candidate_id}/stage")
+@router.patch("/{job_id}/candidates/{candidate_id}/stage", dependencies=[Depends(require_write_role)])
 async def update_job_candidate_stage(request: Request, job_id: str, candidate_id: str, new_stage: str = Query(...), include_pii: bool = Query(False)):
+    require_write_role(request)
     clean_stage = new_stage.strip() if isinstance(new_stage, str) else ""
     if clean_stage not in VALID_CANDIDATE_STAGES:
         raise HTTPException(

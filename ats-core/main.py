@@ -62,19 +62,40 @@ app.add_middleware(
     ).split(",") if origin.strip()],
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-User-Id", "X-User-Role", "X-User-Email"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-User-Id", "X-User-Role", "X-User-Email", "X-User-Signature", "X-Service-Key"],
 )
 
 # Rate Limiting Middleware
 app.add_middleware(RateLimitMiddleware)
 
-# Mount API Routers with Security Authentication Dependency
-app.include_router(dashboard_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
-app.include_router(jobs_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
-app.include_router(candidates_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
-app.include_router(match_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
-app.include_router(taxonomy_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
-app.include_router(audit_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+# Decommissioning toggle for legacy Python public endpoints
+ATS_DECOMMISSION_PUBLIC_ROUTES = os.getenv(
+    "ATS_DECOMMISSION_PUBLIC_ROUTES", "false"
+).strip().lower() in ("true", "1", "yes")
+
+if ATS_DECOMMISSION_PUBLIC_ROUTES:
+    @app.api_route(
+        "/api/v1/{path:path}",
+        methods=["GET", "POST", "PATCH", "DELETE", "PUT", "OPTIONS"],
+        include_in_schema=False,
+    )
+    async def decommissioned_api_routes(path: str):
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail=(
+                "Legacy Python ATS Core public API routes have been decommissioned in favor of backend-rust (port 8080). "
+                "For private AI inference and evaluation, use ai_main.py (port 8100) behind X-Service-Key."
+            ),
+        )
+else:
+    # Mount API Routers with Security Authentication Dependency
+    app.include_router(dashboard_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+    app.include_router(jobs_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+    app.include_router(candidates_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+    app.include_router(match_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+    app.include_router(taxonomy_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+    app.include_router(audit_router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 
 
 @app.get("/health", tags=["System"])

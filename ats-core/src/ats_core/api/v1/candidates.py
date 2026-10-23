@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    Depends,
     File,
     Form,
     HTTPException,
@@ -23,7 +24,7 @@ from pydantic import BaseModel, Field, field_validator
 from starlette.concurrency import run_in_threadpool
 
 from ats_core.api.audit import check_and_audit_pii_access
-from ats_core.api.auth import get_current_user
+from ats_core.api.auth import get_current_user, require_write_role
 from ats_core.api.upload_storage import UPLOAD_STAGING_DIR, resume_path, stage_pdf_upload
 
 logger = logging.getLogger("ats.api.candidates")
@@ -420,14 +421,17 @@ async def add_candidate_note(request: Request, candidate_id: str, note: NoteCrea
             detail=f"Candidate with ID '{candidate_id}' not found."
         )
 
-    # Anti-spoofing: enforce authenticated actor identity if present
+    # Role check: only authorized users can add notes
     user = get_current_user(request)
-    if user and (user.email or user.user_id):
-        author_name = (user.email or user.user_id).strip()
-        author_role = user.role.capitalize() if user.role else "Recruiter"
-    else:
-        author_name = note.author.strip() if note.author and note.author.strip() else "Recruiter Admin"
-        author_role = "Recruiter"
+    if not user.can_add_notes():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Forbidden: Role '{user.role}' is not authorized to add candidate notes.",
+        )
+
+    # Anti-spoofing: enforce authenticated actor identity
+    author_name = (user.email or user.user_id).strip() if (user.email or user.user_id) else "Recruiter Admin"
+    author_role = user.role.capitalize() if user.role else "Recruiter"
 
     clean_content = note.content.strip()
     new_note = {
@@ -453,8 +457,9 @@ async def add_candidate_note(request: Request, candidate_id: str, note: NoteCrea
     return new_note
 
 
-@router.patch("/{candidate_id}/stage")
-async def update_candidate_stage(candidate_id: str, new_stage: str = Query(...)):
+@router.patch("/{candidate_id}/stage", dependencies=[Depends(require_write_role)])
+async def update_candidate_stage(request: Request, candidate_id: str, new_stage: str = Query(...)):
+    require_write_role(request)
     clean_stage = new_stage.strip() if isinstance(new_stage, str) else ""
     if clean_stage not in VALID_CANDIDATE_STAGES:
         raise HTTPException(
@@ -851,7 +856,8 @@ async def _process_resume_pipeline_safe(
 @router.post(
     "/upload-async",
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Upload and process a PDF resume asynchronously"
+    summary="Upload and process a PDF resume asynchronously",
+    dependencies=[Depends(require_write_role)],
 )
 async def upload_resume_async(
     request: Request,
@@ -860,6 +866,7 @@ async def upload_resume_async(
     job_id: str | None = Form(None),
     execution_mode: str | None = Query(None),
 ):
+    require_write_role(request)
     # Concurrency limit check
     if _upload_semaphore.locked():
         raise HTTPException(

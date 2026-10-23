@@ -161,11 +161,8 @@ def test_role_gating_on_taxonomy_mutations(taxonomy_test_app):
     service = SkillTaxonomyService.get_instance()
 
     # 1. Viewer role attempts
-    viewer_headers = {
-        "X-API-Key": TEST_API_KEY,
-        "X-User-Id": "v-1",
-        "X-User-Role": "viewer",
-    }
+    viewer_token = auth.create_signed_token("v-1", "viewer", secret_key=TEST_API_KEY)
+    viewer_headers = {"Authorization": f"Bearer {viewer_token}"}
 
     # Viewer cannot create skill
     r = client.post("/api/v1/taxonomy/skills", json={"canonical_name": "TestTool1", "category": "tool"}, headers=viewer_headers)
@@ -190,11 +187,8 @@ def test_role_gating_on_taxonomy_mutations(taxonomy_test_app):
     assert r.status_code == 403
 
     # 2. Recruiter role attempts
-    recruiter_headers = {
-        "X-API-Key": TEST_API_KEY,
-        "X-User-Id": "r-1",
-        "X-User-Role": "recruiter",
-    }
+    recruiter_token = auth.create_signed_token("r-1", "recruiter", secret_key=TEST_API_KEY)
+    recruiter_headers = {"Authorization": f"Bearer {recruiter_token}"}
 
     # Recruiter CAN create skill
     r = client.post(
@@ -234,11 +228,8 @@ def test_role_gating_on_taxonomy_mutations(taxonomy_test_app):
     assert "Administrator role is required" in r.json()["detail"]
 
     # 3. Admin role attempts
-    admin_headers = {
-        "X-API-Key": TEST_API_KEY,
-        "X-User-Id": "a-1",
-        "X-User-Role": "admin",
-    }
+    admin_token = auth.create_signed_token("a-1", "admin", secret_key=TEST_API_KEY)
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
     # Admin CAN sync seed
     r = client.post("/api/v1/taxonomy/sync-seed", headers=admin_headers)
@@ -254,11 +245,8 @@ def test_api_conflict_responses_and_audit_trail(taxonomy_test_app):
     """
     client = taxonomy_test_app
     service = SkillTaxonomyService.get_instance()
-    admin_headers = {
-        "X-API-Key": TEST_API_KEY,
-        "X-User-Id": "admin-audit-user",
-        "X-User-Role": "admin",
-    }
+    admin_token = auth.create_signed_token("admin-audit-user", "admin", secret_key=TEST_API_KEY)
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
     # Collision 1: Create skill with canonical name that already exists -> 409
     r = client.post(
