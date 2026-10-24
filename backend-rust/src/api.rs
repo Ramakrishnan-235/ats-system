@@ -187,6 +187,7 @@ pub fn router(state: AppState) -> Router {
         .nest("/api/v1", business)
         .nest("/internal", internal)
         .layer(middleware::from_fn_with_state(state.clone(), auth::csrf))
+        .layer(middleware::from_fn(auth::security_headers))
         .layer(DefaultBodyLimit::max(256 * 1024))
         .layer(cors)
         .layer(TraceLayer::new_for_http())

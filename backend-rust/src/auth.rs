@@ -258,6 +258,24 @@ pub async fn csrf(State(state): State<AppState>, request: Request, next: Next) -
     Ok(next.run(request).await)
 }
 
+pub async fn security_headers(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    headers.insert(
+        header::HeaderName::from_static("x-content-type-options"),
+        header::HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::HeaderName::from_static("x-frame-options"),
+        header::HeaderValue::from_static("DENY"),
+    );
+    headers.insert(
+        header::HeaderName::from_static("x-xss-protection"),
+        header::HeaderValue::from_static("1; mode=block"),
+    );
+    response
+}
+
 #[derive(Deserialize, utoipa::ToSchema)]
 pub struct Credentials {
     pub email: String,
