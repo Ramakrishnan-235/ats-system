@@ -136,9 +136,15 @@ pub fn token(headers: &HeaderMap) -> Option<String> {
 }
 
 pub fn client_ip(headers: &HeaderMap) -> String {
-    for header_name in &["x-forwarded-for", "x-real-ip", "cf-connecting-ip"] {
-        if let Some(val) = headers.get(*header_name).and_then(|v| v.to_str().ok()) {
-            if let Some(first) = val.split(',').next() {
+    let trust_proxies = std::env::var("ATS_TRUST_PROXY_HEADERS")
+        .map(|v| !matches!(v.trim().to_lowercase().as_str(), "false" | "0" | "no"))
+        .unwrap_or(true);
+
+    if trust_proxies {
+        for header_name in &["x-forwarded-for", "x-real-ip", "cf-connecting-ip"] {
+            if let Some(val) = headers.get(*header_name).and_then(|v| v.to_str().ok())
+                && let Some(first) = val.split(',').next()
+            {
                 let trimmed = first.trim();
                 if !trimmed.is_empty() {
                     return trimmed.to_string();
@@ -1030,19 +1036,18 @@ pub async fn list_email_tasks(
     let mut authorized = false;
 
     // 1. Service authentication (x-service-key header)
-    if let Some(supplied) = headers.get("x-service-key").and_then(|v| v.to_str().ok()) {
-        if bool::from(
+    if let Some(supplied) = headers.get("x-service-key").and_then(|v| v.to_str().ok())
+        && bool::from(
             hash(supplied.as_bytes())
                 .as_bytes()
                 .ct_eq(hash(state.config.service_key.as_bytes()).as_bytes()),
         ) {
             authorized = true;
         }
-    }
 
     // 2. Admin session authentication (cookie or Bearer token)
-    if !authorized {
-        if let Some(tok) = token(&headers) {
+    if !authorized
+        && let Some(tok) = token(&headers) {
             let tok_hash = hash(tok.as_bytes());
             let row = sqlx::query(
                 "SELECT m.role FROM ats_v2.sessions s \
@@ -1060,7 +1065,6 @@ pub async fn list_email_tasks(
                 }
             }
         }
-    }
 
     if !authorized {
         return Err(ApiError(

@@ -126,7 +126,11 @@ export default function CandidateDirectoryPage() {
   // Load live candidates and jobs from backend
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    Promise.resolve().then(() => {
+      if (!cancelled) {
+        setLoading(true);
+      }
+    });
     Promise.all([
       (fetchCandidates as (p?: unknown) => Promise<unknown>)({ page: currentPage, limit: pageSize, envelope: true }).catch(() => fetchCandidates()),
       fetchJobs().catch(() => [] as JobRequisition[])

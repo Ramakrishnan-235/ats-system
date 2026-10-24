@@ -1230,11 +1230,10 @@ impl InterviewInput {
                 "Interview outcome must be SCHEDULED, PASSED, FAILED, CANCELLED, or COMPLETED.",
             ));
         }
-        if let Some(ref notes) = self.notes {
-            if notes.chars().count() > 10_000 {
+        if let Some(ref notes) = self.notes
+            && notes.chars().count() > 10_000 {
                 return Err(bad("Interview notes cannot exceed 10,000 characters."));
             }
-        }
         Ok(())
     }
 }

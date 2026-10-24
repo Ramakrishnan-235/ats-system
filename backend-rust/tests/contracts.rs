@@ -911,8 +911,8 @@ fn reset_confirm_rate_limit_keys_and_client_ip_extraction() {
 
     let key_token_a = format!("reset-confirm:{hash_a}");
     let key_token_b = format!("reset-confirm:{hash_b}");
-    let key_ip_1 = format!("reset-confirm:203.0.113.195");
-    let key_ip_2 = format!("reset-confirm:198.51.100.1");
+    let key_ip_1 = "reset-confirm:203.0.113.195".to_string();
+    let key_ip_2 = "reset-confirm:198.51.100.1".to_string();
 
     assert_ne!(key_token_a, key_token_b);
     assert_ne!(key_ip_1, key_ip_2);
@@ -968,10 +968,12 @@ fn two_tier_auth_rate_limiting_prevents_lockout_and_spraying() {
     // Constants verification
     assert_eq!(ats_backend::auth::AUTH_IDENTITY_LIMIT, 10);
     assert_eq!(ats_backend::auth::AUTH_IP_LIMIT, 30);
-    assert!(
-        ats_backend::auth::AUTH_IP_LIMIT >= ats_backend::auth::AUTH_IDENTITY_LIMIT,
-        "Global IP threshold must be >= per-account threshold"
-    );
+    const {
+        assert!(
+            ats_backend::auth::AUTH_IP_LIMIT >= ats_backend::auth::AUTH_IDENTITY_LIMIT,
+            "Global IP threshold must be >= per-account threshold"
+        );
+    }
 
     // Verification of registration and password reset request key formulations
     let attacker_reg_key = format!("{attacker_ip}:register:{target_email}");

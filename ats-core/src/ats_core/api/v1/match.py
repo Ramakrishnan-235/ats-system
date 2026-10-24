@@ -470,10 +470,12 @@ async def match_and_evaluate_candidates(
                 })
             if cats:
                 scorecard["categories"] = cats
-            scorecard["risk_flags"] = []
-            scorecard["suggested_improvements"] = []
-            scorecard["suggested_questions"] = []
-            scorecard["team_notes"] = []
+            cons = eval_data.get("cons") or eval_data.get("cons_or_risks") or []
+            questions = eval_data.get("recommended_interview_questions") or eval_data.get("suggested_questions") or []
+            scorecard["risk_flags"] = eval_data.get("risk_flags") or []
+            scorecard["suggested_improvements"] = list(cons)
+            scorecard["suggested_questions"] = list(questions)
+            scorecard.setdefault("team_notes", [])
 
         # Build JobCandidate item
         cand_rec = get_candidate_from_store(cid) or {}

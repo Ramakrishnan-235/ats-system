@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { CoreHeader } from "@/components/layout/core-header";
 import { CoreFooter } from "@/components/layout/core-footer";
 import { CandidateHeader } from "@/components/candidate/candidate-header";
@@ -14,51 +14,36 @@ import { TimelineTab } from "@/components/candidate/timeline-tab";
 import { AuditTrailTab } from "@/components/candidate/audit-trail-tab";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { EditCandidateModal } from "@/components/candidate/edit-candidate-modal";
+import { RecordInterviewModal } from "@/components/candidate/record-interview-modal";
+import { RecordOfferModal } from "@/components/candidate/record-offer-modal";
 import { Input } from "@/components/ui/input";
 import {
   ApiError,
   fetchCandidate,
   updateCandidateStage,
   getErrorMessage,
-  editCandidate,
   addCandidateNote,
-  recordCandidateInterview,
-  recordCandidateOffer,
 } from "@/lib/api";
-import { CandidateDetail, CitationLocation, InterviewRecord, OfferRecord, TeamNote } from "@/types/ats";
+import { CandidateDetail, CitationLocation, InterviewRecord, OfferRecord } from "@/types/ats";
 import {
   ArrowLeft,
   Columns,
   Sparkles,
   UserX,
-  FileText,
-  Clock,
-  History,
   AlertCircle,
   Briefcase,
   Edit3,
   Calendar,
   DollarSign,
-  CheckCircle2,
-  MessageSquare,
   Plus,
   Send,
   AlertTriangle,
   User,
-  Award,
-  Check,
 } from "lucide-react";
 
 export default function CandidateAssessmentPage() {
   const params = useParams();
-  const router = useRouter();
   const candidateId = (params?.id as string) || "";
 
   const [candidate, setCandidate] = useState<CandidateDetail | null>(null);
@@ -69,37 +54,10 @@ export default function CandidateAssessmentPage() {
   const [splitView, setSplitView] = useState(false);
   const applicationRequest = useRef(0);
 
-  // Manual Profile Edit Dialog State
+  // Modal visibility states
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [editName, setEditName] = useState("");
-  const [editHeadline, setEditHeadline] = useState("");
-  const [editEmail, setEditEmail] = useState("");
-  const [editPhone, setEditPhone] = useState("");
-  const [editLocation, setEditLocation] = useState("");
-  const [editSkills, setEditSkills] = useState("");
-  const [editExpYears, setEditExpYears] = useState(0);
-  const [editEducation, setEditEducation] = useState("");
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
-
-  // Interview Recording Dialog State
   const [isInterviewModalOpen, setIsInterviewModalOpen] = useState(false);
-  const [interviewRound, setInterviewRound] = useState("Technical Architecture Screen");
-  const [interviewDate, setInterviewDate] = useState("");
-  const [interviewerName, setInterviewerName] = useState("");
-  const [interviewOutcome, setInterviewOutcome] = useState("SCHEDULED");
-  const [interviewFeedback, setInterviewFeedback] = useState("");
-  const [isSavingInterview, setIsSavingInterview] = useState(false);
-
-  // Offer Recording Dialog State
   const [isOfferModalOpen, setIsOfferModalOpen] = useState(false);
-  const [offerStatus, setOfferStatus] = useState("DRAFTED");
-  const [offerSalary, setOfferSalary] = useState("145000");
-  const [offerCurrency, setOfferCurrency] = useState("USD");
-  const [offerEquity, setOfferEquity] = useState("0.15% Options");
-  const [offerSignOn, setOfferSignOn] = useState("15000");
-  const [offerStartDate, setOfferStartDate] = useState("");
-  const [offerNotes, setOfferNotes] = useState("");
-  const [isSavingOffer, setIsSavingOffer] = useState(false);
 
   // Team Note Input State
   const [noteContent, setNoteContent] = useState("");
@@ -164,163 +122,57 @@ export default function CandidateAssessmentPage() {
   };
 
   const openManualEdit = () => {
-    if (!candidate) return;
-    setEditName(candidate.name || "");
-    setEditHeadline(candidate.target_headline || "");
-    setEditEmail(candidate.email === "N/A" || candidate.email === "[REDACTED]" ? "" : candidate.email || "");
-    setEditPhone(candidate.phone === "N/A" || candidate.phone === "[REDACTED]" ? "" : candidate.phone || "");
-    setEditLocation(candidate.location === "N/A" ? "" : candidate.location || "");
-    setEditSkills((candidate.core_skills || []).join(", "));
-    setEditExpYears(candidate.years_of_experience || 0);
-    setEditEducation(candidate.highest_education || "");
     setIsEditOpen(true);
   };
 
-  const handleSaveManualEdit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!candidate) return;
-    setIsSavingEdit(true);
-    try {
-      const skillsArray = editSkills.split(",").map((s) => s.trim()).filter(Boolean);
-      const updated = await editCandidate(candidateId, {
-        name: editName.trim() || undefined,
-        headline: editHeadline.trim() || undefined,
-        email: editEmail.trim() || undefined,
-        phone: editPhone.trim() || undefined,
-        location: editLocation.trim() || undefined,
-        skills: skillsArray.length ? skillsArray : undefined,
-        experience_years: editExpYears,
-        education: editEducation.trim() || undefined,
-      });
-      setCandidate((prev) =>
-        prev
-          ? {
-              ...prev,
-              ...updated,
-              name: editName.trim() || prev.name,
-              target_headline: editHeadline.trim() || prev.target_headline,
-              email: editEmail.trim() || prev.email,
-              phone: editPhone.trim() || prev.phone,
-              location: editLocation.trim() || prev.location,
-              core_skills: skillsArray.length ? skillsArray : prev.core_skills,
-              years_of_experience: editExpYears,
-              highest_education: editEducation.trim() || prev.highest_education,
-              processing_status: "COMPLETED",
-              error_message: undefined,
-            }
-          : null
-      );
-      setIsEditOpen(false);
-      setError(null);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setIsSavingEdit(false);
-    }
+  const handleEditSuccess = (updatedFields: Partial<CandidateDetail>) => {
+    setCandidate((prev) =>
+      prev
+        ? {
+            ...prev,
+            ...updatedFields,
+          }
+        : null
+    );
+    setError(null);
   };
 
   const openInterviewModal = () => {
-    setInterviewRound("Technical Architecture Screen");
-    setInterviewDate(new Date(Date.now() + 86400000).toISOString().slice(0, 16));
-    setInterviewerName("Lead Engineer");
-    setInterviewOutcome("SCHEDULED");
-    setInterviewFeedback("");
     setIsInterviewModalOpen(true);
   };
 
-  const handleRecordInterview = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!candidate || !candidate.applied_for_job_id) {
-      setError("Please select an active target job requisition to record an interview.");
-      return;
-    }
-    setIsSavingInterview(true);
-    try {
-      const records = await recordCandidateInterview(candidate.applied_for_job_id, candidate.id, {
-        round: interviewRound,
-        scheduled_at: interviewDate || new Date().toISOString(),
-        interviewer_name: interviewerName.trim() || "Recruitment Panel",
-        outcome: interviewOutcome,
-        feedback: interviewFeedback.trim() || undefined,
-      });
-      setCandidate((prev) =>
-        prev
-          ? {
-              ...prev,
-              interviews: records,
-              applications: prev.applications?.map((a) =>
-                a.job_id === prev.applied_for_job_id ? { ...a, interviews: records } : a
-              ),
-            }
-          : null
-      );
-      setIsInterviewModalOpen(false);
-      setError(null);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setIsSavingInterview(false);
-    }
+  const handleInterviewSuccess = (records: InterviewRecord[]) => {
+    setCandidate((prev) =>
+      prev
+        ? {
+            ...prev,
+            interviews: records,
+            applications: prev.applications?.map((a) =>
+              a.job_id === prev.applied_for_job_id ? { ...a, interviews: records } : a
+            ),
+          }
+        : null
+    );
+    setError(null);
   };
 
   const openOfferModal = () => {
-    if (!candidate) return;
-    const currentOffer = candidate.offer;
-    if (currentOffer) {
-      setOfferStatus(currentOffer.status || "DRAFTED");
-      setOfferSalary(String(currentOffer.base_salary || 145000));
-      setOfferCurrency(currentOffer.currency || "USD");
-      setOfferEquity(currentOffer.equity || "0.15% Options");
-      setOfferSignOn(String(currentOffer.sign_on_bonus || 0));
-      setOfferStartDate(currentOffer.start_date || "");
-      setOfferNotes(currentOffer.notes || "");
-    } else {
-      setOfferStatus("DRAFTED");
-      setOfferSalary("145000");
-      setOfferCurrency("USD");
-      setOfferEquity("0.15% Options");
-      setOfferSignOn("15000");
-      setOfferStartDate("");
-      setOfferNotes("");
-    }
     setIsOfferModalOpen(true);
   };
 
-  const handleRecordOffer = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!candidate || !candidate.applied_for_job_id) {
-      setError("Please select an active target job requisition to record an offer.");
-      return;
-    }
-    setIsSavingOffer(true);
-    try {
-      const rec = await recordCandidateOffer(candidate.applied_for_job_id, candidate.id, {
-        status: offerStatus,
-        salary: Number(offerSalary) || 145000,
-        currency: offerCurrency,
-        equity: offerEquity.trim() || undefined,
-        sign_on_bonus: Number(offerSignOn) || 0,
-        start_date: offerStartDate || undefined,
-        notes: offerNotes.trim() || undefined,
-      });
-      setCandidate((prev) =>
-        prev
-          ? {
-              ...prev,
-              offer: rec,
-              applications: prev.applications?.map((a) =>
-                a.job_id === prev.applied_for_job_id ? { ...a, offer: rec } : a
-              ),
-            }
-          : null
-      );
-      setIsOfferModalOpen(false);
-      setError(null);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setIsSavingOffer(false);
-    }
+  const handleOfferSuccess = (rec: OfferRecord) => {
+    setCandidate((prev) =>
+      prev
+        ? {
+            ...prev,
+            offer: rec,
+            applications: prev.applications?.map((a) =>
+              a.job_id === prev.applied_for_job_id ? { ...a, offer: rec } : a
+            ),
+          }
+        : null
+    );
+    setError(null);
   };
 
   const handleAddNote = async (e: React.FormEvent) => {
@@ -961,337 +813,29 @@ export default function CandidateAssessmentPage() {
 
       <CoreFooter />
 
-      {/* Manual Profile Correction Modal Dialog */}
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="max-w-xl p-7 rounded-2xl bg-white border border-zinc-200 shadow-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-zinc-950 flex items-center gap-2">
-              <Edit3 className="w-5 h-5 text-[#6137e0]" />
-              <span>Manual Candidate Review &amp; Profile Edit</span>
-            </DialogTitle>
-          </DialogHeader>
+      <EditCandidateModal
+        isOpen={isEditOpen}
+        onOpenChange={setIsEditOpen}
+        candidate={candidate}
+        onSuccess={handleEditSuccess}
+        onError={setError}
+      />
 
-          <form onSubmit={handleSaveManualEdit} className="space-y-4 mt-2">
-            <p className="text-xs text-zinc-500">
-              Update candidate details directly. If AI processing failed, saving will rescue the candidate to &ldquo;Completed&rdquo; status.
-            </p>
+      <RecordInterviewModal
+        isOpen={isInterviewModalOpen}
+        onOpenChange={setIsInterviewModalOpen}
+        candidate={candidate}
+        onSuccess={handleInterviewSuccess}
+        onError={setError}
+      />
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-600">Full Name</label>
-              <Input
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                className="h-10 text-xs rounded-xl"
-                required
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-600">Target Headline / Role</label>
-              <Input
-                value={editHeadline}
-                onChange={(e) => setEditHeadline(e.target.value)}
-                placeholder="Senior Distributed Systems Engineer"
-                className="h-10 text-xs rounded-xl"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-600">Email Address</label>
-                <Input
-                  type="email"
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  placeholder="candidate@example.com"
-                  className="h-10 text-xs rounded-xl"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-600">Phone</label>
-                <Input
-                  value={editPhone}
-                  onChange={(e) => setEditPhone(e.target.value)}
-                  placeholder="+1 (555) 019-2831"
-                  className="h-10 text-xs rounded-xl"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-600">Location</label>
-                <Input
-                  value={editLocation}
-                  onChange={(e) => setEditLocation(e.target.value)}
-                  placeholder="San Francisco, CA (Hybrid)"
-                  className="h-10 text-xs rounded-xl"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-600">Years of Experience</label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  value={editExpYears}
-                  onChange={(e) => setEditExpYears(Number(e.target.value))}
-                  className="h-10 text-xs rounded-xl"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-600">Core Skills (comma-separated)</label>
-              <Input
-                value={editSkills}
-                onChange={(e) => setEditSkills(e.target.value)}
-                placeholder="Rust, PostgreSQL, Distributed Systems, Docker"
-                className="h-10 text-xs rounded-xl"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-600">Highest Education</label>
-              <Input
-                value={editEducation}
-                onChange={(e) => setEditEducation(e.target.value)}
-                placeholder="B.S. in Computer Science"
-                className="h-10 text-xs rounded-xl"
-              />
-            </div>
-
-            <DialogFooter className="pt-4 flex justify-end gap-2 border-t border-zinc-100">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsEditOpen(false)}
-                className="text-xs rounded-xl"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={isSavingEdit}
-                className="bg-black hover:bg-zinc-800 text-white text-xs px-5 rounded-xl transition-colors cursor-pointer"
-              >
-                {isSavingEdit ? "Saving..." : "Save & Rescue Profile"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Record Interview Round Dialog */}
-      <Dialog open={isInterviewModalOpen} onOpenChange={setIsInterviewModalOpen}>
-        <DialogContent className="max-w-lg p-7 rounded-2xl bg-white border border-zinc-200 shadow-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-zinc-950 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-[#6137e0]" />
-              <span>Record Interview Round</span>
-            </DialogTitle>
-          </DialogHeader>
-
-          <form onSubmit={handleRecordInterview} className="space-y-4 mt-2">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-600">Interview Round / Stage Name</label>
-              <select
-                value={interviewRound}
-                onChange={(e) => setInterviewRound(e.target.value)}
-                className="h-10 w-full text-xs rounded-xl border border-zinc-200 bg-white px-3 focus:outline-none"
-              >
-                <option value="Initial Screening">Initial Screening</option>
-                <option value="Technical Architecture Screen">Technical Architecture Screen</option>
-                <option value="System Design Deep-Dive">System Design Deep-Dive</option>
-                <option value="Values & Leadership Interview">Values &amp; Leadership Interview</option>
-                <option value="Final Executive Debrief">Final Executive Debrief</option>
-              </select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-600">Scheduled Date &amp; Time</label>
-                <Input
-                  type="datetime-local"
-                  value={interviewDate}
-                  onChange={(e) => setInterviewDate(e.target.value)}
-                  className="h-10 text-xs rounded-xl"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-600">Interviewer Name</label>
-                <Input
-                  value={interviewerName}
-                  onChange={(e) => setInterviewerName(e.target.value)}
-                  placeholder="Sarah Jenkins"
-                  className="h-10 text-xs rounded-xl"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-600">Interview Outcome</label>
-              <select
-                value={interviewOutcome}
-                onChange={(e) => setInterviewOutcome(e.target.value)}
-                className="h-10 w-full text-xs rounded-xl border border-zinc-200 bg-white px-3 focus:outline-none"
-              >
-                <option value="SCHEDULED">SCHEDULED</option>
-                <option value="PASSED">PASSED (Advance)</option>
-                <option value="FAILED">FAILED (Reject)</option>
-                <option value="COMPLETED">COMPLETED (Pending Review)</option>
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-600">Feedback &amp; Panel Notes</label>
-              <textarea
-                value={interviewFeedback}
-                onChange={(e) => setInterviewFeedback(e.target.value)}
-                placeholder="Candidate demonstrated deep concurrency mastery, solved caching bottleneck..."
-                rows={3}
-                className="w-full p-3 text-xs bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:border-zinc-400 leading-relaxed resize-none"
-              />
-            </div>
-
-            <DialogFooter className="pt-4 flex justify-end gap-2 border-t border-zinc-100">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsInterviewModalOpen(false)}
-                className="text-xs rounded-xl"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={isSavingInterview}
-                className="bg-black hover:bg-zinc-800 text-white text-xs px-5 rounded-xl transition-colors cursor-pointer"
-              >
-                {isSavingInterview ? "Saving..." : "Record Interview"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Record Offer Dialog */}
-      <Dialog open={isOfferModalOpen} onOpenChange={setIsOfferModalOpen}>
-        <DialogContent className="max-w-lg p-7 rounded-2xl bg-white border border-zinc-200 shadow-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-zinc-950 flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-[#6137e0]" />
-              <span>Record / Update Offer Record</span>
-            </DialogTitle>
-          </DialogHeader>
-
-          <form onSubmit={handleRecordOffer} className="space-y-4 mt-2">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-600">Offer Status</label>
-              <select
-                value={offerStatus}
-                onChange={(e) => setOfferStatus(e.target.value)}
-                className="h-10 w-full text-xs rounded-xl border border-zinc-200 bg-white px-3 focus:outline-none"
-              >
-                <option value="DRAFTED">DRAFTED — Internal compensation review</option>
-                <option value="EXTENDED">EXTENDED — Extended to candidate</option>
-                <option value="ACCEPTED">ACCEPTED — Signed / Confirmed</option>
-                <option value="DECLINED">DECLINED — Candidate declined</option>
-                <option value="REVISED">REVISED — Counter-offer or revised package</option>
-              </select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-600">Base Salary</label>
-                <Input
-                  type="number"
-                  value={offerSalary}
-                  onChange={(e) => setOfferSalary(e.target.value)}
-                  className="h-10 text-xs rounded-xl"
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-600">Currency</label>
-                <Input
-                  value={offerCurrency}
-                  onChange={(e) => setOfferCurrency(e.target.value)}
-                  className="h-10 text-xs rounded-xl"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-600">Equity Grant</label>
-                <Input
-                  value={offerEquity}
-                  onChange={(e) => setOfferEquity(e.target.value)}
-                  placeholder="0.15% Options"
-                  className="h-10 text-xs rounded-xl"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-600">Sign-on Bonus</label>
-                <Input
-                  type="number"
-                  value={offerSignOn}
-                  onChange={(e) => setOfferSignOn(e.target.value)}
-                  className="h-10 text-xs rounded-xl"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-600">Target Start Date</label>
-              <Input
-                type="date"
-                value={offerStartDate}
-                onChange={(e) => setOfferStartDate(e.target.value)}
-                className="h-10 text-xs rounded-xl"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-600">Offer Notes &amp; Terms</label>
-              <textarea
-                value={offerNotes}
-                onChange={(e) => setOfferNotes(e.target.value)}
-                placeholder="Approved by hiring executive, includes 4-year vesting schedule..."
-                rows={3}
-                className="w-full p-3 text-xs bg-zinc-50 border border-zinc-200 rounded-xl focus:outline-none focus:border-zinc-400 leading-relaxed resize-none"
-              />
-            </div>
-
-            <DialogFooter className="pt-4 flex justify-end gap-2 border-t border-zinc-100">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsOfferModalOpen(false)}
-                className="text-xs rounded-xl"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={isSavingOffer}
-                className="bg-black hover:bg-zinc-800 text-white text-xs px-5 rounded-xl transition-colors cursor-pointer"
-              >
-                {isSavingOffer ? "Saving..." : "Save Offer Record"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <RecordOfferModal
+        isOpen={isOfferModalOpen}
+        onOpenChange={setIsOfferModalOpen}
+        candidate={candidate}
+        onSuccess={handleOfferSuccess}
+        onError={setError}
+      />
     </div>
   );
 }

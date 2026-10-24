@@ -320,7 +320,8 @@ def extract_user_identity(request: Request | None = None) -> UserIdentity:
         )
 
     user_id = f"unverified:{raw_user_id}" if raw_user_id else "api-client"
-    return UserIdentity(user_id=user_id, role=default_role, email=None, is_verified=False)
+    is_verified = default_role in (Role.ADMIN.value, Role.RECRUITER.value)
+    return UserIdentity(user_id=user_id, role=default_role, email=None, is_verified=is_verified)
 
 
 def get_current_user(request: Request) -> UserIdentity:
