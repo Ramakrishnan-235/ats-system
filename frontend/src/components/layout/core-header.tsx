@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Search,
@@ -12,7 +13,6 @@ import {
   Settings,
   Users,
   Sparkles,
-  Command,
   Check,
   LogOut,
   Building2,
@@ -35,7 +35,6 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
-  DialogTitle,
 } from "@/components/ui/dialog";
 
 export function CoreHeader() {
@@ -87,14 +86,13 @@ export function CoreHeader() {
           {/* Left Brand & Workspace Switcher */}
           <div className="flex min-w-0 items-center gap-2 sm:gap-4">
             <Link href="/" aria-label="CORE ATS home" className="flex shrink-0 items-center gap-2.5 group">
-              <img
+              <Image
                 src="/core-ats-logo.png"
                 alt="CORE ATS Logo"
+                width={32}
+                height={32}
+                priority
                 className="h-8 w-8 object-contain group-hover:scale-105 transition-transform"
-                onError={(e) => {
-                  // Fallback if image fails to render
-                  (e.target as HTMLElement).style.display = "none";
-                }}
               />
               <span className="hidden sm:inline font-semibold text-lg text-[#171c25] tracking-tight whitespace-nowrap">
                 CORE ATS
@@ -406,13 +404,12 @@ export function CoreHeader() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button type="button" aria-label="Account menu" className="relative flex h-8 w-8 items-center cursor-pointer group">
-                  <img
+                  <Image
                     alt="Elena Profile"
+                    width={32}
+                    height={32}
                     className="absolute inset-0 z-10 w-8 h-8 rounded-full object-cover ring-2 ring-[#dee2ef] group-hover:ring-[#6137e0] transition-all"
                     src="/elena-avatar.png"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = "none";
-                    }}
                   />
                   <div className="w-8 h-8 rounded-full bg-[#131c29] text-white flex items-center justify-center text-xs font-bold ring-2 ring-[#dee2ef]">
                     {session?.user?.name ? session.user.name.charAt(0) : "E"}

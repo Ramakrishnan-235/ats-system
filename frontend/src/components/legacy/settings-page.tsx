@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
 import { Sidebar } from "@/components/layout/sidebar";
 import {
   Search,
@@ -493,9 +494,11 @@ export default function SettingsPage() {
                               <td className="py-4 pl-2">
                                 <div className="flex items-center gap-3">
                                   {member.avatar.startsWith("http") ? (
-                                    <img
+                                    <Image
                                       src={member.avatar}
                                       alt={member.name}
+                                      width={36}
+                                      height={36}
                                       className="w-9 h-9 rounded-full object-cover border border-zinc-200 shrink-0"
                                     />
                                   ) : (
