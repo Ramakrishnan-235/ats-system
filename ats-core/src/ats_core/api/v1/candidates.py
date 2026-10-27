@@ -520,43 +520,17 @@ async def _process_resume_pipeline(
         })
 
     try:
-        # Resolve active resume parser (support test mocks on resume_parser as well as llm_embedding_resume_parser)
-        import sys
-        parse_func = None
-        if "ats_core.parsers.resume_parser" in sys.modules:
-            rmod = sys.modules["ats_core.parsers.resume_parser"]
-            rfunc = getattr(rmod, "parse_resume_to_candidate", None)
-            if rfunc is not None and (
-                getattr(rfunc, "_is_mock", False)
-                or getattr(rfunc, "__class__", None).__name__ in ("MagicMock", "Mock", "AsyncMock")
-                or getattr(rmod, "__class__", None).__name__ == "SimpleNamespace"
-                or getattr(rfunc, "__module__", "") != "ats_core.parsers.resume_parser"
-            ):
-                parse_func = rfunc
-
-        if parse_func is None and "ats_core.parsers.llm_embedding_resume_parser" in sys.modules:
-            lmod = sys.modules["ats_core.parsers.llm_embedding_resume_parser"]
-            lfunc = getattr(lmod, "parse_resume_with_llm_and_embeddings", None)
-            if lfunc is not None and (
-                getattr(lfunc, "_is_mock", False)
-                or getattr(lfunc, "__class__", None).__name__ in ("MagicMock", "Mock", "AsyncMock")
-                or getattr(lmod, "__class__", None).__name__ == "SimpleNamespace"
-            ):
-                parse_func = lfunc
-
-        if parse_func is None:
-            use_llm_parser = os.getenv("ATS_USE_LLM_PARSER", "false").strip().lower() in ("true", "1", "yes")
-            if use_llm_parser:
-                try:
-                    from ats_core.parsers.llm_embedding_resume_parser import (
-                        parse_resume_with_llm_and_embeddings as parse_func,
-                    )
-                except ImportError:
-                    from ats_core.parsers.resume_parser import parse_resume_to_candidate as parse_func
-            else:
-                from ats_core.parsers.resume_parser import parse_resume_to_candidate as parse_func
-
-        parse_resume_to_candidate = parse_func
+        # Resolve active resume parser based on ATS_USE_LLM_PARSER
+        use_llm_parser = os.getenv("ATS_USE_LLM_PARSER", "false").strip().lower() in ("true", "1", "yes")
+        if use_llm_parser:
+            try:
+                from ats_core.parsers.llm_embedding_resume_parser import (
+                    parse_resume_with_llm_and_embeddings as parse_resume_to_candidate,
+                )
+            except ImportError:
+                from ats_core.parsers.resume_parser import parse_resume_to_candidate
+        else:
+            from ats_core.parsers.resume_parser import parse_resume_to_candidate
         parsed_candidate = await run_in_threadpool(
             parse_resume_to_candidate,
             doc_bytes,
@@ -682,8 +656,6 @@ async def _process_resume_pipeline(
                     })
 
                 def get_evaluator():
-                    if getattr(LocalDeepEvaluator, "_mock_return_value", None) is not None or "Mock" in type(LocalDeepEvaluator).__name__:
-                        return LocalDeepEvaluator()
                     if hasattr(LocalDeepEvaluator, "get_instance"):
                         return LocalDeepEvaluator.get_instance()
                     return LocalDeepEvaluator()
@@ -714,6 +686,10 @@ async def _process_resume_pipeline(
 
                     tier_name = report.qualification_tier.value if hasattr(report.qualification_tier, "value") else str(report.qualification_tier)
 
+                    risk_flags = getattr(report, "risks_and_skill_gaps", None) or []
+                    improvements = getattr(report, "suggested_improvements", None) or []
+                    questions = getattr(report, "suggested_interview_questions", None) or []
+
                     parsed_candidate["scorecard"] = {
                         "overall_match_score": int(round(report.overall_match_score)),
                         "match_tier": f"{tier_name} Match" if "Match" not in tier_name else tier_name,
@@ -721,9 +697,9 @@ async def _process_resume_pipeline(
                         "evaluated_at": datetime.now(UTC).isoformat(),
                         "evaluation_status": "COMPLETED",
                         "categories": categories if categories else parsed_candidate["scorecard"]["categories"],
-                        "risk_flags": [],
-                        "suggested_improvements": [],
-                        "suggested_questions": [],
+                        "risk_flags": risk_flags,
+                        "suggested_improvements": improvements,
+                        "suggested_questions": questions,
                         "team_notes": []
                     }
                     if eval_result.get("telemetry"):
@@ -781,8 +757,8 @@ async def _process_resume_pipeline(
                     "systemDesignScore": cats.get("System Design", 7.5),
                     "quote": parsed_candidate.get("summary", "Resume uploaded for requisition"),
                     "sourceResumeLink": f"/candidates/{candidate_id}",
-                    "potentialGap": None,
-                    "suggestedQuestions": [],
+                    "potentialGap": scorecard.get("risk_flags", [None])[0] if scorecard.get("risk_flags") else None,
+                    "suggestedQuestions": scorecard.get("suggested_questions", []),
                 }
                 c_list = [c for c in JOB_CANDIDATES_STORE.get(target_job_id, []) if c.get("id") != candidate_id]
                 c_list.append(job_cand)
@@ -962,16 +938,17 @@ async def upload_resume_async(
     is_inline = req_mode.lower() in ("inline", "sync")
 
     if is_inline:
-        await _process_resume_pipeline(
-            task_id,
-            candidate_id,
-            safe_filename,
-            doc_bytes,
-            temp_file_path,
-            target_job,
-            job_id,
-            is_inline=True,
-        )
+        async with _upload_semaphore:
+            await _process_resume_pipeline(
+                task_id,
+                candidate_id,
+                safe_filename,
+                doc_bytes,
+                temp_file_path,
+                target_job,
+                job_id,
+                is_inline=True,
+            )
         task_info = UPLOAD_TASKS_STORE.get(task_id, {})
         processing_failed = (task_info.get("state") == "FAILURE")
         parsed_candidate = get_candidate_from_store(candidate_id) or {}

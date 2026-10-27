@@ -3,7 +3,7 @@
 import os
 from unittest.mock import patch
 import pytest
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.testclient import TestClient
 
 from ats_core.api import auth, upload_storage
@@ -21,6 +21,7 @@ def auth_api(tmp_path, monkeypatch):
 
     auth.ATS_AUTH_ENABLED = True
     auth.EXPECTED_API_KEY = api_key
+    monkeypatch.setenv("ATS_TOKEN_SECRET", api_key)
 
     candidates.CANDIDATES_STORE.clear()
     candidates.UPLOAD_TASKS_STORE.clear()
@@ -378,3 +379,58 @@ def test_sec_02_decommissioned_public_routes(monkeypatch):
             resp = client.get("/api/v1/jobs")
             assert resp.status_code == 410
             assert "decommissioned" in resp.json()["detail"].lower()
+
+
+def test_cannot_forge_hmac_token_with_shared_api_key(auth_api, monkeypatch):
+    """Verifies that possessing EXPECTED_API_KEY does NOT allow forging signed HMAC Bearer tokens."""
+    client, key = auth_api
+    token_secret = "real-signing-secret-32-chars-long-123456"
+    monkeypatch.setenv("ATS_TOKEN_SECRET", token_secret)
+
+    # Attacker knows shared API key, tries to forge a token signed with the API key
+    forged_token = auth.create_signed_token("attacker", "admin", secret_key=key)
+    forged_headers = {"Authorization": f"Bearer {forged_token}"}
+
+    resp = client.get("/api/v1/candidates?include_pii=true", headers=forged_headers)
+    # The forged token is invalid and fails auth
+    assert resp.status_code == 401
+
+    # Legitimate token signed with ATS_TOKEN_SECRET is accepted
+    legit_token = auth.create_signed_token("legit-admin", "admin", secret_key=token_secret)
+    legit_headers = {"Authorization": f"Bearer {legit_token}"}
+    resp_ok = client.get("/api/v1/candidates?include_pii=true", headers=legit_headers)
+    assert resp_ok.status_code == 200
+
+
+def test_production_signing_secret_validation(monkeypatch):
+    """In production with auth enabled, ATS_TOKEN_SECRET must be configured with >= 32 chars."""
+    monkeypatch.setenv("ATS_ENV", "production")
+    monkeypatch.delenv("ATS_TOKEN_SECRET", raising=False)
+    auth.ATS_AUTH_ENABLED = True
+
+    with pytest.raises(RuntimeError, match="ATS_TOKEN_SECRET must be configured with >=32 chars in production"):
+        auth.get_signing_secret()
+
+    # Short secret in production must also raise
+    monkeypatch.setenv("ATS_TOKEN_SECRET", "short-secret")
+    with pytest.raises(RuntimeError, match="ATS_TOKEN_SECRET must be configured with >=32 chars in production"):
+        auth.get_signing_secret()
+
+    # >=32 chars in production succeeds
+    valid_prod_secret = "a" * 32
+    monkeypatch.setenv("ATS_TOKEN_SECRET", valid_prod_secret)
+    assert auth.get_signing_secret() == valid_prod_secret
+
+
+def test_unverified_shared_key_access_never_verified(monkeypatch):
+    """Unverified shared API key access must ALWAYS have is_verified=False even if default role is recruiter/admin."""
+    monkeypatch.setenv("ATS_DEFAULT_USER_ROLE", "admin")
+    identity = auth.extract_user_identity(None)
+    assert identity.role == "admin"
+    assert identity.is_verified is False
+
+    req = Request({"type": "http", "method": "GET", "path": "/test", "headers": [(b"x-api-key", b"some-key")]})
+    req_identity = auth.extract_user_identity(req)
+    assert req_identity.role == "admin"
+    assert req_identity.is_verified is False
+

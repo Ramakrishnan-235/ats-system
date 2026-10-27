@@ -7,12 +7,12 @@ import threading
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, model_validator
 from starlette.concurrency import run_in_threadpool
 
 from ats_core.api.audit import check_and_audit_pii_access
-from ats_core.api.auth import get_current_user
+from ats_core.api.auth import get_current_user, require_write_role
 
 logger = logging.getLogger("ats.api.match")
 
@@ -231,7 +231,11 @@ class MatchResponse(BaseModel):
     message: str | None = None
 
 
-@router.post("/evaluate-job", response_model=MatchResponse)
+@router.post(
+    "/evaluate-job",
+    response_model=MatchResponse,
+    dependencies=[Depends(require_write_role)],
+)
 async def match_and_evaluate_candidates(
     request: MatchRequest,
     http_request: Request = None,
@@ -342,6 +346,12 @@ async def match_and_evaluate_candidates(
     async def _evaluate_single_candidate(rank: int, cand: dict[str, Any]):
         cand_id = cand.get("candidate_id", "unknown")
         cand_text = cand.get("text", cand.get("summary_text", ""))
+        cand_meta = cand.get("metadata", {}) or {}
+        cand_name = cand_meta.get("name")
+        cand_email = cand_meta.get("email")
+        cand_phone = cand_meta.get("phone")
+        cand_urls = cand_meta.get("urls") or []
+
         try:
             try:
                 from ats_core.parsers.anonymizer import get_shared_anonymizer
@@ -349,10 +359,56 @@ async def match_and_evaluate_candidates(
             except (ImportError, AttributeError):
                 from ats_core.parsers.anonymizer import ResumeAnonymizer
                 anonymizer = ResumeAnonymizer(min_score_threshold=0.55)
-            cand_name = cand.get("metadata", {}).get("name")
-            cand_text = anonymizer.anonymize(cand_text, known_name=cand_name)
+
+            cand_text = anonymizer.anonymize(
+                cand_text,
+                known_name=cand_name,
+                known_email=cand_email,
+                known_phone=cand_phone,
+                known_urls=cand_urls,
+            )
+
+            # Pre-flight check: verify that redacted text contains NO residual PII before sending to external LLM
+            check_fn = getattr(anonymizer, "check_preflight_leak", None)
+            if callable(check_fn):
+                check_res = check_fn(
+                    text=cand_text,
+                    name=cand_name,
+                    email=cand_email,
+                    phone=cand_phone,
+                    urls=cand_urls,
+                )
+                if isinstance(check_res, tuple) and len(check_res) == 2:
+                    is_clean, leak_fields = check_res
+                    if not is_clean:
+                        scrub_fn = getattr(anonymizer, "scrub_residual_pii", None)
+                        if callable(scrub_fn):
+                            cand_text = scrub_fn(
+                                text=cand_text,
+                                name=cand_name,
+                                email=cand_email,
+                                phone=cand_phone,
+                                urls=cand_urls,
+                            )
+                        clean_now, remaining = check_fn(
+                            text=cand_text,
+                            name=cand_name,
+                            email=cand_email,
+                            phone=cand_phone,
+                            urls=cand_urls,
+                        )
+                        if not clean_now:
+                            raise ValueError(
+                                f"Pre-flight leak validation failed: candidate text contains unredacted PII ({remaining})"
+                            )
         except Exception as anon_err:
-            logger.debug("Failed anonymizing cand_text for evaluation: %s", anon_err)
+            logger.error(
+                "Candidate %s PII redaction failed or preflight check failed; aborting external LLM transmission (fail-closed): %s",
+                cand_id,
+                anon_err,
+                exc_info=True,
+            )
+            return None, cand_id
         async with eval_semaphore:
             try:
                 if inspect.iscoroutinefunction(evaluate_candidate):
@@ -470,12 +526,9 @@ async def match_and_evaluate_candidates(
                 })
             if cats:
                 scorecard["categories"] = cats
-            cons = eval_data.get("cons") or eval_data.get("cons_or_risks") or []
-            questions = eval_data.get("recommended_interview_questions") or eval_data.get("suggested_questions") or []
-            scorecard["risk_flags"] = eval_data.get("risk_flags") or []
-            scorecard["suggested_improvements"] = list(cons)
-            scorecard["suggested_questions"] = list(questions)
-            scorecard.setdefault("team_notes", [])
+            scorecard["risk_flags"] = eval_data.get("cons_or_risks", [])
+            scorecard["suggested_improvements"] = eval_data.get("cons", []) or eval_data.get("cons_or_risks", []) or eval_data.get("suggested_improvements", [])
+            scorecard["suggested_questions"] = eval_data.get("recommended_interview_questions", [])
 
         # Build JobCandidate item
         cand_rec = get_candidate_from_store(cid) or {}
@@ -506,8 +559,8 @@ async def match_and_evaluate_candidates(
             "systemDesignScore": sys_score,
             "quote": cat_list[0].get("rationale", "") if cat_list else eval_data.get("recruiter_summary", ""),
             "sourceResumeLink": f"/candidates/{cid}",
-            "potentialGap": None,
-            "suggestedQuestions": [],
+            "potentialGap": eval_data.get("cons_or_risks", [None])[0] if eval_data.get("cons_or_risks") else None,
+            "suggestedQuestions": eval_data.get("recommended_interview_questions", []),
             "jobId": target_job_id,
         }
         updated_job_candidates.append(job_cand_obj)
@@ -540,8 +593,7 @@ async def match_and_evaluate_candidates(
         if not allow_pii and "metadata" in item_copy:
             meta_copy = dict(item_copy["metadata"])
             cid_str = str(item_copy.get("candidate_id", ""))
-            cand_rec = get_candidate_from_store(cid_str) or {}
-            meta_copy["name"] = cand_rec.get("anonymized_name") or f"Candidate #{cid_str[:8]}"
+            meta_copy["name"] = CANDIDATES_STORE.get(cid_str, {}).get("anonymized_name") or f"Candidate #{cid_str[:8]}"
             item_copy["metadata"] = meta_copy
         response_evaluations.append(item_copy)
 
@@ -549,7 +601,7 @@ async def match_and_evaluate_candidates(
     for c in updated_job_candidates:
         c_copy = dict(c)
         if not allow_pii:
-            cand_rec = get_candidate_from_store(c_copy["id"]) or {}
+            cand_rec = CANDIDATES_STORE.get(c_copy["id"], {})
             c_copy["name"] = cand_rec.get("anonymized_name") or f"Candidate #{str(c_copy['id'])[:8]}"
             c_copy["avatar"] = "CD"
             c_copy["isImageAvatar"] = False

@@ -7,6 +7,7 @@ two-tier IP/verified-identity bucket isolation (SEC-07).
 """
 
 from collections import OrderedDict
+import ipaddress
 import os
 import threading
 import time
@@ -16,24 +17,60 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 
+def is_trusted_proxy(peer_ip: str | None) -> bool:
+    """
+    Determines whether the socket peer IP is a trusted reverse proxy.
+    Trusted proxies default to loopback and test client addresses,
+    configurable via ATS_TRUSTED_PROXIES (comma-separated list of IPs or CIDRs).
+    """
+    if not peer_ip:
+        return False
+    trusted_raw = os.getenv("ATS_TRUSTED_PROXIES", "127.0.0.1,::1,localhost,testclient").strip()
+    trusted_list = [p.strip().lower() for p in trusted_raw.split(",") if p.strip()]
+    peer_lower = peer_ip.strip().lower()
+    if peer_lower in trusted_list:
+        return True
+    try:
+        addr = ipaddress.ip_address(peer_lower)
+        for trusted in trusted_list:
+            try:
+                if "/" in trusted and addr in ipaddress.ip_network(trusted, strict=False):
+                    return True
+                elif addr == ipaddress.ip_address(trusted):
+                    return True
+            except ValueError:
+                continue
+    except ValueError:
+        pass
+    return False
+
+
 def get_client_ip(request: Request) -> str:
     """
     Extracts the client IP address strictly from trusted reverse proxy headers or socket peer.
-    Evaluates 'X-Forwarded-For' (leftmost IP), 'X-Real-IP', and 'CF-Connecting-IP'
-    when ATS_TRUST_PROXY_HEADERS is enabled (default true), falling back to
-    the socket peer 'request.client.host', or '127.0.0.1'.
+    Proxy headers ('X-Forwarded-For', 'X-Real-IP', 'CF-Connecting-IP') are only evaluated
+    if the direct socket peer (request.client.host) is an identified trusted reverse proxy.
+    When trusted, extracts the rightmost IP appended by the trusted proxy (ips[-1]),
+    preventing client-spoofed leftmost headers from poisoning the rate-limit bucket.
+    If the socket peer is not trusted or proxy trusting is disabled, returns request.client.host.
     """
+    socket_peer = request.client.host if request.client and request.client.host else None
     trust_proxies = os.getenv("ATS_TRUST_PROXY_HEADERS", "true").strip().lower() in ("true", "1", "yes")
-    if trust_proxies:
-        for header_name in ("x-forwarded-for", "x-real-ip", "cf-connecting-ip"):
-            raw_val = request.headers.get(header_name)
-            if raw_val:
-                first = raw_val.split(",")[0].strip()
-                if first:
-                    return first
 
-    if request.client and request.client.host:
-        return request.client.host
+    if trust_proxies and socket_peer and is_trusted_proxy(socket_peer):
+        raw_xff = request.headers.get("x-forwarded-for")
+        if raw_xff:
+            ips = [x.strip() for x in raw_xff.split(",") if x.strip()]
+            if ips:
+                return ips[-1]
+
+        for header_name in ("cf-connecting-ip", "x-real-ip"):
+            raw_val = request.headers.get(header_name)
+            if raw_val and raw_val.strip():
+                return raw_val.strip()
+
+    if socket_peer:
+        return socket_peer
 
     return "127.0.0.1"
 

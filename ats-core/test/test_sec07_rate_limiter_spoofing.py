@@ -30,14 +30,14 @@ AUTH_HEADERS = {"Authorization": f"Bearer {AUTH_TOKEN}"}
 
 
 @pytest.fixture
-def rate_limited_app():
+def rate_limited_app(monkeypatch):
     """Sets up an isolated FastAPI app with a low rate limit (5 req/min) for testing."""
     orig_auth = auth.ATS_AUTH_ENABLED
     orig_key = auth.EXPECTED_API_KEY
-    orig_secret = auth.get_signing_secret()
 
     auth.ATS_AUTH_ENABLED = True
     auth.EXPECTED_API_KEY = TEST_SECRET
+    monkeypatch.setenv("ATS_TOKEN_SECRET", TEST_SECRET)
 
     app = FastAPI()
     # Configure low rate limit for testing: 5 requests per minute
@@ -90,7 +90,7 @@ def test_lru_rate_limiter_strict_max_keys_cap():
 # ==================== 2. TRUSTED REVERSE PROXY IP EXTRACTION ====================
 
 def test_get_client_ip_trusted_proxy_headers():
-    """Validates IP extraction across X-Forwarded-For, X-Real-IP, and CF-Connecting-IP."""
+    """Validates IP extraction: untrusted peers cannot spoof IP; trusted proxies extract rightmost IP."""
     scope = {
         "type": "http",
         "method": "GET",
@@ -103,21 +103,41 @@ def test_get_client_ip_trusted_proxy_headers():
     req = Request(scope)
     assert get_client_ip(req) == "10.0.0.99"
 
-    # 2. X-Forwarded-For with multiple IPs takes the first (client) IP
+    # 2. Untrusted socket peer cannot spoof X-Forwarded-For; returns socket peer
     scope_xff = dict(scope)
     scope_xff["headers"] = [
         (b"x-forwarded-for", b"203.0.113.42, 198.51.100.1, 10.0.0.1")
     ]
-    assert get_client_ip(Request(scope_xff)) == "203.0.113.42"
+    assert get_client_ip(Request(scope_xff)) == "10.0.0.99"
 
-    # 3. X-Real-IP fallback
-    scope_xreal = dict(scope)
-    scope_xreal["headers"] = [(b"x-real-ip", b"198.51.100.55")]
+    # 3. Trusted proxy socket peer (e.g. 127.0.0.1) extracts the rightmost IP appended by proxy
+    scope_trusted_proxy = {
+        "type": "http",
+        "method": "GET",
+        "path": "/test",
+        "headers": [(b"x-forwarded-for", b"203.0.113.42, 198.51.100.1, 10.0.0.1")],
+        "client": ("127.0.0.1", 54321),
+    }
+    assert get_client_ip(Request(scope_trusted_proxy)) == "10.0.0.1"
+
+    # 4. X-Real-IP fallback from trusted proxy
+    scope_xreal = {
+        "type": "http",
+        "method": "GET",
+        "path": "/test",
+        "headers": [(b"x-real-ip", b"198.51.100.55")],
+        "client": ("127.0.0.1", 54321),
+    }
     assert get_client_ip(Request(scope_xreal)) == "198.51.100.55"
 
-    # 4. CF-Connecting-IP
-    scope_cf = dict(scope)
-    scope_cf["headers"] = [(b"cf-connecting-ip", b"192.0.2.77")]
+    # 5. CF-Connecting-IP from trusted proxy
+    scope_cf = {
+        "type": "http",
+        "method": "GET",
+        "path": "/test",
+        "headers": [(b"cf-connecting-ip", b"192.0.2.77")],
+        "client": ("127.0.0.1", 54321),
+    }
     assert get_client_ip(Request(scope_cf)) == "192.0.2.77"
 
 

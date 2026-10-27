@@ -90,12 +90,16 @@ class UserIdentity:
 
 
 def get_signing_secret() -> str:
-    return (
-        os.getenv("ATS_TOKEN_SECRET", "").strip()
-        or EXPECTED_API_KEY.strip()
-        or os.getenv("ATS_SERVICE_KEY", "").strip()
-        or "ats-insecure-dev-signing-secret-key-32b"
-    )
+    secret = os.getenv("ATS_TOKEN_SECRET", "").strip()
+    ats_env = os.getenv("ATS_ENV", "").strip().lower()
+    if not secret:
+        if ATS_AUTH_ENABLED and ats_env == "production":
+            raise RuntimeError("ATS_TOKEN_SECRET must be configured with >=32 chars in production.")
+        logger.warning("ATS_TOKEN_SECRET is not configured; using insecure dev signing secret.")
+        return "ats-insecure-dev-signing-secret-key-32b"
+    if ATS_AUTH_ENABLED and ats_env == "production" and len(secret) < 32:
+        raise RuntimeError("ATS_TOKEN_SECRET must be configured with >=32 chars in production.")
+    return secret
 
 
 def create_signed_token(
@@ -132,13 +136,19 @@ def verify_signed_token(token: str, secret_key: str | None = None) -> UserIdenti
     candidates: list[str] = []
     if secret_key:
         candidates.append(secret_key.strip())
-    for s in (
-        os.getenv("ATS_TOKEN_SECRET", "").strip(),
-        EXPECTED_API_KEY.strip(),
-        os.getenv("ATS_SERVICE_KEY", "").strip(),
-    ):
-        if s and s not in candidates:
-            candidates.append(s)
+    token_secret = os.getenv("ATS_TOKEN_SECRET", "").strip()
+    if token_secret and token_secret not in candidates:
+        candidates.append(token_secret)
+    else:
+        try:
+            signing_sec = get_signing_secret()
+            if signing_sec and signing_sec not in candidates:
+                candidates.append(signing_sec)
+        except Exception:
+            pass
+    service_key = os.getenv("ATS_SERVICE_KEY", "").strip()
+    if service_key and service_key not in candidates:
+        candidates.append(service_key)
 
     for sec in candidates:
         expected_sig = hmac.new(sec.encode("utf-8"), payload_b64.encode("ascii"), hashlib.sha256).digest()
@@ -177,13 +187,19 @@ def verify_user_signature(user_id: str, role: str, email: str | None, signature:
     candidates: list[str] = []
     if secret_key:
         candidates.append(secret_key.strip())
-    for s in (
-        os.getenv("ATS_TOKEN_SECRET", "").strip(),
-        EXPECTED_API_KEY.strip(),
-        os.getenv("ATS_SERVICE_KEY", "").strip(),
-    ):
-        if s and s not in candidates:
-            candidates.append(s)
+    token_secret = os.getenv("ATS_TOKEN_SECRET", "").strip()
+    if token_secret and token_secret not in candidates:
+        candidates.append(token_secret)
+    else:
+        try:
+            signing_sec = get_signing_secret()
+            if signing_sec and signing_sec not in candidates:
+                candidates.append(signing_sec)
+        except Exception:
+            pass
+    service_key = os.getenv("ATS_SERVICE_KEY", "").strip()
+    if service_key and service_key not in candidates:
+        candidates.append(service_key)
     msg = f"{user_id.strip()}:{role.strip().lower()}:{(email or '').strip()}"
     for sec in candidates:
         expected = hmac.new(sec.encode("utf-8"), msg.encode("utf-8"), hashlib.sha256).hexdigest()
@@ -320,8 +336,7 @@ def extract_user_identity(request: Request | None = None) -> UserIdentity:
         )
 
     user_id = f"unverified:{raw_user_id}" if raw_user_id else "api-client"
-    is_verified = default_role in (Role.ADMIN.value, Role.RECRUITER.value)
-    return UserIdentity(user_id=user_id, role=default_role, email=None, is_verified=is_verified)
+    return UserIdentity(user_id=user_id, role=default_role, email=None, is_verified=False)
 
 
 def get_current_user(request: Request) -> UserIdentity:
