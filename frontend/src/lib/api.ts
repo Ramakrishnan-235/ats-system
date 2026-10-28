@@ -40,7 +40,7 @@ async function request(path: string, options: RequestInit = {}): Promise<Respons
   }
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers, credentials: "include", cache: "no-store" });
+    response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers, credentials: "include", cache: options.cache ?? "no-store" });
   } catch (error) {
     if (options.signal?.aborted) throw error;
     throw new ApiError("Cannot reach the backend. Check the API address and connection.");

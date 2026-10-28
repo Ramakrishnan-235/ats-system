@@ -3,9 +3,9 @@ import type { NextConfig } from "next";
 const cspHeader = `
   default-src 'self';
   script-src 'self' 'unsafe-eval' 'unsafe-inline';
-  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  style-src 'self' 'unsafe-inline';
   img-src 'self' blob: data: https://images.unsplash.com https:;
-  font-src 'self' data: https://fonts.gstatic.com https:;
+  font-src 'self' data:;
   connect-src 'self' http://localhost:8000 http://127.0.0.1:8000 http://localhost:8001 http://127.0.0.1:8001 http://localhost:11434 https: ws: wss:;
   frame-ancestors 'none';
   frame-src 'self' blob:;
@@ -52,6 +52,19 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   compress: true,
+  poweredByHeader: false,
+  experimental: {
+    optimizePackageImports: [
+      "lucide-react",
+      "@radix-ui/react-dialog",
+      "@radix-ui/react-dropdown-menu",
+      "@radix-ui/react-progress",
+      "@radix-ui/react-slot",
+      "@radix-ui/react-switch",
+      "@radix-ui/react-tabs",
+      "@radix-ui/react-tooltip",
+    ],
+  },
   images: {
     formats: ["image/avif", "image/webp"],
     remotePatterns: [
