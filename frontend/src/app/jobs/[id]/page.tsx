@@ -29,7 +29,13 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { AddCandidateJobModal, NewCandidatePayload } from "@/components/jobs/add-candidate-job-modal";
+import dynamic from "next/dynamic";
+import type { NewCandidatePayload } from "@/components/jobs/add-candidate-job-modal";
+
+const AddCandidateJobModal = dynamic(
+  () => import("@/components/jobs/add-candidate-job-modal").then((m) => m.AddCandidateJobModal),
+  { ssr: false }
+);
 import {
   Dialog,
   DialogContent,

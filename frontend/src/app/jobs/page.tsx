@@ -3,9 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Briefcase, Search, MapPin, Calendar, ArrowRight, Plus } from "lucide-react";
+import dynamic from "next/dynamic";
 import { CoreHeader } from "@/components/layout/core-header";
 import { CoreFooter } from "@/components/layout/core-footer";
-import { CreateJobModal } from "@/components/jobs/create-job-modal";
+
+const CreateJobModal = dynamic(
+  () => import("@/components/jobs/create-job-modal").then((m) => m.CreateJobModal),
+  { ssr: false }
+);
 import { useSession } from "@/components/layout/api-session";
 import { fetchJobs, getErrorMessage } from "@/lib/api";
 import type { JobRequisition } from "@/types/ats";

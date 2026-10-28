@@ -2,6 +2,7 @@
 
 import { SymbolIcon } from "@/components/ui/symbol-icon";
 import React, { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CoreHeader } from "@/components/layout/core-header";
@@ -430,10 +431,13 @@ export default function RequisitionStudioPage() {
                       <label className="text-xs text-[#141c27] font-bold">Recruiter Owner</label>
                       <div className="h-10 px-3 bg-[#eff4ff] rounded-lg flex items-center justify-between cursor-pointer hover:bg-[#e6eefe] transition-colors border border-transparent">
                         <div className="flex items-center gap-2">
-                          <img
+                          <Image
                             alt="Elena Varga"
                             className="w-6 h-6 rounded-full object-cover"
                             src="https://lh3.googleusercontent.com/aida-public/AB6AXuAb-xhC8Gt5a03IKeWoDmDYIb7OA7BFzq9MsVFM-rwt-YyHrVDJuLTTjQMMaNeKBbZMIHcWMSdXGW10tTDx5ZoEOpjrAMNKkwLFKzPxljc_M-xlr0M99deH89FjCESOhATVNQm1yejVm0SIVwzM5g5adk49UfUM46utSaH31Gn5G5kma9PN7GGOCPqOOJ-w4nct86OTEFn2AEOjFwU9p92xWtXzzqpF_a6NmoRqV7rmUek9kATdvAw3vA"
+                            width={24}
+                            height={24}
+                            loading="lazy"
                           />
                           <span className="text-xs text-[#141c27] font-medium">
                             {recruiterOwner}

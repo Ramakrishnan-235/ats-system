@@ -14,9 +14,20 @@ import { TimelineTab } from "@/components/candidate/timeline-tab";
 import { AuditTrailTab } from "@/components/candidate/audit-trail-tab";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { EditCandidateModal } from "@/components/candidate/edit-candidate-modal";
-import { RecordInterviewModal } from "@/components/candidate/record-interview-modal";
-import { RecordOfferModal } from "@/components/candidate/record-offer-modal";
+import dynamic from "next/dynamic";
+
+const EditCandidateModal = dynamic(
+  () => import("@/components/candidate/edit-candidate-modal").then((m) => m.EditCandidateModal),
+  { ssr: false }
+);
+const RecordInterviewModal = dynamic(
+  () => import("@/components/candidate/record-interview-modal").then((m) => m.RecordInterviewModal),
+  { ssr: false }
+);
+const RecordOfferModal = dynamic(
+  () => import("@/components/candidate/record-offer-modal").then((m) => m.RecordOfferModal),
+  { ssr: false }
+);
 import { Input } from "@/components/ui/input";
 import {
   ApiError,
